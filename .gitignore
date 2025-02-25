@@ -104,4 +104,9 @@ reports/*
 # mypy
 .mypy_cache/
 .dmypy.json
-dmypy.json 
+dmypy.json
+
+# Project configuration files (sensitive)
+tasks.yaml
+agents.yaml
+Supabase Snippet Retrieve Tables and Columns Info (4).csv 
