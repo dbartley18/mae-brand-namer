@@ -39,7 +39,7 @@ class BrandContextExpert:
             temperature=0.7,
             google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,
-            callbacks=settings.get_langsmith_callbacks()
+            callbacks=settings.get_langsmith_callbacks(),
         )
         
         # Define output schemas for structured parsing
@@ -126,7 +126,7 @@ class BrandContextExpert:
                     "user_prompt": user_prompt
                 }
             )
-            raise ValueError(f"Failed to extract brand context: {str(e)}")
+            raise ValueError(f"Failed to extract brand context: {str(e)}") from None
     
     def _validate_output(self, parsed_output: Dict[str, Any]) -> None:
         """Validate the parsed output contains all required fields."""
