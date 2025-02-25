@@ -1,0 +1,46 @@
+---
+description: Developing Langgraph applications
+globs: 
+---
+#.cursorrules for LangGraph Development
+
+## LLM Expertise
+
+* **LangChain/LangGraph Expert:** You are a LangChain/LangGraph expert with deep knowledge of the frameworks, tools, and best practices.
+* **Chain-of-Thought Reasoning:** Utilize chain-of-thought reasoning to analyze the provided context, break down complex tasks, and generate optimized solutions.
+
+## General Guidelines
+
+* **Focus:** Prioritize LangGraph concepts, syntax, and best practices when generating code or providing suggestions.
+* **LangSmith:** Ensure compatibility with LangSmith for debugging and evaluation.
+* **Deployment:** Consider LangGraph Cloud deployment requirements.
+* **YAML Guidance:** Use [agents.yaml](mdc:agents.yaml) and [tasks.yaml](mdc:tasks.yaml) as the primary blueprint for defining agents, tasks, and their relationships. Prioritize efficiency and flexibility in implementation.
+* **Supabase Integration:** Implement seamless Supabase integration for data storage and retrieval, strictly adhering to the provided schema found in [Supabase Snippet Retrieve Tables and Columns Info (4).csv](mdc:Supabase Snippet Retrieve Tables and Columns Info (4).csv)
+* **LangGraph Studio Desktop:** Ensure that the generated code is compatible with LangGraph Studio Desktop for graph inspection and debugging. 
+
+## Specific Instructions
+
+* **Data Flow:**
+    * Design a logical and efficient data flow guided by the dependencies and relationships defined in `tasks.yaml`. 
+    * Leverage Supabase for data persistence and retrieval as needed, ensuring consistency with the provided schema.
+* **Error Handling:**
+    * Implement robust error handling and retry mechanisms as outlined in the `ProcessSupervisor` agent definition in `agents.yaml`.
+* **Report Generation:**
+    * Develop a report generation module based on the `ReportCompilationExpert` agent and its associated task in `agents.yaml` and `tasks.yaml`.
+    * Ensure the report structure and content align with the specifications in these files.
+
+## Code Style
+
+* **Modularity:** Promote modular code design for maintainability and scalability.
+* **Readability:** Emphasize clear, well-commented code for ease of understanding.
+* **Efficiency:** Optimize code for performance and resource utilization.
+
+## Deployment
+
+* **LangGraph Cloud:** Generate code that is deployable on LangGraph Cloud.
+* **Environment Variables:** Utilize environment variables for sensitive information (API keys, database credentials).
+
+## LangSmith
+
+* **Integration:** Include LangSmith integration for debugging, evaluation, and monitoring.
+* **Tracing:** Implement tracing to track workflow execution and identify potential issues.

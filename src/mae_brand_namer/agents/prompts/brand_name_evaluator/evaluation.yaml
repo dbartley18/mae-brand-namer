@@ -1,0 +1,83 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_names", "brand_context", "semantic_analysis", "linguistic_analysis", "cultural_analysis", "translation_analysis"]
+template: |
+  Conduct a comprehensive evaluation of the following brand names using all available analysis:
+
+  Brand Names:
+  {brand_names}
+
+  Brand Context:
+  {brand_context}
+
+  Semantic Analysis:
+  {semantic_analysis}
+
+  Linguistic Analysis:
+  {linguistic_analysis}
+
+  Cultural Analysis:
+  {cultural_analysis}
+
+  Translation Analysis:
+  {translation_analysis}
+
+  Evaluate each name across these dimensions:
+
+  1. Strategic Alignment
+     - Brand identity fit
+     - Market positioning effectiveness
+     - Target audience relevance
+     - Value proposition support
+
+  2. Distinctiveness & Impact
+     - Market differentiation
+     - Competitive advantage
+     - Brand personality expression
+     - Positioning strength
+
+  3. Performance Metrics
+     - Memorability factors
+     - Pronunciation ease
+     - Meaningfulness
+     - Phonetic harmony
+
+  4. Implementation Potential
+     - Visual branding opportunities
+     - Storytelling capabilities
+     - Domain name viability
+     - Marketing adaptability
+
+  Format your evaluation according to this schema:
+  {format_instructions}
+
+  For each name, provide scores (1-10) and rationale for:
+  - Strategic alignment
+  - Distinctiveness
+  - Brand fit
+  - Positioning strength
+  - Memorability
+  - Pronounceability
+  - Meaningfulness
+  - Visual potential
+  - Domain viability
+  - Overall score
+
+  Ensure your evaluation aligns with the fields defined in the brand_name_evaluation table:
+  - strategic_alignment_score
+  - distinctiveness_score
+  - competitive_advantage
+  - brand_fit_score
+  - positioning_strength
+  - memorability_score
+  - pronounceability_score
+  - meaningfulness_score
+  - phonetic_harmony
+  - visual_branding_potential
+  - storytelling_potential
+  - domain_viability_score
+  - overall_score
+  - shortlist_status
+  - evaluation_comments
+  - rank
+
+  Provide clear rationale for all scores and recommendations. 

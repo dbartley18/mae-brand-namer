@@ -1,0 +1,45 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_context"]
+template: |
+  Generate strategic brand name options based on the following brand context:
+
+  Brand Context:
+  {brand_context}
+
+  Apply these naming strategies:
+  1. Descriptive Names
+     - Direct description of offering
+     - Benefit-focused terms
+     - Industry-relevant terminology
+
+  2. Suggestive Names
+     - Metaphorical connections
+     - Emotional associations
+     - Value proposition hints
+
+  3. Abstract Names
+     - Coined words
+     - Letter combinations
+     - Sound symbolism
+
+  4. Experiential Names
+     - Action words
+     - Sensory elements
+     - Emotional triggers
+
+  For each name generated, provide:
+  - Naming category and rationale
+  - Brand personality alignment
+  - Target audience relevance
+  - Market differentiation potential
+  - Memorability factors
+  - Visual branding potential
+
+  Format your response according to this schema:
+  {format_instructions}
+
+  Ensure each name:
+  - Is unique and ownable
+  - Aligns with brand strategy
+  - Has digital potential
+  - Is globally viable 

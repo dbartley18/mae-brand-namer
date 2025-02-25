@@ -1,0 +1,90 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_name", "brand_context"]
+template: |
+  Conduct a comprehensive domain analysis for the following brand name:
+
+  Brand Name:
+  {brand_name}
+
+  Brand Context:
+  {brand_context}
+
+  Analyze across these dimensions:
+
+  1. Domain Availability
+     - Primary TLD availability (.com, .net, .org)
+     - Country-specific TLD options
+     - Industry-relevant TLD options
+     - New gTLD opportunities
+     - Historical domain usage
+     - Domain age and history
+     - Previous registrations
+
+  2. Digital Brand Protection
+     - Similar domain registrations
+     - Trademark conflicts
+     - Cybersquatting risks
+     - Domain squatting history
+     - Brand protection recommendations
+     - Registration strategy
+     - Portfolio management approach
+
+  3. Technical Infrastructure
+     - DNS configuration requirements
+     - SSL/TLS certificate implications
+     - Email deliverability assessment
+     - SPF/DKIM compatibility
+     - Mobile optimization potential
+     - CDN compatibility
+     - Infrastructure scalability
+
+  4. Security Considerations
+     - SSL implementation complexity
+     - Security certificate requirements
+     - Email security implications
+     - Domain security best practices
+     - DNSSEC requirements
+     - Security monitoring needs
+     - Incident response planning
+
+  5. Implementation Strategy
+     - Registration process
+     - DNS setup requirements
+     - Email configuration
+     - Security implementation
+     - Monitoring setup
+     - Maintenance requirements
+     - Cost implications
+
+  Format your analysis according to this schema:
+  {format_instructions}
+
+  For each analysis dimension, provide:
+  - Availability assessment
+  - Technical requirements
+  - Security implications
+  - Implementation recommendations
+  - Risk assessment
+  - Cost estimates
+  - Timeline projections
+
+  Ensure your analysis aligns with the fields defined in the domain_analysis table:
+  - primary_domain_available
+  - alternative_tlds_available
+  - similar_domains_registered
+  - trademark_conflicts
+  - domain_history
+  - technical_requirements
+  - ssl_implications
+  - email_deliverability
+  - mobile_optimization
+  - security_requirements
+  - implementation_complexity
+  - maintenance_needs
+  - cost_estimate
+  - registration_strategy
+  - protection_recommendations
+  - notes
+  - rank
+
+  Provide clear recommendations for domain strategy and next steps. 

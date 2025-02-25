@@ -1,0 +1,82 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_names"]
+template: |
+  Conduct a comprehensive translation analysis for the following brand names:
+
+  Brand Names:
+  {brand_names}
+
+  Analyze each name across these dimensions:
+
+  1. Direct Translation Impact
+     - Literal meaning in target languages (Top 10 Global Languages)
+     - Semantic shift potential
+     - Meaning preservation score (1-10)
+     - Translation clarity
+     - Translation retention score (1-10)
+     - Meaning equivalence assessment
+
+  2. Phonetic Considerations
+     - Pronunciation challenges
+     - Sound adaptation needs
+     - Phonetic similarity risks
+     - Accent/dialect impact
+     - Regional pronunciation variations
+     - Phonetic retention score (1-10)
+
+  3. Cultural Adaptation
+     - Local market acceptance
+     - Cultural fit assessment
+     - Regional modifications needed
+     - Brand essence retention
+     - Market-specific adaptations
+     - Cultural sensitivity score (1-10)
+
+  4. Global Strategy
+     - Consistency vs. localization balance
+     - Market-specific recommendations
+     - Adaptation guidelines
+     - Implementation approach
+     - Global brand consistency metrics
+     - Cross-market synergy potential
+
+  5. Technical Considerations
+     - Character set compatibility
+     - Digital display requirements
+     - Trademark viability
+     - Domain name implications
+     - Social media handle adaptability
+     - Technical implementation score (1-10)
+
+  Format your analysis according to this schema:
+  {format_instructions}
+
+  For each name, provide:
+  - Direct translation analysis
+  - Semantic shift evaluation
+  - Pronunciation assessment
+  - Cultural acceptability review
+  - Adaptation recommendations
+  - Global strategy guidance
+  - Translation retention score (1-10)
+  - Market-specific adaptation details
+  - Global brand consistency score (1-10)
+  - Technical implementation assessment
+
+  Ensure your analysis aligns with the fields defined in the translation_analysis table:
+  - direct_translation
+  - semantic_shift
+  - target_language
+  - pronunciation_difficulty
+  - phonetic_similarity_undesirable
+  - phonetic_retention
+  - cultural_acceptability
+  - adaptation_needed
+  - proposed_adaptation
+  - brand_essence_preserved
+  - global_consistency_vs_localization
+  - market_specific_modifications
+  - implementation_complexity
+  - technical_requirements
+  - notes
+  - rank 

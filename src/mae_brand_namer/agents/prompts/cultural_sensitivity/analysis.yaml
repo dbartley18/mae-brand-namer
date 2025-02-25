@@ -1,0 +1,64 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_names", "brand_context"]
+template: |
+  Conduct a comprehensive cultural sensitivity analysis for the following brand names:
+
+  Brand Names:
+  {brand_names}
+
+  Brand Context:
+  {brand_context}
+
+  Analyze each name across these dimensions:
+
+  1. Cultural Connotations & Symbolism
+     - Cultural associations and meanings
+     - Symbolic interpretations
+     - Historical significance
+     - Traditional references
+
+  2. Religious & Spiritual Considerations
+     - Religious sensitivities
+     - Sacred symbols or concepts
+     - Spiritual implications
+     - Faith-based concerns
+
+  3. Social & Political Impact
+     - Political sensitivities
+     - Social taboos
+     - Current events relevance
+     - Controversial associations
+
+  4. Demographic Perceptions
+     - Age-related connotations
+     - Gender associations
+     - Regional variations
+     - Socioeconomic implications
+
+  Format your analysis according to this schema:
+  {format_instructions}
+
+  For each name, provide:
+  - Cultural connotations analysis
+  - Religious sensitivity assessment
+  - Social/political risk evaluation
+  - Demographic impact analysis
+  - Overall risk rating
+  - Improvement recommendations
+  - Cultural adaptation suggestions
+
+  Ensure your analysis aligns with the fields defined in the cultural_sensitivity_analysis table:
+  - cultural_connotations
+  - symbolic_meanings
+  - alignment_with_cultural_values
+  - religious_sensitivities
+  - social_political_taboos
+  - body_part_bodily_function_connotations
+  - age_related_connotations
+  - gender_connotations
+  - regional_variations
+  - historical_meaning
+  - current_event_relevance
+  - overall_risk_rating
+  - notes
+  - rank 

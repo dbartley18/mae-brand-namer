@@ -1,0 +1,50 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_names", "brand_context"]
+template: |
+  Conduct a comprehensive linguistic analysis of the following brand names:
+
+  Brand Names:
+  {brand_names}
+
+  Brand Context:
+  {brand_context}
+
+  Analyze each name across these dimensions:
+
+  1. Phonetic Structure
+     - Pronunciation patterns
+     - Syllable structure
+     - Stress patterns
+     - Sound symbolism
+     - Euphony vs. cacophony
+
+  2. Morphological Features
+     - Word formation process
+     - Morpheme analysis
+     - Structural transparency
+     - Derivational potential
+     - Inflectional properties
+
+  3. Semantic Properties
+     - Core meaning
+     - Semantic associations
+     - Metaphorical mappings
+     - Semantic transparency
+     - Meaning retention
+
+  4. Pragmatic Aspects
+     - Register appropriateness
+     - Stylistic fit
+     - Marketing potential
+     - Collocation patterns
+     - Usage flexibility
+
+  Format your analysis according to this schema:
+  {format_instructions}
+
+  For each name, provide:
+  - Detailed linguistic breakdown
+  - Potential strengths/weaknesses
+  - Risk assessment
+  - Improvement suggestions
+  - Overall linguistic score 

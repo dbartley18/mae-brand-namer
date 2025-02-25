@@ -1,0 +1,87 @@
+{
+  "name": "mae-brand-namer",
+  "version": "0.1.0",
+  "description": "A LangGraph-powered brand name generation and evaluation system",
+  "dependencies": ["."],
+  "graphs": {
+    "brand_naming": "./src/mae_brand_namer/workflows/brand_naming.py:create_workflow"
+  },
+  "env": ".env",
+  "store": {
+    "index": {
+      "embed": "./src/mae_brand_namer/utils/embeddings.py:embed_texts",
+      "dims": 768,
+      "fields": [
+        "brand_identity_brief",
+        "brand_promise",
+        "brand_values",
+        "brand_personality",
+        "target_audience",
+        "market_positioning"
+      ]
+    },
+    "supabase": {
+      "url": "${SUPABASE_URL}",
+      "key": "${SUPABASE_SERVICE_KEY}",
+      "tables": {
+        "brand_names": "brand_names",
+        "analysis_results": "analysis_results",
+        "process_logs": "process_logs",
+        "reports": "reports"
+      }
+    }
+  },
+  "tracing": {
+    "enabled": "${LANGCHAIN_TRACING_V2}",
+    "project": "${LANGCHAIN_PROJECT}",
+    "endpoint": "${LANGCHAIN_ENDPOINT}",
+    "api_key": "${LANGCHAIN_API_KEY}"
+  },
+  "supervisor": {
+    "max_retries": "${MAX_RETRIES}",
+    "retry_delay": "${RETRY_DELAY}",
+    "retry_backoff": "${RETRY_BACKOFF}",
+    "max_delay": "${RETRY_MAX_DELAY}"
+  },
+  "report": {
+    "agent": "./src/mae_brand_namer/agents/report_compiler.py:ReportCompiler",
+    "output_format": "${REPORT_OUTPUT_FORMAT}"
+  },
+  "agents": {
+    "uid_generator": "./src/mae_brand_namer/agents/uid_generator.py:UIDGeneratorAgent",
+    "brand_context_expert": "./src/mae_brand_namer/agents/brand_context_expert.py:BrandContextExpert",
+    "brand_name_generator": "./src/mae_brand_namer/agents/brand_name_creation_expert.py:BrandNameCreationExpert",
+    "linguistics_expert": "./src/mae_brand_namer/agents/linguistic_analysis_expert.py:LinguisticsExpert",
+    "semantic_expert": "./src/mae_brand_namer/agents/semantic_analysis_expert.py:SemanticAnalysisExpert",
+    "cultural_expert": "./src/mae_brand_namer/agents/cultural_sensitivity_expert.py:CulturalSensitivityExpert",
+    "translation_expert": "./src/mae_brand_namer/agents/translation_analysis_expert.py:TranslationAnalysisExpert",
+    "domain_expert": "./src/mae_brand_namer/agents/domain_analysis_expert.py:DomainAnalysisExpert",
+    "seo_expert": "./src/mae_brand_namer/agents/seo_online_discovery_expert.py:SEOOnlineDiscoveryExpert",
+    "competitor_expert": "./src/mae_brand_namer/agents/competitor_analysis_expert.py:CompetitorAnalysisExpert",
+    "survey_expert": "./src/mae_brand_namer/agents/survey_simulation_expert.py:SurveySimulationExpert",
+    "market_research_expert": "./src/mae_brand_namer/agents/market_research_expert.py:MarketResearchExpert",
+    "report_compiler": "./src/mae_brand_namer/agents/report_compiler.py:ReportCompiler",
+    "report_storer": "./src/mae_brand_namer/agents/report_storer.py:ReportStorer",
+    "process_supervisor": "./src/mae_brand_namer/agents/process_supervisor.py:ProcessSupervisor"
+  },
+  "studio": {
+    "url": "${LANGGRAPH_STUDIO_URL}",
+    "api_key": "${LANGGRAPH_STUDIO_API_KEY}",
+    "project": "mae-brand-namer",
+    "environment": "${ENVIRONMENT}",
+    "debug": "${DEBUG}",
+    "logging": {
+      "level": "${LOG_LEVEL}",
+      "json": "${LOG_JSON}",
+      "file": "${LOG_FILE}"
+    }
+  },
+  "python_version": "3.11",
+  "test": {
+    "pytest": {
+      "testpaths": ["tests"],
+      "python_files": ["test_*.py"],
+      "asyncio_mode": "auto"
+    }
+  }
+} 

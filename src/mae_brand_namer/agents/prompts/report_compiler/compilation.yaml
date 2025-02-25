@@ -1,0 +1,52 @@
+_type: prompt
+input_variables: ["format_instructions", "state_data"]
+template: |
+  Compile a comprehensive brand naming report using the following workflow data:
+
+  State Data:
+  {state_data}
+
+  Structure the report with these sections:
+
+  1. Executive Summary
+     - Project overview
+     - Key findings
+     - Top recommendations
+     - Strategic implications
+
+  2. Brand Context Analysis
+     - Brand promise and values
+     - Target audience insights
+     - Market positioning
+     - Competitive landscape
+
+  3. Brand Name Analysis
+     - Name generation methodology
+     - Evaluation criteria
+     - Individual name assessments
+     - Comparative analysis
+
+  4. Detailed Findings
+     - Linguistic analysis
+     - Market research
+     - Competitive analysis
+     - Risk assessment
+
+  5. Strategic Recommendations
+     - Primary recommendations
+     - Alternative options
+     - Implementation considerations
+     - Next steps
+
+  Format your report according to this schema:
+  {format_instructions}
+
+  Ensure the report:
+  - Follows Alina Wheeler's methodology
+  - Incorporates Minto's Pyramid Principle for executive-friendly structuring.
+  - Uses Data visualization techniques from 'Storytelling with Data' to enhance readability.
+  - Includes Enterprise reporting best practices to ensure insights are actionable and presentation-ready.
+  - Provides clear rationale
+  - Supports decision-making
+  - Includes actionable next steps
+  - Maintains professional standards

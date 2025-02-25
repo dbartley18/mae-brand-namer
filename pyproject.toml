@@ -1,0 +1,80 @@
+[project]
+name = "mae-brand-namer"
+version = "0.1.0"
+description = "A LangGraph-powered brand name generation and evaluation system using multiple expert agents"
+authors = [
+    {name = "Mae Brand Namer Team", email = "team@maebrandnamer.ai"},
+]
+readme = "README.md"
+license = {text = "MIT"}
+keywords = ["branding", "nlp", "ai", "langgraph", "langchain"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Text Processing :: Linguistic",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "langchain>=0.1.0",
+    "langgraph>=0.0.19",
+    "langchain-openai>=0.0.5",
+    "langchain-google-genai>=0.0.6",
+    "google-generativeai>=0.3.2",
+    "pydantic>=2.5.0",
+    "supabase>=2.3.0",
+    "python-dotenv>=1.0.0",
+    "uuid>=1.30",
+    "typing-extensions>=4.9.0",
+    "python-dateutil>=2.9.0",
+    "jsonschema>=4.21.0",
+    "langsmith>=0.0.69",
+    "langchain-experimental>=0.0.43",
+    "structlog>=24.1.0",
+    "tenacity>=8.2.3",
+    "aiohttp>=3.9.1",
+    "asyncio>=3.4.3",
+]
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23.5",
+    "pytest-cov>=4.1.0",
+    "black>=22.0",
+    "isort>=5.0",
+    "mypy>=1.0",
+    "ruff>=0.2.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+plugins = [
+    "pydantic.mypy"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "B", "I"] 

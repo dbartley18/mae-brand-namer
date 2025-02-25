@@ -1,0 +1,71 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_name", "brand_context", "domain_analysis"]
+template: |
+  Conduct a comprehensive SEO analysis for the following brand name:
+
+  Brand Name:
+  {brand_name}
+
+  Brand Context:
+  {brand_context}
+
+  Domain Analysis:
+  {domain_analysis}
+
+  Analyze across these dimensions:
+
+  1. Keyword Potential
+     - Search volume estimation
+     - Keyword difficulty
+     - Branded search potential
+     - Non-branded opportunities
+     - Long-tail variations
+
+  2. Search Competition
+     - SERP landscape analysis
+     - Competitor domain strength
+     - Content gap opportunities
+     - Local search impact
+
+  3. Technical Optimization
+     - URL structure optimization
+     - Mobile search compatibility
+     - Voice search potential
+     - International SEO considerations
+
+  4. Digital Marketing Impact
+     - Content marketing opportunities
+     - Social media visibility
+     - PPC effectiveness potential
+     - Online presence optimization
+
+  Format your analysis according to this schema:
+  {format_instructions}
+
+  Provide detailed analysis of:
+  - Keyword metrics and potential
+  - Competition analysis
+  - Technical optimization needs
+  - Marketing opportunities
+  - Risk factors
+  - Implementation priorities
+
+  Ensure your analysis aligns with the fields defined in the seo_analysis table:
+  - keyword_alignment
+  - search_volume
+  - keyword_competition
+  - branded_keyword_potential
+  - non_branded_keyword_potential
+  - exact_match_search_results
+  - competitor_domain_strength
+  - name_length_searchability
+  - unusual_spelling_impact
+  - content_marketing_opportunities
+  - social_media_availability
+  - social_media_discoverability
+  - negative_keyword_associations
+  - negative_search_results
+  - seo_viability_score
+  - seo_recommendations
+
+  Provide clear recommendations for SEO strategy and implementation. 

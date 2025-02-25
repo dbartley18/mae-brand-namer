@@ -1,0 +1,36 @@
+_type: prompt
+input_variables: ["format_instructions", "user_prompt"]
+template: |
+  Analyze the following brand description and extract key brand identity elements.
+  Structure your response according to Alina Wheeler's brand identity framework.
+
+  Brand Description:
+  {user_prompt}
+
+  Consider:
+  1. Core Brand Elements
+     - Brand promise and purpose
+     - Mission and vision
+     - Values and personality traits
+     - Tone of voice and communication style
+
+  2. Market Context
+     - Target audience definition
+     - Customer needs and pain points
+     - Market positioning strategy
+     - Competitive landscape analysis
+
+  3. Industry Analysis
+     - Primary industry focus
+     - Key trends and developments
+     - Growth opportunities
+     - Market challenges
+
+  Format your response according to this schema:
+  {format_instructions}
+
+  Ensure each element is:
+  - Specific and actionable
+  - Aligned with the brand strategy
+  - Supported by the provided description
+  - Useful for guiding name generation 

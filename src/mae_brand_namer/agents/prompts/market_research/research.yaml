@@ -1,0 +1,91 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_names", "brand_context"]
+template: |
+  Conduct comprehensive market research for the following brand names:
+
+  Brand Names:
+  {brand_names}
+
+  Brand Context:
+  {brand_context}
+
+  Analyze each name across these dimensions:
+
+  1. Market Potential
+     - Industry fit
+     - Market opportunity size
+     - Growth potential
+     - Barriers to entry
+     - Competitive advantage
+     - Market penetration metrics
+     - Growth trajectory analysis
+
+  2. Target Audience Analysis
+     - Demographic alignment
+     - Psychographic fit
+     - Value proposition match
+     - Purchase intent indicators
+     - Brand recall potential
+     - Customer lifetime value potential
+     - Brand loyalty indicators
+
+  3. Competitive Landscape
+     - Direct competitors
+     - Indirect competitors
+     - Naming patterns
+     - Market positioning
+     - Share of voice
+     - Competitive response prediction
+     - Market share potential
+
+  4. Digital Presence & SEO
+     - SEO viability assessment
+     - Keyword competition analysis
+     - Content marketing opportunities
+     - Social media availability
+     - Social media discoverability
+     - Branded search potential
+     - Non-branded search potential
+
+  5. Market Viability
+     - Commercial feasibility
+     - Market penetration potential
+     - Scalability assessment
+     - Digital presence potential
+     - International expansion opportunities
+     - Risk assessment
+     - Market entry timing
+
+  Format your analysis according to this schema:
+  {format_instructions}
+
+  For each name, provide:
+  - Market opportunity assessment (1-10 score)
+  - Competitive positioning analysis
+  - Target audience fit evaluation (1-10 score)
+  - Growth potential analysis (1-10 score)
+  - SEO viability score (1-10)
+  - Content marketing potential
+  - Social media platform availability
+  - Market penetration metrics
+  - Risk assessment
+  - Strategic recommendations
+  - Overall market viability score (1-10)
+
+  Ensure your analysis aligns with the fields defined in the market_research table and includes:
+  - keyword_alignment
+  - search_volume
+  - keyword_competition
+  - branded_keyword_potential
+  - non_branded_keyword_potential
+  - exact_match_search_results
+  - competitor_domain_strength
+  - name_length_searchability
+  - unusual_spelling_impact
+  - content_marketing_opportunities
+  - social_media_availability
+  - social_media_discoverability
+  - negative_keyword_associations
+  - negative_search_results
+  - seo_viability_score
+  - seo_recommendations 

@@ -1,0 +1,63 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_name", "brand_context"]
+template: |
+  Conduct a comprehensive competitor analysis for the following brand name:
+
+  Brand Name:
+  {brand_name}
+
+  Brand Context:
+  {brand_context}
+
+  Analyze across these dimensions:
+
+  1. Competitive Landscape
+     - Direct competitor analysis
+     - Indirect competitor review
+     - Market positioning map
+     - Industry naming conventions
+
+  2. Differentiation Potential
+     - Competitive advantage factors
+     - Value proposition uniqueness
+     - Market gap alignment
+     - Brand distinctiveness
+
+  3. Risk Assessment
+     - Trademark conflict likelihood
+     - Brand confusion potential
+     - Market entry challenges
+     - Competitive response scenarios
+
+  4. Strategic Opportunity
+     - Category leadership potential
+     - Market share capture
+     - Brand extension opportunities
+     - Growth trajectory
+
+  Format your analysis according to this schema:
+  {format_instructions}
+
+  Provide detailed analysis of:
+  - Competitor landscape
+  - Differentiation opportunities
+  - Risk factors
+  - Strategic positioning
+  - Market potential
+  - Implementation priorities
+
+  Ensure your analysis aligns with the fields defined in the competitor_analysis table:
+  - competitor_name
+  - competitor_naming_style
+  - competitor_keywords
+  - competitor_positioning
+  - competitor_strengths
+  - competitor_weaknesses
+  - competitor_differentiation_opportunity
+  - differentiation_score
+  - risk_of_confusion
+  - target_audience_perception
+  - competitive_advantage_notes
+  - trademark_conflict_risk
+
+  Provide clear recommendations for competitive positioning and strategy. 
