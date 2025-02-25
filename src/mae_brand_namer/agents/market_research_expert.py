@@ -10,7 +10,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 from langchain.callbacks import tracing_enabled
 from langchain_core.messages import HumanMessage, SystemMessage
-from supabase.lib.exceptions import APIError, PostgrestError
+from supabase import APIError, PostgrestError
 
 from ..utils.logging import get_logger
 from ..utils.supabase_utils import supabase

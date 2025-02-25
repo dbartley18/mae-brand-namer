@@ -7,12 +7,12 @@ from functools import partial
 import json
 import os
 
-from langchain.graphs import StateGraph
+from langgraph.graph import StateGraph
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 from langchain.callbacks import tracing_enabled
 from langchain_core.tracers import LangChainTracer
 from langchain_core.messages import SystemMessage, HumanMessage
-from supabase.lib.exceptions import APIError, PostgrestError
+from supabase import APIError, PostgrestError
 
 from ..agents import (
     UIDGeneratorAgent,

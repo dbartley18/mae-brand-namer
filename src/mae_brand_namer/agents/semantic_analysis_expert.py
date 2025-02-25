@@ -13,7 +13,7 @@ from langchain.callbacks import tracing_enabled
 from langchain_core.tracers import LangChainTracer
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from supabase.lib.client_options import ClientOptions
-from supabase.lib.exceptions import APIError, StorageException, AuthException, PostgrestError
+from supabase import APIError, StorageException, AuthException, PostgrestError
 
 from ..config.settings import settings
 from ..utils.logging import get_logger

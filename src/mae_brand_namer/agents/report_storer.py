@@ -5,7 +5,7 @@ from datetime import datetime
 import json
 
 from langchain.callbacks import tracing_enabled
-from supabase.lib.exceptions import APIError, PostgrestError
+from supabase import APIError, PostgrestError
 
 from ..utils.logging import get_logger
 from ..utils.supabase_utils import supabase

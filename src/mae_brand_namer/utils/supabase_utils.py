@@ -3,7 +3,7 @@
 from typing import Optional
 from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions
-from supabase.lib.exceptions import APIError, StorageException, AuthException, PostgrestError
+from supabase import APIError, StorageException, AuthException, PostgrestError
 
 from ..config.settings import settings
 from .logging import get_logger
