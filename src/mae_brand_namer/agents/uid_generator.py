@@ -2,11 +2,12 @@ from typing import Dict, List, Tuple, Optional
 from uuid import uuid4
 from datetime import datetime
 
-from langchain.agents import AgentExecutor
-from langchain_core.agents import AgentFinish
 from langchain_core.messages import HumanMessage
 
 from ..models.state import BrandNameGenerationState
+from ..utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 class UIDGeneratorAgent:
     """Agent responsible for generating unique run IDs for the workflow."""
@@ -22,6 +23,20 @@ class UIDGeneratorAgent:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid4())[:8]
         return f"{prefix}_{timestamp}_{unique_id}"
+
+    async def generate_uid(self) -> str:
+        """Generate a unique run ID."""
+        try:
+            return self.generate_run_id()
+        except Exception as e:
+            logger.error(
+                "Error generating unique run ID",
+                extra={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                }
+            )
+            raise
     
     def invoke(self, state: BrandNameGenerationState) -> Tuple[BrandNameGenerationState, List[Dict]]:
         """
@@ -41,6 +56,12 @@ class UIDGeneratorAgent:
             state.run_id = run_id
             state.current_step = "brand_context"
             
+            # Log the generated run ID
+            logger.info(
+                "Generated unique run ID",
+                extra={"run_id": run_id}
+            )
+            
             # Return updated state and success message
             return state, [{
                 "role": "assistant",
@@ -48,7 +69,16 @@ class UIDGeneratorAgent:
             }]
             
         except Exception as e:
-            # Handle any errors
+            # Log the error with detailed information
+            logger.error(
+                "Error in UIDGeneratorAgent",
+                extra={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                }
+            )
+            
+            # Add error to state
             error_msg = f"Error generating run ID: {str(e)}"
             state.errors.append({
                 "step": "generate_uid",
@@ -56,7 +86,5 @@ class UIDGeneratorAgent:
                 "timestamp": datetime.now().isoformat()
             })
             
-            return state, [{
-                "role": "assistant",
-                "content": error_msg
-            }] 
+            # Re-raise the exception after logging
+            raise 

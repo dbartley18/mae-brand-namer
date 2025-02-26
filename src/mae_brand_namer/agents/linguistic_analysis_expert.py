@@ -10,6 +10,7 @@ from langchain.prompts import ChatPromptTemplate, load_prompt
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 from langchain.callbacks import tracing_enabled
 from langchain_core.messages import HumanMessage, SystemMessage
+from postgrest import APIError
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
@@ -52,103 +53,50 @@ class LinguisticsExpert:
             "brand expression."
         )
         
-        # Load prompts from YAML files
-        prompt_dir = Path(__file__).parent / "prompts" / "linguistics"
-        self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
-        
-        # Define output schemas for structured parsing
-        self.output_schemas = [
-            ResponseSchema(
-                name="phonetic_analysis",
-                description="Analysis of sound patterns and pronunciation",
-                type="string"
-            ),
-            ResponseSchema(
-                name="morphological_analysis", 
-                description="Word structure and formation analysis",
-                type="string"
-            ),
-            ResponseSchema(
-                name="semantic_analysis",
-                description="Meaning and associations analysis",
-                type="string"
-            ),
-            ResponseSchema(
-                name="pragmatic_analysis",
-                description="Contextual usage and effectiveness",
-                type="string"
-            ),
-            ResponseSchema(
-                name="pronunciation_score",
-                description="Ease of pronunciation score (1-10)",
-                type="number"
-            ),
-            ResponseSchema(
-                name="memorability_score",
-                description="Memorability assessment score (1-10)",
-                type="number"
-            ),
-            ResponseSchema(
-                name="distinctiveness_score",
-                description="Linguistic uniqueness score (1-10)",
-                type="number"
-            ),
-            ResponseSchema(
-                name="cultural_fit_score",
-                description="Cultural appropriateness score (1-10)",
-                type="number"
-            ),
-            ResponseSchema(
-                name="overall_linguistic_score",
-                description="Overall linguistic effectiveness (1-10)",
-                type="number"
-            ),
-            ResponseSchema(
-                name="potential_issues",
-                description="List of potential linguistic issues",
-                type="array"
-            ),
-            ResponseSchema(
-                name="recommendations",
-                description="Linguistic optimization recommendations",
-                type="array"
+        try:
+            # Load prompts from YAML files
+            prompt_dir = Path(__file__).parent / "prompts" / "linguistics"
+            self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
+            
+            # Define output schemas for structured parsing
+            self.output_schemas = [
+                ResponseSchema(name="pronunciation_score", description="Score from 1-10 for pronunciation ease"),
+                ResponseSchema(name="euphony_score", description="Score from 1-10 for phonetic pleasantness"),
+                ResponseSchema(name="rhythm_and_meter", description="Analysis of rhythmic patterns"),
+                ResponseSchema(name="phoneme_analysis", description="Analysis of individual sound units"),
+                ResponseSchema(name="sound_symbolism", description="How sounds contribute to meaning"),
+                ResponseSchema(name="word_formation", description="Morphological analysis of word structure"),
+                ResponseSchema(name="grammatical_category", description="Part of speech and grammatical analysis"),
+                ResponseSchema(name="semantic_analysis", description="Meaning analysis"),
+                ResponseSchema(name="register_appropriateness", description="How well it fits intended contexts"),
+                ResponseSchema(name="marketing_potential", description="Linguistic marketability assessment"),
+                ResponseSchema(name="memorability_score", description="Score from 1-10 for ease of remembering"),
+                ResponseSchema(name="notes", description="Additional linguistic observations"),
+                ResponseSchema(name="rank", description="Overall linguistic effectiveness score (1-10)")
+            ]
+            self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
+            
+            # Set up the prompt template
+            self.analysis_prompt = load_prompt(str(prompt_dir / "analysis.yaml"))
+            self.prompt = ChatPromptTemplate.from_template(self.analysis_prompt.template)
+            
+            # Initialize LLM
+            self.llm = ChatGoogleGenerativeAI(
+                model="gemini-1.5-pro",
+                temperature=0.2,
+                google_api_key=settings.google_api_key,
+                convert_system_message_to_human=True
             )
-        ]
-        self.output_parser = StructuredOutputParser.from_response_schemas(
-            self.output_schemas
-        )
-        
-        # Initialize Gemini model with tracing
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.7,
-            google_api_key=settings.google_api_key,
-            convert_system_message_to_human=True,
-            callbacks=[self.langsmith] if self.langsmith else None
-        )
-        
-        # Create the prompt template with metadata
-        system_message = SystemMessage(
-            content=self.system_prompt.format(),
-            additional_kwargs={
-                "metadata": {
-                    "agent_type": "linguistics_analyzer",
-                    "methodology": "Alina Wheeler's Designing Brand Identity"
+        except Exception as e:
+            logger.error(
+                "Error initializing LinguisticsExpert",
+                extra={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
                 }
-            }
-        )
-        human_template = (
-            "Analyze the linguistic characteristics of the following brand name:\n"
-            "Brand Name: {brand_name}\n"
-            "Brand Context: {brand_context}\n"
-            "\nFormat your analysis according to this schema:\n"
-            "{format_instructions}"
-        )
-        self.prompt = ChatPromptTemplate.from_messages([
-            system_message,
-            HumanMessage(content=human_template)
-        ])
-
+            )
+            raise
+    
     async def analyze_brand_name(
         self,
         run_id: str,
@@ -168,9 +116,6 @@ class LinguisticsExpert:
             
         Returns:
             Dictionary containing the linguistic analysis results
-            
-        Raises:
-            ValueError: If the analysis fails
         """
         try:
             with tracing_enabled(
@@ -195,19 +140,49 @@ class LinguisticsExpert:
                 # Store results
                 await self._store_analysis(run_id, brand_name, analysis)
                 
-                return analysis
+                return {
+                    "brand_name": brand_name,
+                    "pronunciation_ease": analysis["pronunciation_score"],
+                    "euphony_vs_cacophony": analysis["euphony_score"],
+                    "rhythm_and_meter": analysis["rhythm_and_meter"],
+                    "phoneme_analysis": analysis["phoneme_analysis"],
+                    "sound_symbolism": analysis["sound_symbolism"],
+                    "word_formation": analysis["word_formation"],
+                    "grammatical_category": analysis["grammatical_category"],
+                    "semantic_analysis": analysis["semantic_analysis"],
+                    "register_appropriateness": analysis["register_appropriateness"],
+                    "marketing_potential": analysis["marketing_potential"],
+                    "memorability_score": analysis["memorability_score"],
+                    "notes": analysis["notes"],
+                    "rank": float(analysis["rank"])
+                }
                 
-        except Exception as e:
+        except APIError as e:
             logger.error(
-                "Linguistic analysis failed",
+                "Supabase API error in linguistic analysis",
                 extra={
                     "run_id": run_id,
                     "brand_name": brand_name,
-                    "error": str(e)
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "status_code": getattr(e, "code", None),
+                    "details": getattr(e, "details", None)
                 }
             )
-            raise ValueError(f"Failed to analyze brand name: {str(e)}")
-
+            raise
+            
+        except Exception as e:
+            logger.error(
+                "Error in linguistic analysis",
+                extra={
+                    "run_id": run_id,
+                    "brand_name": brand_name,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                }
+            )
+            raise
+    
     async def _store_analysis(
         self,
         run_id: str,
@@ -220,9 +195,6 @@ class LinguisticsExpert:
             run_id: Unique identifier for this workflow run
             brand_name: The analyzed brand name
             analysis: Analysis results to store
-            
-        Raises:
-            Exception: If storage fails
         """
         try:
             data = {
@@ -234,13 +206,28 @@ class LinguisticsExpert:
             
             await self.supabase.table("linguistic_analysis").insert(data).execute()
             
-        except Exception as e:
+        except APIError as e:
             logger.error(
-                "Error storing linguistic analysis",
+                "Supabase API error storing linguistic analysis",
                 extra={
                     "run_id": run_id,
                     "brand_name": brand_name,
-                    "error": str(e)
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "status_code": getattr(e, "code", None),
+                    "details": getattr(e, "details", None)
+                }
+            )
+            raise
+            
+        except Exception as e:
+            logger.error(
+                "Unexpected error storing linguistic analysis",
+                extra={
+                    "run_id": run_id,
+                    "brand_name": brand_name,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
                 }
             )
             raise 

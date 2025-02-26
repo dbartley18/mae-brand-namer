@@ -6,22 +6,26 @@ import json
 import traceback
 
 from langchain.callbacks import tracing_enabled
+from supabase import create_client, Client
 from ..utils.logging import get_logger
-from ..utils.supabase_utils import supabase
 from ..config.settings import settings
+from ..utils.supabase_utils import SupabaseManager
 
 logger = get_logger(__name__)
 
 class ProcessSupervisor:
     """Supervises and monitors the brand naming workflow process."""
     
-    def __init__(self):
+    def __init__(self, supabase: SupabaseManager = None):
         """Initialize the ProcessSupervisor."""
         self.retry_counts: Dict[Tuple[str, str, str], int] = {}  # (run_id, agent_type, task_name) -> retry_count
         self.max_retries = settings.max_retries
         self.retry_delay = settings.retry_delay
         self.retry_backoff = settings.retry_backoff
         self.retry_max_delay = settings.retry_max_delay
+        
+        # Initialize Supabase client
+        self.supabase = supabase or SupabaseManager()
     
     def _get_retry_key(self, run_id: str, agent_type: str, task_name: str) -> Tuple[str, str, str]:
         """Get the key for retry count tracking."""
@@ -54,30 +58,25 @@ class ProcessSupervisor:
             task_name (str): Name of the task being executed
         """
         try:
-            with tracing_enabled():
-                task_data = {
-                    "run_id": run_id,
-                    "agent_type": agent_type,
-                    "task_name": task_name,
-                    "status": "started",
-                    "start_time": datetime.now().isoformat(),
-                    "metadata": {
-                        "retry_count": self._get_retry_count(run_id, agent_type, task_name)
-                    }
-                }
-                
-                await supabase.execute_with_retry(
-                    operation="insert",
-                    table="task_execution",
-                    data=task_data
-                )
-                
-                logger.info(
-                    "Task started",
-                    run_id=run_id,
-                    agent_type=agent_type,
-                    task_name=task_name
-                )
+            start_time = datetime.now()
+            
+            # Create/update record in process_logs table
+            await self.supabase.table("process_logs").upsert({
+                "run_id": run_id,
+                "agent_type": agent_type,
+                "task_name": task_name,
+                "status": "in_progress",
+                "start_time": start_time.isoformat(),
+                "retry_count": self._get_retry_count(run_id, agent_type, task_name),
+                "last_updated": datetime.now().isoformat()
+            }).execute()
+            
+            logger.info(
+                "Task started",
+                run_id=run_id,
+                agent_type=agent_type,
+                task_name=task_name
+            )
                 
         except Exception as e:
             logger.error(
@@ -87,7 +86,7 @@ class ProcessSupervisor:
                 task_name=task_name,
                 error=str(e)
             )
-            raise
+            # Don't raise exception - monitoring should not block workflow
     
     async def log_task_completion(self, run_id: str, agent_type: str, task_name: str) -> None:
         """
@@ -99,27 +98,43 @@ class ProcessSupervisor:
             task_name (str): Name of the completed task
         """
         try:
-            with tracing_enabled():
-                completion_data = {
-                    "run_id": run_id,
-                    "agent_type": agent_type,
-                    "task_name": task_name,
-                    "status": "completed",
-                    "completion_time": datetime.now().isoformat()
-                }
+            end_time = datetime.now()
+            
+            # Get the existing record to calculate duration
+            process_logs = await self.supabase.table("process_logs") \
+                .select("*") \
+                .eq("run_id", run_id) \
+                .eq("task_name", task_name) \
+                .execute()
                 
-                await supabase.execute_with_retry(
-                    operation="update",
-                    table="task_execution",
-                    data=completion_data
-                )
-                
-                logger.info(
-                    "Task completed",
-                    run_id=run_id,
-                    agent_type=agent_type,
-                    task_name=task_name
-                )
+            start_time = None
+            if process_logs.data and len(process_logs.data) > 0:
+                start_time_str = process_logs.data[0].get("start_time")
+                if start_time_str:
+                    start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+            
+            duration_sec = None
+            if start_time:
+                duration_sec = int((end_time - start_time).total_seconds())
+            
+            # Update the record
+            await self.supabase.table("process_logs").upsert({
+                "run_id": run_id,
+                "agent_type": agent_type,
+                "task_name": task_name,
+                "status": "completed",
+                "end_time": end_time.isoformat(),
+                "duration_sec": duration_sec,
+                "last_updated": datetime.now().isoformat()
+            }).execute()
+            
+            logger.info(
+                "Task completed",
+                run_id=run_id,
+                agent_type=agent_type,
+                task_name=task_name,
+                duration_sec=duration_sec
+            )
                 
         except Exception as e:
             logger.error(
@@ -129,7 +144,7 @@ class ProcessSupervisor:
                 task_name=task_name,
                 error=str(e)
             )
-            raise
+            # Don't raise exception - monitoring should not block workflow
     
     async def log_task_error(
         self,
@@ -151,42 +166,34 @@ class ProcessSupervisor:
             bool: True if the task should be retried, False otherwise
         """
         try:
-            with tracing_enabled():
-                retry_count = self._increment_retry_count(run_id, agent_type, task_name)
-                should_retry = retry_count < self.max_retries
-                
-                error_data = {
-                    "run_id": run_id,
-                    "agent_type": agent_type,
-                    "task_name": task_name,
-                    "status": "error",
-                    "error_time": datetime.now().isoformat(),
-                    "error_type": error.__class__.__name__,
-                    "error_message": str(error),
-                    "error_traceback": traceback.format_exc(),
-                    "retry_count": retry_count,
-                    "should_retry": should_retry,
-                    "retry_delay": self._calculate_retry_delay(retry_count) if should_retry else None
-                }
-                
-                await supabase.execute_with_retry(
-                    operation="insert",
-                    table="task_error",
-                    data=error_data
-                )
-                
-                log_level = logger.warning if should_retry else logger.error
-                log_level(
-                    "Task error occurred",
-                    run_id=run_id,
-                    agent_type=agent_type,
-                    task_name=task_name,
-                    error=str(error),
-                    retry_count=retry_count,
-                    should_retry=should_retry
-                )
-                
-                return should_retry
+            retry_count = self._increment_retry_count(run_id, agent_type, task_name)
+            should_retry = retry_count < self.max_retries
+            
+            # Update the process_logs record
+            await self.supabase.table("process_logs").upsert({
+                "run_id": run_id,
+                "agent_type": agent_type,
+                "task_name": task_name,
+                "status": "error",
+                "error_message": str(error),
+                "retry_count": retry_count,
+                "last_retry_at": datetime.now().isoformat() if should_retry else None,
+                "retry_status": "pending" if should_retry else "exhausted",
+                "last_updated": datetime.now().isoformat()
+            }).execute()
+            
+            log_level = logger.warning if should_retry else logger.error
+            log_level(
+                "Task error occurred",
+                run_id=run_id,
+                agent_type=agent_type,
+                task_name=task_name,
+                error=str(error),
+                retry_count=retry_count,
+                should_retry=should_retry
+            )
+            
+            return should_retry
                 
         except Exception as e:
             logger.error(
@@ -194,9 +201,11 @@ class ProcessSupervisor:
                 run_id=run_id,
                 agent_type=agent_type,
                 task_name=task_name,
-                error=str(e)
+                original_error=str(error),
+                logging_error=str(e)
             )
-            raise
+            # Return False to prevent infinite retry loops if monitoring fails
+            return False
     
     async def should_retry_task(self, run_id: str, agent_type: str, task_name: str) -> bool:
         """
@@ -211,4 +220,21 @@ class ProcessSupervisor:
             bool: True if the task should be retried, False otherwise
         """
         retry_count = self._get_retry_count(run_id, agent_type, task_name)
-        return retry_count < self.max_retries 
+        should_retry = retry_count < self.max_retries
+        
+        if should_retry:
+            logger.info(
+                f"Task will be retried (attempt {retry_count + 1}/{self.max_retries})",
+                run_id=run_id,
+                agent_type=agent_type,
+                task_name=task_name
+            )
+        else:
+            logger.error(
+                f"Task failed permanently after {retry_count} retries",
+                run_id=run_id,
+                agent_type=agent_type,
+                task_name=task_name
+            )
+            
+        return should_retry 

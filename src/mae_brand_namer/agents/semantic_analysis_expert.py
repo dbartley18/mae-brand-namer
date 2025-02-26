@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import json
+import asyncio
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -13,22 +14,23 @@ from langchain.callbacks import tracing_enabled
 from langchain_core.tracers import LangChainTracer
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from supabase.lib.client_options import ClientOptions
-from supabase import APIError, StorageException, AuthException, PostgrestError
+from postgrest.exceptions import APIError
+from storage3.exceptions import StorageException
+from gotrue.errors import AuthError as AuthException
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..models.state import SemanticAnalysisResult
-from ..config.dependencies import Dependencies
+from ..utils.supabase_utils import SupabaseManager
 
 logger = get_logger(__name__)
 
 class SemanticAnalysisExpert:
     """Expert in analyzing semantic meaning and brand associations."""
     
-    def __init__(self, dependencies: Dependencies):
+    def __init__(self, supabase: SupabaseManager = None):
         """Initialize the SemanticAnalysisExpert with dependencies."""
-        self.supabase = dependencies.supabase
-        self.langsmith = dependencies.langsmith
+        self.supabase = supabase or SupabaseManager()
         
         self.role = "Semantic Analysis Expert"
         self.goal = "Analyze brand names for semantic meaning, associations, and brand fit"
@@ -37,8 +39,8 @@ class SemanticAnalysisExpert:
         full semantic impact of their brand names."""
         
         # Initialize retry configuration
-        self.max_retries = 3
-        self.retry_delay = 1  # seconds
+        self.max_retries = settings.max_retries
+        self.retry_delay = settings.retry_delay
         
         # Initialize LangSmith tracer if enabled
         self.tracer = None
@@ -171,10 +173,10 @@ class SemanticAnalysisExpert:
                 await self._store_analysis(run_id, brand_name, analysis_result)
                 
                 return {
-                    "semantic_analysis": {
-                        "brand_name": brand_name,
-                        **analysis_result
-                    }
+                    "brand_name": brand_name,
+                    "denotative_meaning": analysis_result["denotative_meaning"],
+                    "etymology": analysis_result["etymology"],
+                    **analysis_result
                 }
         
         except Exception as e:

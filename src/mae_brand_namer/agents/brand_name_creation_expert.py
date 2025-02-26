@@ -5,16 +5,22 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import json
 from pathlib import Path
+import re
 
 from langchain.prompts import load_prompt
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 from langchain.callbacks import tracing_enabled
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-from supabase import APIError, PostgrestError
+from postgrest.exceptions import APIError
+from langchain.prompts import PromptTemplate
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.schema.output_parser import StrOutputParser
+from langchain.output_parsers import PydanticOutputParser
+from pydantic import BaseModel
 
 from ..utils.logging import get_logger
-from ..utils.supabase_utils import supabase
+from ..utils.supabase_utils import SupabaseManager
 from ..config.settings import settings
 
 logger = get_logger(__name__)
@@ -22,8 +28,11 @@ logger = get_logger(__name__)
 class BrandNameCreationExpert:
     """Expert in strategic brand name generation following Alina Wheeler's methodology."""
     
-    def __init__(self):
+    def __init__(self, supabase: SupabaseManager = None):
         """Initialize the BrandNameCreationExpert with necessary configurations."""
+        # Initialize Supabase client
+        self.supabase = supabase or SupabaseManager()
+        
         # Load prompts from YAML files
         try:
             prompt_dir = Path(__file__).parent / "prompts" / "brand_name_generator"
@@ -97,52 +106,99 @@ class BrandNameCreationExpert:
                 }
             ):
                 for i in range(num_names):
-                    # Format the generation prompt
-                    formatted_prompt = self.generation_prompt.format(
-                        format_instructions=self.output_parser.get_format_instructions(),
-                        brand_context={
-                            "brand_promise": brand_context.get("brand_promise", "Not specified"),
-                            "brand_values": brand_values,
-                            "brand_personality": brand_context.get("brand_personality", []),
-                            "brand_tone_of_voice": brand_context.get("brand_tone_of_voice", "Not specified"),
-                            "brand_purpose": purpose,
-                            "brand_mission": brand_context.get("brand_mission", "Not specified"),
-                            "target_audience": brand_context.get("target_audience", "Not specified"),
-                            "customer_needs": brand_context.get("customer_needs", []),
-                            "market_positioning": brand_context.get("market_positioning", "Not specified"),
-                            "competitive_landscape": brand_context.get("competitive_landscape", "Not specified"),
-                            "industry_focus": brand_context.get("industry_focus", "Not specified"),
-                            "industry_trends": brand_context.get("industry_trends", [])
-                        }
-                    )
-                    
-                    # Create human message
-                    human_message = HumanMessage(content=formatted_prompt)
-                    
-                    # Get response from LLM
-                    response = await self.llm.ainvoke([system_message, human_message])
-                    
-                    # Parse the structured output
-                    parsed_output = self.output_parser.parse(response.content)
-                    parsed_output.update({
-                        "run_id": run_id,
-                        "timestamp": timestamp,
-                        "version": "1.0"
-                    })
-                    
-                    # Store in Supabase
-                    await self._store_in_supabase(run_id, parsed_output)
-                    generated_names.append(parsed_output)
+                    try:
+                        # Format the generation prompt
+                        formatted_prompt = self.generation_prompt.format(
+                            format_instructions=self.output_parser.get_format_instructions(),
+                            brand_context={
+                                "brand_promise": brand_context.get("brand_promise", "Not specified"),
+                                "brand_values": brand_values,
+                                "brand_personality": brand_context.get("brand_personality", []),
+                                "brand_tone_of_voice": brand_context.get("brand_tone_of_voice", "Not specified"),
+                                "brand_purpose": purpose,
+                                "brand_mission": brand_context.get("brand_mission", "Not specified"),
+                                "target_audience": brand_context.get("target_audience", "Not specified"),
+                                "customer_needs": brand_context.get("customer_needs", []),
+                                "market_positioning": brand_context.get("market_positioning", "Not specified"),
+                                "competitive_landscape": brand_context.get("competitive_landscape", "Not specified"),
+                                "industry_focus": brand_context.get("industry_focus", "Not specified"),
+                                "industry_trends": brand_context.get("industry_trends", [])
+                            }
+                        )
+                        
+                        # Create human message
+                        human_message = HumanMessage(content=formatted_prompt)
+                        
+                        # Get response from LLM
+                        response = await self.llm.ainvoke([system_message, human_message])
+                        
+                        # Parse the structured output
+                        parsed_output = self.output_parser.parse(response.content)
+                        parsed_output.update({
+                            "run_id": run_id,
+                            "timestamp": timestamp,
+                            "version": "1.0"
+                        })
+                        
+                        # Store in Supabase
+                        await self._store_in_supabase(run_id, parsed_output)
+                        generated_names.append(parsed_output)
+                        
+                        logger.info(
+                            f"Generated brand name {i+1}/{num_names}",
+                            extra={
+                                "run_id": run_id,
+                                "brand_name": parsed_output["brand_name"]
+                            }
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Error generating brand name {i+1}/{num_names}",
+                            extra={
+                                "run_id": run_id,
+                                "error_type": type(e).__name__,
+                                "error_message": str(e)
+                            }
+                        )
+                        # Continue generating other names even if one fails
+                        continue
                 
+                if not generated_names:
+                    logger.error(
+                        "Failed to generate any brand names",
+                        extra={"run_id": run_id}
+                    )
+                    raise ValueError("Failed to generate any valid brand names")
+                    
+                logger.info(
+                    "Brand name generation completed",
+                    extra={
+                        "run_id": run_id,
+                        "count": len(generated_names)
+                    }
+                )
                 return generated_names
+                
+        except APIError as e:
+            logger.error(
+                "Supabase API error in brand name generation",
+                extra={
+                    "run_id": run_id,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "status_code": getattr(e, "code", None),
+                    "details": getattr(e, "details", None)
+                }
+            )
+            raise
                 
         except Exception as e:
             logger.error(
                 "Error generating brand names",
                 extra={
                     "run_id": run_id,
-                    "error": str(e),
-                    "brand_context": brand_context
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
                 }
             )
             raise ValueError(f"Failed to generate brand names: {str(e)}")
@@ -180,30 +236,64 @@ class BrandNameCreationExpert:
             }
             
             # Store in Supabase using the singleton client
-            await supabase.execute_with_retry(
+            await self.supabase.execute_with_retry(
                 operation="insert",
                 table="brand_name_generation",
                 data=supabase_data
             )
             
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                "Error preparing brand name data for Supabase",
+            logger.info(
+                "Brand name stored in Supabase",
                 extra={
                     "run_id": run_id,
-                    "error": str(e),
-                    "data": name_data
+                    "brand_name": name_data["brand_name"]
                 }
             )
-            raise ValueError(f"Error preparing brand name data: {str(e)}")
             
-        except (APIError, PostgrestError) as e:
+        except KeyError as e:
             logger.error(
-                "Error storing brand name in Supabase",
+                "Missing key in brand name data",
                 extra={
                     "run_id": run_id,
-                    "error": str(e),
-                    "data": supabase_data
+                    "error_type": "KeyError",
+                    "error_message": str(e),
+                    "missing_key": str(e)
+                }
+            )
+            raise ValueError(f"Missing required field in brand name data: {str(e)}")
+            
+        except (TypeError, ValueError) as e:
+            logger.error(
+                "Invalid data type in brand name data",
+                extra={
+                    "run_id": run_id,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                }
+            )
+            raise ValueError(f"Invalid data in brand name data: {str(e)}")
+            
+        except APIError as e:
+            logger.error(
+                "Supabase API error storing brand name",
+                extra={
+                    "run_id": run_id,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "status_code": getattr(e, "code", None),
+                    "details": getattr(e, "details", None)
+                }
+            )
+            raise
+            
+        except Exception as e:
+            logger.error(
+                "Unexpected error storing brand name",
+                extra={
+                    "run_id": run_id,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "brand_name": name_data.get("brand_name", "unknown")
                 }
             )
             raise 

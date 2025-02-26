@@ -3,7 +3,9 @@
 from typing import Optional
 from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions
-from supabase import APIError, StorageException, AuthException, PostgrestError
+from postgrest.exceptions import APIError
+from storage3.exceptions import StorageException
+from gotrue.errors import AuthError as AuthException
 
 from ..config.settings import settings
 from .logging import get_logger
@@ -26,19 +28,26 @@ class SupabaseManager:
         """Initialize the Supabase client if not already initialized."""
         if self._client is None:
             try:
+                if not settings.supabase_url or not settings.supabase_service_key:
+                    raise ValueError(
+                        "Supabase URL and Service Key must be set in environment variables:\n"
+                        "- SUPABASE_URL\n"
+                        "- SUPABASE_SERVICE_KEY"
+                    )
+                    
                 # Configure client options
                 options = ClientOptions(
                     schema="public",
                     headers={
                         "X-Client-Info": "mae-brand-namer",
                     },
-                    postgrest_client_timeout=10  # 10 second timeout
+                    postgrest_client_timeout=settings.supabase_timeout
                 )
                 
                 # Create the client
                 self._client = create_client(
                     settings.supabase_url,
-                    settings.supabase_key,
+                    settings.supabase_service_key,
                     options=options
                 )
                 logger.info("Initialized Supabase client")
@@ -54,7 +63,7 @@ class SupabaseManager:
             raise RuntimeError("Supabase client not initialized")
         return self._client
     
-    def execute_with_retry(self, operation: str, table: str, data: dict, max_retries: int = 3) -> dict:
+    async def execute_with_retry(self, operation: str, table: str, data: dict, max_retries: Optional[int] = None) -> dict:
         """
         Execute a Supabase operation with retry logic.
         
@@ -62,14 +71,18 @@ class SupabaseManager:
             operation (str): Operation type ('insert', 'update', 'upsert', 'delete')
             table (str): Target table name
             data (dict): Data to operate on
-            max_retries (int): Maximum number of retry attempts
+            max_retries (Optional[int]): Maximum number of retry attempts. Defaults to settings value.
             
         Returns:
             dict: Operation response data
             
         Raises:
             APIError: If the operation fails after all retries
+            ValueError: If operation type is invalid
         """
+        if max_retries is None:
+            max_retries = settings.max_retries
+            
         retries = 0
         last_error = None
         
@@ -88,24 +101,31 @@ class SupabaseManager:
                 
                 return response.data
                 
-            except (APIError, PostgrestError) as e:
+            except (APIError) as e:
                 last_error = e
                 retries += 1
                 if retries < max_retries:
                     logger.warning(
-                        f"Supabase operation failed (attempt {retries}/{max_retries})",
-                        error=str(e),
-                        operation=operation,
-                        table=table
+                        "Supabase operation failed, retrying",
+                        extra={
+                            "attempt": retries,
+                            "max_retries": max_retries,
+                            "error": str(e),
+                            "operation": operation,
+                            "table": table
+                        }
                     )
                     continue
                 break
                 
         logger.error(
             "Supabase operation failed after all retries",
-            error=str(last_error),
-            operation=operation,
-            table=table
+            extra={
+                "error": str(last_error),
+                "operation": operation,
+                "table": table,
+                "attempts": retries
+            }
         )
         raise last_error
 

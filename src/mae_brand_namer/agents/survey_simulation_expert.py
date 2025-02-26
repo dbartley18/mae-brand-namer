@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import json
+import asyncio
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -15,13 +16,14 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
+from ..utils.supabase_utils import SupabaseManager
 
 logger = get_logger(__name__)
 
 class SurveySimulationExpert:
     """Expert in simulating market research surveys for brand name evaluation."""
     
-    def __init__(self):
+    def __init__(self, supabase: SupabaseManager = None):
         """Initialize the SurveySimulationExpert with necessary configurations."""
         # Agent identity
         self.role = "Market Research & Consumer Insights Specialist"
@@ -32,8 +34,12 @@ class SurveySimulationExpert:
         methodology allows you to accurately simulate how different market segments would respond to 
         proposed brand names."""
         
+        # Initialize retry configuration
+        self.max_retries = settings.max_retries
+        self.retry_delay = settings.retry_delay
+        
         # Initialize Supabase client
-        self.supabase: Client = create_client(settings.supabase_url, settings.supabase_key)
+        self.supabase = supabase or SupabaseManager()
         
         # Initialize LangSmith tracer if enabled
         self.tracer = None

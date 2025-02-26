@@ -15,13 +15,14 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
+from ..utils.supabase_utils import SupabaseManager
 
 logger = get_logger(__name__)
 
 class BrandNameEvaluator:
     """Expert in evaluating and shortlisting brand names based on comprehensive analysis."""
     
-    def __init__(self):
+    def __init__(self, supabase: SupabaseManager = None):
         """Initialize the BrandNameEvaluator with necessary configurations."""
         # Agent identity from agents.yaml
         self.role = "Brand Name Evaluation Expert"
@@ -41,11 +42,11 @@ class BrandNameEvaluator:
         and globally adaptable—the foundation of a successful, future-proof brand."""
         
         # Initialize retry configuration
-        self.max_retries = 3
-        self.retry_delay = 1  # seconds
+        self.max_retries = settings.max_retries
+        self.retry_delay = settings.retry_delay
         
         # Initialize Supabase client
-        self.supabase: Client = create_client(settings.supabase_url, settings.supabase_key)
+        self.supabase = supabase or SupabaseManager()
         
         # Initialize LangSmith tracer if enabled
         self.tracer = None
@@ -121,88 +122,83 @@ class BrandNameEvaluator:
             HumanMessage(content=human_template)
         ])
 
-    def evaluate_brand_names(
+    async def evaluate_brand_names(
         self,
-        run_id: str,
-        brand_names: List[Dict[str, Any]],
-        brand_context: Dict[str, Any],
-        semantic_analysis: Dict[str, Any],
-        linguistic_analysis: Dict[str, Any],
-        cultural_analysis: Dict[str, Any],
-        translation_analysis: Dict[str, Any]
+        brand_names_with_analysis: List[Dict[str, Any]],
+        brand_context: Dict[str, Any]
     ) -> Dict[str, Any]:
+        evaluation_results = {}
+        
+        for brand_name_data in brand_names_with_analysis:
+            brand_name = brand_name_data["brand_name"]
+            semantic_analysis = brand_name_data.get("semantic_analysis", {})
+            linguistic_analysis = brand_name_data.get("linguistic_analysis", {})
+            cultural_analysis = brand_name_data.get("cultural_analysis", {})
+            translation_analysis = brand_name_data.get("translation_analysis", {})
+            
+            prompt = self.prompt.format_messages(
+                brand_name=brand_name,
+                brand_context=json.dumps(brand_context, indent=2),
+                semantic_analysis=json.dumps(semantic_analysis, indent=2),
+                linguistic_analysis=json.dumps(linguistic_analysis, indent=2),
+                cultural_analysis=json.dumps(cultural_analysis, indent=2),
+                translation_analysis=json.dumps(translation_analysis, indent=2)
+            )
+            
+            evaluation = await self._evaluate_name(prompt)
+            evaluation_results[brand_name] = evaluation
+        
+        return evaluation_results
+
+    async def _evaluate_name(self, prompt) -> Dict[str, Any]:
         """
-        Evaluate and shortlist brand names based on comprehensive analysis results.
+        Private method to evaluate a single brand name.
         
         Args:
-            run_id (str): Unique identifier for this workflow run
-            brand_names (List[Dict[str, Any]]): List of brand names to evaluate
-            brand_context (Dict[str, Any]): Brand context information
-            semantic_analysis (Dict[str, Any]): Results of semantic analysis
-            linguistic_analysis (Dict[str, Any]): Results of linguistic analysis
-            cultural_analysis (Dict[str, Any]): Results of cultural sensitivity analysis
-            translation_analysis (Dict[str, Any]): Results of translation analysis
+            prompt: Formatted prompt for the evaluation
             
         Returns:
-            Dict[str, Any]: Evaluation results for each brand name
+            Dict[str, Any]: Structured evaluation results
         """
-        with tracing_enabled(tags={"agent": "BrandNameEvaluator", "run_id": run_id}):
-            try:
-                evaluated_names = {}
-                
-                # Evaluate each brand name
-                for name_data in brand_names:
-                    brand_name = name_data["brand_name"]
-                    
-                    # Format the prompt with all analysis results
-                    formatted_prompt = self.prompt.format(
-                        format_instructions=self.output_parser.get_format_instructions(),
-                        brand_name=brand_name,
-                        brand_context=json.dumps(brand_context),
-                        semantic_analysis=json.dumps(semantic_analysis.get(brand_name, {})),
-                        linguistic_analysis=json.dumps(linguistic_analysis.get(brand_name, {})),
-                        cultural_analysis=json.dumps(cultural_analysis.get(brand_name, {})),
-                        translation_analysis=json.dumps(translation_analysis.get(brand_name, {}))
-                    )
-                    
-                    # Get response from LLM
-                    response = self.llm.invoke(formatted_prompt)
-                    
-                    # Parse the structured output
-                    parsed_output = self.output_parser.parse(response.content)
-                    
-                    # Add required fields
-                    evaluation_results = {
-                        "run_id": run_id,
-                        "brand_name": brand_name,
-                        **parsed_output
-                    }
-                    
-                    # Store in Supabase
-                    self._store_in_supabase(run_id, evaluation_results)
-                    
-                    evaluated_names[brand_name] = evaluation_results
-                
-                # Select top 3 names based on overall_score
-                shortlisted_names = sorted(
-                    evaluated_names.values(),
-                    key=lambda x: x["overall_score"],
-                    reverse=True
-                )[:3]
-                
-                # Update shortlist status
-                for name in evaluated_names.values():
-                    name["shortlist_status"] = "Yes" if name in shortlisted_names else "No"
-                    self._store_in_supabase(run_id, name)  # Update in Supabase
-                
-                return evaluated_names
-                
-            except Exception as e:
-                error_msg = f"Error evaluating brand names: {str(e)}"
-                logger.error(error_msg)
-                raise ValueError(error_msg)
+        try:
+            # Call the LLM with the formatted prompt
+            response = await self.llm.ainvoke(prompt)
+            
+            # Parse the response according to the defined schema
+            evaluation_result = self.output_parser.parse(response.content)
+            
+            # Ensure numeric values are properly typed
+            numeric_fields = [
+                "strategic_alignment_score", "distinctiveness_score", "brand_fit_score",
+                "memorability_score", "pronounceability_score", "meaningfulness_score",
+                "domain_viability_score", "overall_score", "rank"
+            ]
+            
+            for field in numeric_fields:
+                if field in evaluation_result:
+                    try:
+                        evaluation_result[field] = float(evaluation_result[field])
+                    except (ValueError, TypeError):
+                        # Default to middle score if conversion fails
+                        evaluation_result[field] = 5.0
+            
+            return evaluation_result
+            
+        except Exception as e:
+            logger.error(f"Error evaluating brand name: {str(e)}")
+            # Return minimal default evaluation in case of error
+            return {
+                "strategic_alignment_score": 0.0,
+                "distinctiveness_score": 0.0,
+                "competitive_advantage": "Error in evaluation",
+                "brand_fit_score": 0.0,
+                "overall_score": 0.0,
+                "shortlist_status": "No",
+                "evaluation_comments": f"Error during evaluation: {str(e)}",
+                "rank": 0.0
+            }
 
-    def _store_in_supabase(self, run_id: str, evaluation_results: Dict[str, Any]) -> None:
+    async def _store_in_supabase(self, run_id: str, evaluation_results: Dict[str, Any]) -> None:
         """
         Store the evaluation results in Supabase.
         
@@ -222,7 +218,7 @@ class BrandNameEvaluator:
                     evaluation_results[field] = float(evaluation_results[field])
             
             # Insert into brand_name_evaluation table
-            self.supabase.table("brand_name_evaluation").insert(evaluation_results).execute()
+            await self.supabase.table("brand_name_evaluation").insert(evaluation_results).execute()
             
         except Exception as e:
             error_msg = f"Error storing evaluation in Supabase: {str(e)}"

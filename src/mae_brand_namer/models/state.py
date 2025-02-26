@@ -1,12 +1,11 @@
-from typing import List, Dict, Optional, Sequence, Any, TypedDict
-from pydantic import BaseModel, Field
+from typing import List, Dict, Optional, Sequence, Any
+from typing_extensions import TypedDict, Annotated
+from pydantic import BaseModel, Field, ConfigDict
 from langchain_core.messages import BaseMessage
 from langchain.load.serializable import Serializable
-from typing_extensions import Annotated
-from langchain_core.pydantic_v1 import Field as LangchainField
 from datetime import datetime
 
-class SemanticAnalysisResult(TypedDict):
+class SemanticAnalysisResult(TypedDict, total=False):
     """Type definition for semantic analysis results."""
     denotative_meaning: str
     etymology: str
@@ -34,7 +33,7 @@ class SemanticAnalysisResult(TypedDict):
     semantic_trademark_risk: str
     rank: float
 
-class BrandNameData(TypedDict):
+class BrandNameData(TypedDict, total=False):
     """Type definition for brand name data."""
     brand_name: str
     naming_categories: List[str]
@@ -49,10 +48,82 @@ class BrandNameData(TypedDict):
     name_rankings: float
     semantic_analysis: Optional[SemanticAnalysisResult]
 
-class ErrorInfo(TypedDict):
+class ErrorInfo(TypedDict, total=True):
     """Type definition for error information."""
     step: str
     error: str
+
+class AppState(TypedDict, total=False):
+    """Application state for the brand name generation workflow.
+    
+    This state object uses TypedDict for type hints without using Pydantic Field.
+    """
+    # Core fields
+    run_id: Optional[str]
+    user_prompt: str
+    errors: List[ErrorInfo]
+    client: Optional[Any]  # Client for LangGraph/LangSmith operations
+    
+    # Brand context fields
+    brand_identity_brief: Optional[str]
+    brand_promise: Optional[str]
+    brand_values: List[str]
+    brand_personality: List[str]
+    brand_tone_of_voice: Optional[str]
+    brand_purpose: Optional[str]
+    brand_mission: Optional[str]
+    target_audience: Optional[str]
+    customer_needs: List[str]
+    market_positioning: Optional[str]
+    competitive_landscape: Optional[str]
+    industry_focus: Optional[str]
+    industry_trends: List[str]
+    
+    # Brand name generation fields
+    generated_names: List[BrandNameData]
+    naming_categories: List[str]
+    brand_personality_alignments: List[str]
+    brand_promise_alignments: List[str]
+    target_audience_relevance: List[str]
+    market_differentiation: List[str]
+    memorability_scores: List[float]
+    pronounceability_scores: List[float]
+    visual_branding_potential: List[str]
+    name_generation_methodology: Optional[str]
+    name_rankings: List[float]
+    timestamp: Optional[str]
+    
+    # Process monitoring
+    task_statuses: Dict[str, Dict[str, Any]]
+    current_task: Optional[str]
+    
+    # Analysis results
+    linguistic_analysis_results: Dict[str, Dict[str, Any]]
+    cultural_analysis_results: Dict[str, Dict[str, Any]]
+    evaluation_results: Dict[str, Dict[str, Any]]
+    shortlisted_names: List[str]
+    
+    # SEO Analysis Fields
+    keyword_alignment: Optional[str]
+    search_volume: Optional[float]
+    keyword_competition: Optional[str]
+    branded_keyword_potential: Optional[str]
+    non_branded_keyword_potential: Optional[str]
+    exact_match_search_results: Optional[int]
+    competitor_domain_strength: Optional[str]
+    name_length_searchability: Optional[str]
+    unusual_spelling_impact: Optional[bool]
+    content_marketing_opportunities: Optional[str]
+    social_media_availability: Optional[bool]
+    social_media_discoverability: Optional[str]
+    negative_keyword_associations: Optional[str]
+    negative_search_results: Optional[bool]
+    seo_viability_score: Optional[float]
+    seo_recommendations: Optional[str]
+    seo_analysis_results: Optional[Dict[str, Any]]
+    
+    # Competitor analysis
+    competitor_analysis_results: Dict[str, Dict[str, Any]]
 
 class TaskStatus(BaseModel):
     """Status information for a workflow task."""
@@ -91,21 +162,62 @@ class LinguisticAnalysisResult(BaseModel):
 
 class CulturalAnalysisResult(BaseModel):
     """Results of cultural sensitivity analysis for a brand name."""
-    
-    cultural_connotations: str = Field(..., description="Cultural associations across target markets")
-    symbolic_meanings: str = Field(..., description="Symbolic meanings in different cultures")
-    alignment_with_cultural_values: str = Field(..., description="How well the name aligns with societal norms")
-    religious_sensitivities: str = Field(..., description="Any unintended religious implications")
-    social_political_taboos: str = Field(..., description="Potential sociopolitical sensitivities")
-    body_part_bodily_function_connotations: str = Field(..., description="Unintended anatomical/physiological meanings")
-    age_related_connotations: str = Field(..., description="Age-related perception of the name")
-    gender_connotations: str = Field(..., description="Any unintentional gender bias")
-    regional_variations: str = Field(..., description="Perception in different dialects and subcultures")
-    historical_meaning: str = Field(..., description="Historical or traditional significance")
-    current_event_relevance: str = Field(..., description="Connection to current events or trends")
-    overall_risk_rating: str = Field(..., description="Overall cultural risk assessment")
-    notes: str = Field(..., description="Additional cultural observations")
-    rank: float = Field(..., description="Overall cultural sensitivity score (1-10)")
+    cultural_connotations: str = Field(
+        ..., 
+        description="Cultural associations across target markets"
+    )
+    symbolic_meanings: str = Field(
+        ..., 
+        description="Symbolic meanings in different cultures"
+    )
+    alignment_with_cultural_values: str = Field(
+        ..., 
+        description="How well the name aligns with societal norms"
+    )
+    religious_sensitivities: str = Field(
+        ..., 
+        description="Any unintended religious implications"
+    )
+    social_political_taboos: str = Field(
+        ..., 
+        description="Potential sociopolitical sensitivities"
+    )
+    body_part_bodily_function_connotations: str = Field(
+        ..., 
+        description="Unintended anatomical/physiological meanings"
+    )
+    age_related_connotations: str = Field(
+        ..., 
+        description="Age-related perception of the name"
+    )
+    gender_connotations: str = Field(
+        ..., 
+        description="Any unintentional gender bias"
+    )
+    regional_variations: str = Field(
+        ..., 
+        description="Perception in different dialects and subcultures"
+    )
+    historical_meaning: str = Field(
+        ..., 
+        description="Historical or traditional significance"
+    )
+    current_event_relevance: str = Field(
+        ..., 
+        description="Connection to current events or trends"
+    )
+    overall_risk_rating: str = Field(
+        ..., 
+        description="Overall cultural risk assessment"
+    )
+    notes: str = Field(
+        ..., 
+        description="Additional cultural observations"
+    )
+    rank: float = Field(
+        ..., 
+        description="Overall cultural sensitivity score (1-10)"
+    )
 
 class BrandNameEvaluationResult(BaseModel):
     """Results of brand name evaluation and scoring."""
@@ -143,7 +255,8 @@ class CompetitorAnalysisResult(BaseModel):
     competitive_advantage_notes: str = Field(..., description="Any competitive advantages of the brand name")
     trademark_conflict_risk: str = Field(..., description="Potential conflicts with existing trademarks")
 
-class BrandNameGenerationState(BaseModel, Serializable):
+# Keeping the BrandNameGenerationState with proper v2 config for backward compatibility
+class BrandNameGenerationState(Serializable, BaseModel):
     """State model for the brand name generation workflow."""
     
     # Core fields
@@ -237,13 +350,11 @@ class BrandNameGenerationState(BaseModel, Serializable):
         description="Competitor analysis results for each brand name"
     )
     
-    class Config:
-        """Pydantic model configuration."""
-        arbitrary_types_allowed = True
-        
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
     def dict(self, *args, **kwargs):
         """Convert state to dictionary, handling BaseMessage serialization."""
-        d = super().dict(*args, **kwargs)
+        d = super().model_dump(*args, **kwargs)
         if "messages" in d:
             d["messages"] = [
                 {
@@ -253,8 +364,8 @@ class BrandNameGenerationState(BaseModel, Serializable):
                 }
                 for msg in self.messages
             ]
-        return d 
-
+        return d
+    
     def update_task_status(
         self,
         task_name: str,
@@ -262,15 +373,7 @@ class BrandNameGenerationState(BaseModel, Serializable):
         status: str,
         error: Optional[Exception] = None
     ) -> None:
-        """
-        Update the status of a task in the workflow.
-        
-        Args:
-            task_name (str): Name of the task
-            agent_type (str): Type of agent executing the task
-            status (str): New status
-            error (Optional[Exception]): Error if task failed
-        """
+        """Update the status of a task in the workflow."""
         now = datetime.now()
         
         if task_name not in self.task_statuses:
@@ -279,7 +382,9 @@ class BrandNameGenerationState(BaseModel, Serializable):
                 task_name=task_name,
                 agent_type=agent_type,
                 status=status,
-                start_time=now
+                start_time=now,
+                end_time=None,
+                duration_sec=None
             )
         else:
             # Update existing task status
@@ -289,12 +394,14 @@ class BrandNameGenerationState(BaseModel, Serializable):
             if status == "completed":
                 task_status.end_time = now
                 if task_status.start_time:
-                    task_status.duration_sec = int((now - task_status.start_time).total_seconds())
+                    duration = now - task_status.start_time
+                    task_status.duration_sec = int(duration.total_seconds())
             
-            elif status == "error" and error:
+            if status == "error" and error:
                 task_status.error_message = str(error)
-                task_status.retry_count += 1
-                task_status.last_retry_at = now
-                task_status.retry_status = "pending"
-        
-        self.current_task = task_name if status == "in_progress" else None 
+                
+        # Update current task
+        if status == "in_progress":
+            self.current_task = task_name
+        elif self.current_task == task_name:
+            self.current_task = None 

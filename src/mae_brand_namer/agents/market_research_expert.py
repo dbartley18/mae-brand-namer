@@ -10,10 +10,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 from langchain.callbacks import tracing_enabled
 from langchain_core.messages import HumanMessage, SystemMessage
-from supabase import APIError, PostgrestError
+from postgrest.exceptions import APIError
 
 from ..utils.logging import get_logger
-from ..utils.supabase_utils import supabase
+from ..utils.supabase_utils import SupabaseManager
 from ..config.settings import settings
 
 logger = get_logger(__name__)
@@ -21,8 +21,11 @@ logger = get_logger(__name__)
 class MarketResearchExpert:
     """Expert in market research and brand name evaluation."""
     
-    def __init__(self):
+    def __init__(self, supabase: SupabaseManager = None):
         """Initialize the MarketResearchExpert with necessary configurations."""
+        # Initialize Supabase client
+        self.supabase = supabase or SupabaseManager()
+        
         # Load prompts from YAML files
         try:
             prompt_dir = Path(__file__).parent / "prompts" / "market_research"
@@ -167,7 +170,7 @@ class MarketResearchExpert:
             }
             
             # Store in Supabase using the singleton client
-            await supabase.execute_with_retry(
+            await self.supabase.execute_with_retry(
                 operation="insert",
                 table="market_research",
                 data=supabase_data
@@ -184,7 +187,7 @@ class MarketResearchExpert:
             )
             raise ValueError(f"Error preparing market research data: {str(e)}")
             
-        except (APIError, PostgrestError) as e:
+        except (APIError) as e:
             logger.error(
                 "Error storing market research in Supabase",
                 extra={

@@ -17,13 +17,14 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
+from ..utils.supabase_utils import SupabaseManager
 
 logger = get_logger(__name__)
 
 class ReportCompilationExpert:
     """Expert in compiling and formatting comprehensive brand naming reports."""
     
-    def __init__(self):
+    def __init__(self, supabase: SupabaseManager = None):
         """Initialize the ReportCompilationExpert with necessary configurations."""
         # Agent identity
         self.role = "Enterprise Report Compilation & Formatting Specialist"
@@ -35,11 +36,7 @@ class ReportCompilationExpert:
         logically structured report."""
         
         # Initialize Supabase client
-        try:
-            self.supabase: Client = create_client(settings.supabase_url, settings.supabase_key)
-        except Exception as e:
-            logger.error(f"Failed to initialize Supabase client: {str(e)}")
-            raise
+        self.supabase = supabase or SupabaseManager()
         
         # Initialize LangSmith tracer if enabled
         self.tracer = None

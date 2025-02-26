@@ -3,15 +3,16 @@
 import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-import json
+from pathlib import Path
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, load_prompt
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 from langchain.callbacks import tracing_enabled
 from langchain_core.tracers import LangChainTracer
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from postgrest import APIError
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
@@ -20,138 +21,150 @@ from ..config.dependencies import Dependencies
 logger = get_logger(__name__)
 
 class CulturalSensitivityExpert:
-    """Expert in analyzing cultural sensitivity and global market adaptation of brand names."""
+    """Expert in analyzing brand names for cultural sensitivity and appropriateness."""
     
     def __init__(self, dependencies: Dependencies):
-        """Initialize the CulturalSensitivityExpert with dependencies."""
+        """Initialize the CulturalSensitivityExpert."""
         self.supabase = dependencies.supabase
         self.langsmith = dependencies.langsmith
         
-        # Agent identity
-        self.role = "Cultural Sensitivity & Global Market Adaptation Expert"
-        self.goal = """Conduct an in-depth cultural sensitivity and localization analysis to ensure that proposed brand names 
-        are globally acceptable, free from unintended connotations, and aligned with cultural, religious, and social norms."""
-        self.backstory = """You are an expert in cross-cultural branding, linguistic anthropology, and global market adaptation. Your work 
-        ensures that brand names resonate positively across diverse cultural contexts while avoiding unintended 
-        associations, taboos, or offensive meanings."""
-        
-        # Initialize Gemini model with tracing
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.7,
-            google_api_key=settings.google_api_key,
-            convert_system_message_to_human=True,
-            callbacks=[self.langsmith] if self.langsmith else None
-        )
-        
-        # Define output schemas for structured parsing
-        self.output_schemas = [
-            ResponseSchema(name="cultural_connotations", description="Cultural associations across target markets", type="string"),
-            ResponseSchema(name="symbolic_meanings", description="Symbolic meanings in different cultures", type="string"),
-            ResponseSchema(name="alignment_with_cultural_values", description="How well the name aligns with societal norms", type="string"),
-            ResponseSchema(name="religious_sensitivities", description="Any unintended religious implications", type="string"),
-            ResponseSchema(name="social_political_taboos", description="Potential sociopolitical sensitivities", type="string"),
-            ResponseSchema(name="body_part_bodily_function_connotations", description="Unintended anatomical/physiological meanings", type="string"),
-            ResponseSchema(name="age_related_connotations", description="Age-related perception of the name", type="string"),
-            ResponseSchema(name="gender_connotations", description="Any unintentional gender bias", type="string"),
-            ResponseSchema(name="regional_variations", description="Perception in different dialects and subcultures", type="string"),
-            ResponseSchema(name="historical_meaning", description="Historical or traditional significance", type="string"),
-            ResponseSchema(name="current_event_relevance", description="Connection to current events or trends", type="string"),
-            ResponseSchema(name="overall_risk_rating", description="Overall cultural risk assessment", type="string"),
-            ResponseSchema(name="notes", description="Additional cultural observations", type="string"),
-            ResponseSchema(name="rank", description="Overall cultural sensitivity score (1-10)", type="number")
-        ]
-        self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
-        
-        # Create the prompt template with metadata for LangGraph Studio
-        system_message = SystemMessage(
-            content=f"""You are a Cultural Sensitivity Expert with the following profile:
-            Role: {self.role}
-            Goal: {self.goal}
-            Backstory: {self.backstory}
+        try:
+            # Load prompts
+            prompt_dir = Path(__file__).parent / "prompts" / "cultural_sensitivity"
+            self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
             
-            Analyze the provided brand name based on its cultural implications across global markets.
-            Consider:
-            1. Cultural Connotations & Symbolic Meanings
-            2. Religious & Social Sensitivities
-            3. Demographic & Regional Interpretations
-            4. Historical & Current Context
-            5. Overall Cultural Risk Assessment
+            # Define output schemas for structured parsing
+            self.output_schemas = [
+                ResponseSchema(name="cultural_connotations", description="Global cultural associations"),
+                ResponseSchema(name="potential_sensitivities", description="Areas of potential concern"),
+                ResponseSchema(name="regional_considerations", description="Regional market considerations"),
+                ResponseSchema(name="language_considerations", description="Cross-language issues"),
+                ResponseSchema(name="religious_implications", description="Religious associations or taboos"),
+                ResponseSchema(name="historical_context", description="Historical associations or baggage"),
+                ResponseSchema(name="gender_implications", description="Gender associations or bias"),
+                ResponseSchema(name="age_appropriateness", description="Age-related considerations"),
+                ResponseSchema(name="socioeconomic_implications", description="Class or socioeconomic associations"),
+                ResponseSchema(name="overall_risk_rating", description="Overall risk rating (Low/Medium/High)"),
+                ResponseSchema(name="risk_score", description="Quantified risk score (1-10)"),
+                ResponseSchema(name="recommendations", description="Recommendations for addressing concerns"),
+                ResponseSchema(name="rank", description="Overall cultural sensitivity score (1-10)")
+            ]
             
-            Format your response according to the following schema:
-            {{format_instructions}}
-            """,
-            additional_kwargs={
-                "metadata": {
-                    "agent_type": "cultural_analyzer",
-                    "methodology": "Alina Wheeler's Designing Brand Identity"
+            self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
+            
+            # Create prompt template
+            system_message = SystemMessage(content=self.system_prompt.format())
+            human_template = (
+                "Analyze the cultural sensitivity of the following brand name:\n"
+                "Brand Name: {brand_name}\n"
+                "Brand Context: {brand_context}\n\n"
+                "Format your analysis according to this schema:\n"
+                "{format_instructions}"
+            )
+            self.prompt = ChatPromptTemplate.from_messages([
+                system_message,
+                HumanMessage(content=human_template)
+            ])
+            
+            # Initialize LLM
+            self.llm = ChatGoogleGenerativeAI(
+                model="gemini-1.5-pro",
+                temperature=0.3,
+                google_api_key=settings.google_api_key,
+                convert_system_message_to_human=True
+            )
+        except Exception as e:
+            logger.error(
+                "Error initializing CulturalSensitivityExpert",
+                extra={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
                 }
-            }
-        )
-        human_template = """Analyze the cultural sensitivity of the following brand name:
-        Brand Name: {brand_name}
-        Brand Context: {brand_context}
-        """
-        self.prompt = ChatPromptTemplate.from_messages([
-            system_message,
-            HumanMessage(content=human_template)
-        ])
-
+            )
+            raise
+    
     async def analyze_brand_name(
         self,
         run_id: str,
         brand_name: str,
         brand_context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        Analyze the cultural sensitivity of a single brand name.
+        """Analyze a brand name for cultural sensitivity concerns.
         
         Args:
-            run_id (str): Unique identifier for this workflow run
-            brand_name (str): The brand name to analyze
-            brand_context (Dict[str, Any]): Additional brand context
+            run_id: Unique identifier for this workflow run
+            brand_name: The brand name to analyze
+            brand_context: Brand context information
             
         Returns:
-            Dict[str, Any]: Analysis results
-            
-        Raises:
-            ValueError: If analysis fails
+            Dictionary with cultural sensitivity analysis results
         """
         try:
-            with tracing_enabled(tags={"agent": "CulturalSensitivityExpert", "run_id": run_id}):
-                # Format prompt with parser instructions
+            with tracing_enabled(
+                tags={
+                    "agent": "CulturalSensitivityExpert",
+                    "run_id": run_id
+                }
+            ):
+                # Format the prompt
                 formatted_prompt = self.prompt.format_messages(
                     format_instructions=self.output_parser.get_format_instructions(),
                     brand_name=brand_name,
-                    brand_context=json.dumps(brand_context, indent=2)
+                    brand_context=brand_context
                 )
                 
                 # Get response from LLM
                 response = await self.llm.ainvoke(formatted_prompt)
                 
-                # Parse structured response
-                analysis_result = self.output_parser.parse(response.content)
+                # Parse the response
+                analysis = self.output_parser.parse(response.content)
                 
-                # Store results in Supabase
-                await self._store_analysis(run_id, brand_name, analysis_result)
+                # Store results
+                await self._store_analysis(run_id, brand_name, analysis)
                 
+                # Return the analysis
                 return {
-                    "cultural_analysis": {
-                        "brand_name": brand_name,
-                        **analysis_result
-                    }
+                    "brand_name": brand_name,
+                    "cultural_connotations": analysis["cultural_connotations"],
+                    "potential_sensitivities": analysis["potential_sensitivities"],
+                    "regional_considerations": analysis["regional_considerations"],
+                    "language_considerations": analysis["language_considerations"],
+                    "religious_implications": analysis["religious_implications"],
+                    "historical_context": analysis["historical_context"],
+                    "gender_implications": analysis["gender_implications"],
+                    "age_appropriateness": analysis["age_appropriateness"],
+                    "socioeconomic_implications": analysis["socioeconomic_implications"],
+                    "overall_risk_rating": analysis["overall_risk_rating"],
+                    "risk_score": analysis["risk_score"],
+                    "recommendations": analysis["recommendations"],
+                    "rank": float(analysis["rank"])
                 }
                 
+        except APIError as e:
+            logger.error(
+                "Supabase API error in cultural sensitivity analysis",
+                extra={
+                    "run_id": run_id,
+                    "brand_name": brand_name,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "status_code": getattr(e, "code", None),
+                    "details": getattr(e, "details", None)
+                }
+            )
+            raise
+            
         except Exception as e:
             logger.error(
                 "Error in cultural sensitivity analysis",
                 extra={
                     "run_id": run_id,
                     "brand_name": brand_name,
-                    "error": str(e)
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
                 }
             )
-            raise ValueError(f"Cultural sensitivity analysis failed: {str(e)}")
+            raise
     
     async def _store_analysis(
         self,
@@ -159,7 +172,13 @@ class CulturalSensitivityExpert:
         brand_name: str,
         analysis: Dict[str, Any]
     ) -> None:
-        """Store cultural sensitivity analysis results in Supabase."""
+        """Store cultural sensitivity analysis results in Supabase.
+        
+        Args:
+            run_id: Unique identifier for this workflow run
+            brand_name: The analyzed brand name
+            analysis: Analysis results to store
+        """
         try:
             data = {
                 "run_id": run_id,
@@ -170,13 +189,28 @@ class CulturalSensitivityExpert:
             
             await self.supabase.table("cultural_sensitivity_analysis").insert(data).execute()
             
-        except Exception as e:
+        except APIError as e:
             logger.error(
-                "Error storing cultural sensitivity analysis",
+                "Supabase API error storing cultural sensitivity analysis",
                 extra={
                     "run_id": run_id,
                     "brand_name": brand_name,
-                    "error": str(e)
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "status_code": getattr(e, "code", None),
+                    "details": getattr(e, "details", None)
+                }
+            )
+            raise
+            
+        except Exception as e:
+            logger.error(
+                "Unexpected error storing cultural sensitivity analysis",
+                extra={
+                    "run_id": run_id,
+                    "brand_name": brand_name,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
                 }
             )
             raise 
