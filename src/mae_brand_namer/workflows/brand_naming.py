@@ -355,7 +355,7 @@ def create_workflow(langsmith_client: Optional[Any] = None) -> StateGraph:
     }
     
     # Define agent nodes
-    workflow.add_node("generate_uid", lambda state: process_uid(state, UIDGeneratorAgent()))
+    workflow.add_node("generate_uid", lambda state: asyncio.ensure_future(process_uid(state, UIDGeneratorAgent())))
     workflow.add_node("understand_brand_context", lambda state: process_brand_context(state, BrandContextExpert(
         supabase=supabase_manager, 
         langsmith=langsmith_client
