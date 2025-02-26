@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import json
+import asyncio
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -161,6 +162,14 @@ class BrandNameEvaluator:
             Dict[str, Any]: Structured evaluation results
         """
         try:
+            # Setup event loop if not available
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                # No event loop, create one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
             # Call the LLM with the formatted prompt
             response = await self.llm.ainvoke(prompt)
             

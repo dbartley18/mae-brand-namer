@@ -154,30 +154,44 @@ class SemanticAnalysisExpert:
             ValueError: If analysis fails
         """
         try:
+            # Setup event loop if not available
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                # No event loop, create one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
             with tracing_enabled(tags={"agent": "SemanticAnalysisExpert", "run_id": run_id}):
                 # Format prompt with parser instructions
                 formatted_prompt = self.prompt.format_messages(
                     format_instructions=self.output_parser.get_format_instructions(),
                     brand_name=brand_name,
-                    brand_context=brand_context
+                    brand_context=json.dumps(brand_context, indent=2)
                 )
                 
-                # Get response from LLM (implementation depends on your LLM setup)
-                # This is a placeholder - implement your actual LLM call here
-                llm_response = "Implement your LLM call here"
+                # Get response from LLM
+                response = await self.llm.ainvoke(formatted_prompt)
                 
                 # Parse structured response
-                analysis_result = self.output_parser.parse(llm_response)
+                analysis_result = self.output_parser.parse(response.content)
                 
                 # Store results in Supabase
                 await self._store_analysis(run_id, brand_name, analysis_result)
                 
-                return {
+                # Create a result dictionary with brand_name and run_id
+                result = {
+                    "run_id": run_id,
                     "brand_name": brand_name,
-                    "denotative_meaning": analysis_result["denotative_meaning"],
-                    "etymology": analysis_result["etymology"],
-                    **analysis_result
+                    "task_name": "semantic_analysis",
                 }
+                
+                # Add all analysis results, avoiding duplicate keys
+                for key, value in analysis_result.items():
+                    if key not in result:  # Avoid duplicating keys
+                        result[key] = value
+                
+                return result
         
         except Exception as e:
             logger.error(

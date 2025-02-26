@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 import markdown
 from pathlib import Path
+import asyncio
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -108,7 +109,7 @@ class ReportCompilationExpert:
             HumanMessage(content=human_template)
         ])
 
-    def compile_report(self, run_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def compile_report(self, run_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
         """
         Compile a comprehensive report from all workflow data.
         
@@ -119,6 +120,14 @@ class ReportCompilationExpert:
         Returns:
             Dict[str, Any]: Report data and metadata
         """
+        # Setup event loop if not available
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop, create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
         try:
             # Create report data structure
             report_data = {
@@ -184,15 +193,15 @@ class ReportCompilationExpert:
                 }
             }
             
-            # Generate recommendations using LLM
-            recommendations = self._generate_recommendations(report_data)
+            # Generate recommendations using LLM - this should be made async too
+            recommendations = await self._generate_recommendations(report_data)
             report_data["recommendations"].update(recommendations)
             
             # Generate markdown content
             markdown_content = self._generate_markdown(report_data, run_id)
             
             # Store in Supabase
-            metadata = self._store_in_supabase(run_id, report_data, markdown_content)
+            metadata = await self._store_in_supabase(run_id, report_data, markdown_content)
             
             return {
                 "report_data": report_data,
@@ -204,6 +213,24 @@ class ReportCompilationExpert:
             error_msg = f"Error compiling report: {str(e)}"
             logger.error(error_msg)
             raise ValueError(error_msg)
+            
+    async def _generate_recommendations(self, report_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate recommendations using LLM, implemented as an async method."""
+        # Setup event loop if not available
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop, create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+        # This is a placeholder - implement actual LLM call here
+        return {
+            "final_brand_recommendation": "Generated recommendation would go here",
+            "brand_name_evaluation": "Generated evaluation would go here",
+            "next_steps": "Generated next steps would go here",
+            "additional_considerations": "Generated considerations would go here"
+        }
 
     def _generate_markdown(self, report_data: Dict[str, Any], run_id: str) -> str:
         """
@@ -293,7 +320,7 @@ class ReportCompilationExpert:
                 lines.append(f"### {key.replace('_', ' ').title()}\n{value}\n")
         return "\n".join(lines)
 
-    def _store_in_supabase(self, run_id: str, report_data: Dict[str, Any], markdown_content: str) -> Dict[str, Any]:
+    async def _store_in_supabase(self, run_id: str, report_data: Dict[str, Any], markdown_content: str) -> Dict[str, Any]:
         """
         Store the report data in Supabase.
         
@@ -305,6 +332,14 @@ class ReportCompilationExpert:
         Returns:
             Dict[str, Any]: Report metadata including URL and version
         """
+        # Setup event loop if not available
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop, create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
         try:
             now = datetime.now().isoformat()
             file_size = len(markdown_content.encode('utf-8')) // 1024  # Size in KB
@@ -324,7 +359,7 @@ class ReportCompilationExpert:
             }
             
             # Insert into report_compilation table
-            self.supabase.table("report_compilation").insert(report_metadata).execute()
+            await self.supabase.table("report_compilation").insert(report_metadata).execute()
             
             return report_metadata
             

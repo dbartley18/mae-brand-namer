@@ -109,11 +109,29 @@ class ProcessSupervisorCallbackHandler(BaseCallbackHandler):
         if inputs and isinstance(inputs, dict):
             run_id = inputs.get("run_id")
         
-        # Method 2: From a nested state object
+        # Method 2: From a nested state object in different formats
         if not run_id and inputs and isinstance(inputs, dict):
+            # Check for standard state dict
             state = inputs.get("state")
             if isinstance(state, dict):
                 run_id = state.get("run_id")
+            
+            # Check for state that might be a Pydantic model
+            state_obj = inputs.get("state")
+            if not run_id and state_obj:
+                # Try as attribute
+                try:
+                    if hasattr(state_obj, "run_id"):
+                        run_id = getattr(state_obj, "run_id")
+                except:
+                    pass
+                
+                # Try as dict-like access
+                try:
+                    if "run_id" in state_obj:
+                        run_id = state_obj["run_id"]
+                except:
+                    pass
         
         # Method 3: From the current instance variable if all else fails
         if not run_id:
@@ -563,27 +581,27 @@ async def process_analyses(state: BrandNameGenerationState, analyzers: List[Any]
             ]
             
             # Run analyses concurrently using client.map
+            # Use the client from dependencies if available
             if state.get("client"):
                 # Use the client from state for map operation with callbacks
-                results = await state["client"].map(
-                    analyzers,
-                    input_data,
-                    lambda agent, data: agent.analyze_brand_name(**data),
-                    config={"callbacks": [state["client"]]}
-                )
+                client = state["client"]
+            elif state.get("deps") and state["deps"].get("langsmith"):
+                # Use the client from dependencies
+                client = state["deps"]["langsmith"]
+                logger.info("Using LangSmith client from dependencies")
             else:
                 # If no client is provided, create one for this operation
                 from langsmith import Client
                 logger.info("Creating new LangGraph client for map operation")
                 client = Client()
-                
-                # Use the new client for map operation
-                results = await client.map(
-                    analyzers,
-                    input_data,
-                    lambda agent, data: agent.analyze_brand_name(**data),
-                    config={"callbacks": [client]}
-                )
+            
+            # Use the client for map operation
+            results = await client.map(
+                analyzers,
+                input_data,
+                lambda agent, data: agent.analyze_brand_name(**data),
+                config={"callbacks": [client]}
+            )
             
             state["analysis_results"] = {
                 "results": results
