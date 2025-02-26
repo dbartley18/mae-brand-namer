@@ -1,21 +1,23 @@
 """Brand naming workflow using LangGraph."""
 
-from typing import Dict, Any, List, Optional, TypedDict, Tuple
+from typing import Dict, Any, List, Optional, TypedDict, Tuple, Union, Callable, TypeVar
 from datetime import datetime
 import asyncio
 from functools import partial
 import json
 import os
 import uuid
+import traceback
 
 from langgraph.graph import StateGraph
 from langsmith import Client
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-from langchain.callbacks import tracing_enabled
+from langchain_core.tracers.context import tracing_v2_enabled
 from langchain_core.tracers import LangChainTracer
 from langchain_core.messages import SystemMessage, HumanMessage
 from postgrest import APIError as PostgrestError
+from postgrest import APIError  # Add direct import of APIError for compatibility
 from langgraph.constants import Send
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -366,56 +368,78 @@ def create_workflow(langsmith_client: Optional[Any] = None) -> StateGraph:
     # Create workflow state graph
     workflow = StateGraph(BrandNameGenerationState)
     
-    # Build dependencies object including the LangSmith client
-    deps = {
-        "supabase": supabase_manager,
-        "langsmith": langsmith_client
-    }
+    # Helper function to wrap async functions so they are properly handled by LangGraph
+    def wrap_async_node(func):
+        """Wraps an async function to ensure it's properly awaited before returning"""
+        async def wrapper(state):
+            result = await func(state)
+            return result
+        return wrapper
     
-    # Define agent nodes
-    workflow.add_node("generate_uid", lambda state: asyncio.ensure_future(process_uid(state, UIDGeneratorAgent())))
-    workflow.add_node("understand_brand_context", lambda state: process_brand_context(state, BrandContextExpert(
-        supabase=supabase_manager, 
-        langsmith=langsmith_client
-    )))
-    workflow.add_node("generate_brand_names", lambda state: process_brand_names(state, BrandNameCreationExpert(
-        supabase=supabase_manager,
-        langsmith=langsmith_client
-    )))
-    workflow.add_node("process_linguistics", lambda state: process_linguistics(state, LinguisticsExpert(
-        supabase=supabase_manager,
-        langsmith=langsmith_client
-    )))
-    workflow.add_node("process_cultural_sensitivity", lambda state: process_cultural_sensitivity(state, CulturalSensitivityExpert(
-        supabase=supabase_manager,
-        langsmith=langsmith_client
-    )))
-    workflow.add_node("process_analyses", lambda state: process_analyses(state, [
-        SemanticAnalysisExpert(supabase=supabase_manager, langsmith=langsmith_client),
-        LinguisticsExpert(supabase=supabase_manager, langsmith=langsmith_client),
-        CulturalSensitivityExpert(supabase=supabase_manager, langsmith=langsmith_client),
-        TranslationAnalysisExpert(supabase=supabase_manager, langsmith=langsmith_client),
-        DomainAnalysisExpert(supabase=supabase_manager, langsmith=langsmith_client),
-        SEOOnlineDiscoveryExpert(supabase=supabase_manager, langsmith=langsmith_client),
-        CompetitorAnalysisExpert(supabase=supabase_manager, langsmith=langsmith_client),
-        SurveySimulationExpert(supabase=supabase_manager, langsmith=langsmith_client)
-    ]))
-    workflow.add_node("process_evaluation", lambda state: process_evaluation(state, BrandNameEvaluator(
-        supabase=supabase_manager,
-        langsmith=langsmith_client
-    )))
-    workflow.add_node("process_market_research", lambda state: process_market_research(state, MarketResearchExpert(
-        supabase=supabase_manager,
-        langsmith=langsmith_client
-    )))
-    workflow.add_node("compile_report", lambda state: process_report(state, ReportCompiler(
-        supabase=supabase_manager,
-        langsmith=langsmith_client
-    )))
-    workflow.add_node("store_report", lambda state: process_report_storage(state, ReportStorer(
-        supabase=supabase_manager,
-        langsmith=langsmith_client
-    )))
+    # Define agent nodes with proper async handling
+    workflow.add_node("generate_uid", process_uid)
+    
+    # Wrap process_brand_context and other async functions
+    workflow.add_node("understand_brand_context", 
+        wrap_async_node(lambda state: process_brand_context(state, BrandContextExpert(
+            supabase=supabase_manager
+        )))
+    )
+    
+    workflow.add_node("generate_brand_names", 
+        wrap_async_node(lambda state: process_brand_names(state, BrandNameCreationExpert(
+            supabase=supabase_manager
+        )))
+    )
+    
+    workflow.add_node("process_linguistics", 
+        wrap_async_node(lambda state: process_linguistics(state, LinguisticsExpert(
+            supabase=supabase_manager
+        )))
+    )
+    
+    workflow.add_node("process_cultural_sensitivity", 
+        wrap_async_node(lambda state: process_cultural_sensitivity(state, CulturalSensitivityExpert(
+            supabase=supabase_manager
+        )))
+    )
+    
+    workflow.add_node("process_analyses", 
+        wrap_async_node(lambda state: process_analyses(state, [
+            SemanticAnalysisExpert(supabase=supabase_manager),
+            LinguisticsExpert(supabase=supabase_manager),
+            CulturalSensitivityExpert(supabase=supabase_manager),
+            TranslationAnalysisExpert(supabase=supabase_manager),
+            DomainAnalysisExpert(supabase=supabase_manager),
+            SEOOnlineDiscoveryExpert(supabase=supabase_manager),
+            CompetitorAnalysisExpert(supabase=supabase_manager),
+            SurveySimulationExpert(supabase=supabase_manager)
+        ]))
+    )
+    
+    workflow.add_node("process_evaluation", 
+        wrap_async_node(lambda state: process_evaluation(state, BrandNameEvaluator(
+            supabase=supabase_manager
+        )))
+    )
+    
+    workflow.add_node("process_market_research", 
+        wrap_async_node(lambda state: process_market_research(state, MarketResearchExpert(
+            supabase=supabase_manager
+        )))
+    )
+    
+    workflow.add_node("compile_report", 
+        wrap_async_node(lambda state: process_report(state, ReportCompiler(
+            supabase=supabase_manager
+        )))
+    )
+    
+    workflow.add_node("store_report", 
+        wrap_async_node(lambda state: process_report_storage(state, ReportStorer(
+            supabase=supabase_manager
+        )))
+    )
     
     # Define conditional edges
     workflow.add_edge("generate_uid", "understand_brand_context")
@@ -431,163 +455,261 @@ def create_workflow(langsmith_client: Optional[Any] = None) -> StateGraph:
     
     return workflow
 
-async def process_uid(state: BrandNameGenerationState, agent: UIDGeneratorAgent) -> BrandNameGenerationState:
-    """Process UID generation with error handling and tracing."""
+async def process_uid(state: BrandNameGenerationState) -> Dict[str, Any]:
+    """
+    Generate a unique run ID for the workflow execution.
+    
+    Args:
+        state: The current workflow state
+        
+    Returns:
+        Dictionary with state updates including run_id, start_time, and status
+    """
     try:
-        with tracing_enabled(tags={"task": "generate_uid"}):
-            run_id = await agent.generate_uid()
-            state["run_id"] = run_id
-            state["start_time"] = datetime.now().isoformat()
-            state["status"] = "uid_generated"
-            return state
+        # Try to get the running event loop, create one if it doesn't exist
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             
+        agent = UIDGeneratorAgent()
+        
+        # Use tracing_v2_enabled without tags
+        with tracing_v2_enabled():
+            # Use getattr instead of .get() since state is a Pydantic model
+            prefix = getattr(state, "prefix", "mae")
+            
+            # Use the static method directly with the prefix
+            run_id = agent.generate_run_id(prefix=prefix)
+            
+            logger.info(f"Generated run_id: {run_id}")
+            
+            # Return state updates
+            return {
+                "run_id": run_id,
+                "start_time": datetime.now().isoformat(),
+                "status": "initialized"
+            }
     except Exception as e:
-        logger.error("Error generating UID", error=str(e))
-        state["errors"].append({
-            "task": "generate_uid",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-        state["status"] = "error"
-        raise
+        error_msg = f"Error in process_uid: {str(e)}"
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())
+        
+        # Return error updates that match the expected schema (using "step" instead of "task")
+        return {
+            "errors": [{
+                "step": "generate_uid",  # Use "step" instead of "task"
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
 
-async def process_brand_context(state: BrandNameGenerationState, agent: BrandContextExpert) -> BrandNameGenerationState:
-    """Process brand context extraction with error handling and tracing."""
+async def process_brand_context(state: BrandNameGenerationState, agent: BrandContextExpert) -> Dict[str, Any]:
     try:
-        with tracing_enabled(tags={"task": "understand_brand_context", "run_id": state["run_id"]}):
+        with tracing_v2_enabled():
             brand_context = await agent.extract_brand_context(
-                user_prompt=state["user_prompt"],
-                run_id=state["run_id"]
+                user_prompt=state.user_prompt,
+                run_id=state.run_id
             )
-            state["brand_context"] = brand_context
-            state["status"] = "context_extracted"
-            return state
             
+            # Return dictionary of state updates instead of the state object
+            return {
+                "brand_identity_brief": brand_context["brand_identity_brief"],
+                "brand_promise": brand_context["brand_promise"],
+                "brand_values": brand_context["brand_values"],
+                "brand_personality": brand_context["brand_personality"],
+                "brand_tone_of_voice": brand_context["brand_tone_of_voice"],
+                "brand_purpose": brand_context["brand_purpose"],
+                "brand_mission": brand_context["brand_mission"],
+                "target_audience": brand_context["target_audience"],
+                "customer_needs": brand_context["customer_needs"],
+                "market_positioning": brand_context["market_positioning"],
+                "competitive_landscape": brand_context["competitive_landscape"],
+                "industry_focus": brand_context["industry_focus"],
+                "industry_trends": brand_context["industry_trends"]
+            }
     except Exception as e:
-        logger.error(
-            "Error extracting brand context",
-            run_id=state["run_id"],
-            error=str(e)
-        )
-        state["errors"].append({
-            "task": "understand_brand_context",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-        state["status"] = "error"
-        raise
+        logger.error(f"Error in process_brand_context: {str(e)}")
+        # Return error information as a dictionary update
+        return {
+            "errors": [{
+                "step": "understand_brand_context",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
 
-async def process_brand_names(state: BrandNameGenerationState, agent: BrandNameCreationExpert) -> BrandNameGenerationState:
-    """Process brand name generation with error handling and tracing."""
+async def process_brand_names(state: BrandNameGenerationState, agent: BrandNameCreationExpert) -> Dict[str, Any]:
     try:
-        with tracing_enabled(tags={"task": "generate_brand_names", "run_id": state["run_id"]}):
+        with tracing_v2_enabled():
             brand_names = await agent.generate_brand_names(
-                brand_context=state["brand_context"], 
-                brand_values=state["brand_context"]["brand_values"],
-                purpose=state["brand_context"]["brand_purpose"],
-                key_attributes=state["brand_context"]["brand_personality"],
-                run_id=state["run_id"]
+                brand_identity=state.brand_identity_brief,
+                brand_promise=state.brand_promise,
+                brand_values=state.brand_values,
+                brand_personality=state.brand_personality,
+                target_audience=state.target_audience,
+                run_id=state.run_id
             )
-            state["generated_names"] = brand_names
-            state["status"] = "names_generated"
-            return state
             
+            # Return dictionary of state updates
+            return {
+                "generated_names": brand_names
+            }
     except Exception as e:
-        logger.error(
-            "Error generating brand names",
-            run_id=state["run_id"],
-            error=str(e)
-        )
-        state["errors"].append({
-            "task": "generate_brand_names",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-        state["status"] = "error"
-        raise
+        logger.error(f"Error in process_brand_names: {str(e)}")
+        return {
+            "errors": [{
+                "step": "generate_brand_names",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
 
-async def process_linguistics(state: BrandNameGenerationState, agent: LinguisticsExpert) -> BrandNameGenerationState:
-    """Process linguistic analysis with error handling and tracing."""
+async def process_linguistics(state: BrandNameGenerationState, agent: LinguisticsExpert) -> Dict[str, Any]:
     try:
-        with tracing_enabled(tags={"task": "analyze_linguistics", "run_id": state["run_id"]}):
-            linguistic_results = {}
-            for brand_name in state["generated_names"]:
-                result = await agent.analyze_brand_name(
-                    run_id=state["run_id"],
-                    brand_name=brand_name["brand_name"],
-                    brand_context=state["brand_context"]
-                )
-                linguistic_results[brand_name["brand_name"]] = result
-            state["linguistic_analysis_results"] = linguistic_results
-            state["status"] = "linguistics_analyzed"
-            return state
+        with tracing_v2_enabled():
+            linguistics_analysis = await agent.analyze_names(
+                brand_names=[name["brand_name"] for name in state.generated_names],
+                run_id=state.run_id
+            )
             
+            # Create a deep copy of generated names to update
+            generated_names = [dict(name) for name in state.generated_names]
+            
+            # Update with linguistics analysis
+            for i, name_data in enumerate(generated_names):
+                if i < len(linguistics_analysis):
+                    name_data["semantic_analysis"] = linguistics_analysis[i]
+            
+            # Return dictionary of state updates
+            return {
+                "generated_names": generated_names
+            }
     except Exception as e:
-        logger.error(
-            "Error analyzing linguistics",
-            run_id=state["run_id"],
-            error=str(e)
-        )
-        state["errors"].append({
-            "task": "analyze_linguistics",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-        state["status"] = "error"
-        raise
+        logger.error(f"Error in process_linguistics: {str(e)}")
+        return {
+            "errors": [{
+                "step": "analyze_linguistics",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
 
-async def process_cultural_sensitivity(state: BrandNameGenerationState, agent: CulturalSensitivityExpert) -> BrandNameGenerationState:
-    """Process cultural sensitivity analysis with error handling and tracing."""
+async def process_cultural_sensitivity(state: BrandNameGenerationState, agent: CulturalSensitivityExpert) -> Dict[str, Any]:
     try:
-        with tracing_enabled(tags={"task": "analyze_cultural_sensitivity", "run_id": state["run_id"]}):
-            cultural_results = {}
-            for brand_name in state["generated_names"]:
-                result = await agent.analyze_brand_name(
-                    run_id=state["run_id"],
-                    brand_name=brand_name["brand_name"],
-                    brand_context=state["brand_context"]
-                )
-                cultural_results[brand_name["brand_name"]] = result
-            state["cultural_analysis_results"] = cultural_results
-            state["status"] = "cultural_sensitivity_analyzed"
-            return state
+        with tracing_v2_enabled():
+            cultural_analysis = await agent.analyze_names(
+                brand_names=[name["brand_name"] for name in state.generated_names],
+                run_id=state.run_id
+            )
             
+            # Create a deep copy of generated names to update
+            generated_names = [dict(name) for name in state.generated_names]
+            
+            # Update with cultural sensitivity analysis
+            for i, name_data in enumerate(generated_names):
+                if i < len(cultural_analysis):
+                    name_data["cultural_analysis"] = cultural_analysis[i]
+            
+            # Return dictionary of state updates
+            return {
+                "generated_names": generated_names
+            }
     except Exception as e:
-        logger.error(
-            "Error analyzing cultural sensitivity",
-            run_id=state["run_id"],
-            error=str(e)
-        )
-        state["errors"].append({
-            "task": "analyze_cultural_sensitivity",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-        state["status"] = "error"
-        raise
+        logger.error(f"Error in process_cultural_sensitivity: {str(e)}")
+        return {
+            "errors": [{
+                "step": "analyze_cultural_sensitivity",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
 
-async def process_analyses(state: BrandNameGenerationState, analyzers: List[Any]) -> BrandNameGenerationState:
+async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEvaluator) -> Dict[str, Any]:
+    """
+    Evaluate brand names based on analyses and select top candidates.
+    
+    Args:
+        state: The current workflow state
+        agent: The BrandNameEvaluator agent
+        
+    Returns:
+        Dictionary with state updates including evaluation results and shortlisted names
+    """
+    try:
+        with tracing_v2_enabled():
+            # Get input data
+            brand_names = state.generated_names
+            
+            # Extract relevant analyses from the state
+            semantic_analyses = [name.get("semantic_analysis") for name in brand_names]
+            linguistic_analyses = [name.get("linguistic_analysis") for name in brand_names]
+            cultural_analyses = [name.get("cultural_analysis") for name in brand_names]
+            
+            # Evaluate brand names
+            evaluation_results = await agent.evaluate_brand_names(
+                brand_names=[name["brand_name"] for name in brand_names],
+                semantic_analyses=semantic_analyses,
+                linguistic_analyses=linguistic_analyses, 
+                cultural_analyses=cultural_analyses,
+                run_id=state.run_id
+            )
+            
+            # Shortlist top brand names
+            shortlisted_names = [result for result in evaluation_results if result.get("shortlist_status") is True]
+            
+            logger.info(f"Evaluated {len(brand_names)} brand names; shortlisted {len(shortlisted_names)}")
+            
+            # Return dictionary of state updates
+            return {
+                "evaluation_results": evaluation_results,
+                "shortlisted_names": shortlisted_names
+            }
+    except Exception as e:
+        logger.error(f"Error in process_evaluation: {str(e)}")
+        return {
+            "errors": [{
+                "step": "evaluate_brand_names",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
+
+async def process_analyses(state: BrandNameGenerationState, analyzers: List[Any]) -> Dict[str, Any]:
     """Run multiple analysis agents concurrently using LangGraph map."""
     try:
-        with tracing_enabled(tags={"task": "process_analyses", "run_id": state["run_id"]}):
+        with tracing_v2_enabled():
             # Prepare input data for map
             input_data = [
                 {
-                    "run_id": state["run_id"],
+                    "run_id": state.run_id,
                     "brand_name": name["brand_name"],
-                    "brand_context": state["brand_context"]
+                    "brand_context": getattr(state, "brand_context", {})
                 }
-                for name in state["generated_names"]
+                for name in state.generated_names
             ]
             
             # Run analyses concurrently using client.map
             # Use the client from dependencies if available
-            if state.get("client"):
+            if hasattr(state, "client") and state.client:
                 # Use the client from state for map operation with callbacks
-                client = state["client"]
-            elif state.get("deps") and state["deps"].get("langsmith"):
+                client = state.client
+            elif hasattr(state, "deps") and state.deps and state.deps.get("langsmith"):
                 # Use the client from dependencies
-                client = state["deps"]["langsmith"]
+                client = state.deps["langsmith"]
                 logger.info("Using LangSmith client from dependencies")
             else:
                 # If no client is provided, create one for this operation
@@ -603,104 +725,103 @@ async def process_analyses(state: BrandNameGenerationState, analyzers: List[Any]
                 config={"callbacks": [client]}
             )
             
-            state["analysis_results"] = {
-                "results": results
+            # Return dictionary of state updates
+            return {
+                "analysis_results": {
+                    "results": results
+                }
             }
-            state["status"] = "analyses_completed"
-            return state
             
     except Exception as e:
-        logger.error(
-            "Error running analyses",
-            run_id=state["run_id"],
-            error=str(e)
-        )
-        state["errors"].append({
-            "task": "process_analyses",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-        state["status"] = "error"
-        raise
+        logger.error(f"Error in process_analyses: {str(e)}")
+        return {
+            "errors": [{
+                "step": "process_analyses",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
 
-async def process_market_research(state: BrandNameGenerationState, agent: MarketResearchExpert) -> BrandNameGenerationState:
+async def process_market_research(state: BrandNameGenerationState, agent: MarketResearchExpert) -> Dict[str, Any]:
     """Process market research analysis with error handling and tracing."""
     try:
-        with tracing_enabled(tags={"task": "conduct_market_research", "run_id": state["run_id"]}):
+        with tracing_v2_enabled():
             market_research = await agent.analyze_market_potential(
-                run_id=state["run_id"],
-                brand_names=[name["brand_name"] for name in state["generated_names"]],
-                brand_context=state["brand_context"]
+                run_id=state.run_id,
+                brand_names=[name["brand_name"] for name in state.generated_names],
+                brand_context=getattr(state, "brand_context", {})
             )
-            state["market_research_results"] = market_research
-            state["status"] = "market_research_conducted"
-            return state
+            
+            # Return dictionary of state updates
+            return {
+                "market_research_results": market_research
+            }
             
     except Exception as e:
-        logger.error(
-            "Error conducting market research",
-            run_id=state["run_id"],
-            error=str(e)
-        )
-        state["errors"].append({
-            "task": "conduct_market_research",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-        state["status"] = "error"
-        raise
+        logger.error(f"Error in process_market_research: {str(e)}")
+        return {
+            "errors": [{
+                "step": "conduct_market_research",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
 
-async def process_report(state: BrandNameGenerationState, agent: ReportCompiler) -> BrandNameGenerationState:
+async def process_report(state: BrandNameGenerationState, agent: ReportCompiler) -> Dict[str, Any]:
     """Process report compilation with error handling and tracing."""
     try:
-        with tracing_enabled(tags={"task": "compile_report", "run_id": state["run_id"]}):
+        with tracing_v2_enabled():
             report = await agent.compile_report(
-                run_id=state["run_id"],
+                run_id=state.run_id,
                 state=state
             )
-            state["compiled_report"] = report
-            state["status"] = "report_compiled"
-            return state
+            
+            # Return dictionary of state updates
+            return {
+                "compiled_report": report
+            }
             
     except Exception as e:
-        logger.error(
-            "Error compiling report",
-            run_id=state["run_id"],
-            error=str(e)
-        )
-        state["errors"].append({
-            "task": "compile_report",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-        state["status"] = "error"
-        raise
+        logger.error(f"Error in process_report: {str(e)}")
+        return {
+            "errors": [{
+                "step": "compile_report",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
 
-async def process_report_storage(state: BrandNameGenerationState, agent: ReportStorer) -> BrandNameGenerationState:
+async def process_report_storage(state: BrandNameGenerationState, agent: ReportStorer) -> Dict[str, Any]:
     """Process report storage with error handling and tracing."""
     try:
-        with tracing_enabled(tags={"task": "store_report", "run_id": state["run_id"]}):
+        with tracing_v2_enabled():
             storage_result = await agent.store_report(
-                run_id=state["run_id"],
-                report_data=state["compiled_report"]
+                run_id=state.run_id,
+                report_data=state.compiled_report
             )
-            state["report_storage_metadata"] = storage_result
-            state["status"] = "report_stored"
-            return state
+            
+            # Return dictionary of state updates
+            return {
+                "report_storage_metadata": storage_result
+            }
             
     except Exception as e:
-        logger.error(
-            "Error storing report",
-            run_id=state["run_id"],
-            error=str(e)
-        )
-        state["errors"].append({
-            "task": "store_report",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-        state["status"] = "error"
-        raise
+        logger.error(f"Error in process_report_storage: {str(e)}")
+        return {
+            "errors": [{
+                "step": "store_report",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
 
 def create_langsmith_tracer() -> Optional[LangChainTracer]:
     """Create LangSmith tracer if enabled."""
@@ -734,6 +855,14 @@ async def run_brand_naming_workflow(
     Returns:
         Dict[str, Any]: The final state of the workflow containing all results
     """
+    # Setup event loop if not available
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No event loop, create one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
     # If client wasn't provided, create one
     use_client = client
     if use_client is None:
@@ -782,6 +911,14 @@ async def main():
     from langsmith import Client
     
     try:
+        # Setup event loop if not available
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop, create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
         # Create the LangGraph client for async operations
         client = Client()
         

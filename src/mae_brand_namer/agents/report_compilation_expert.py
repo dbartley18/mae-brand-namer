@@ -224,13 +224,44 @@ class ReportCompilationExpert:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
-        # This is a placeholder - implement actual LLM call here
-        return {
-            "final_brand_recommendation": "Generated recommendation would go here",
-            "brand_name_evaluation": "Generated evaluation would go here",
-            "next_steps": "Generated next steps would go here",
-            "additional_considerations": "Generated considerations would go here"
-        }
+        try:
+            # Create a prompt for the LLM
+            prompt = self.prompt.format_messages(
+                format_instructions=self.output_parser.get_format_instructions(),
+                run_id=report_data.get("executive_summary", {}).get("run_id", ""),
+                brand_context=json.dumps(report_data.get("brand_context", {}), indent=2),
+                brand_names=json.dumps(report_data.get("brand_name_generation", {}).get("generated_names", []), indent=2),
+                analysis_results=json.dumps(report_data.get("analysis", {}), indent=2)
+            )
+            
+            # Call the LLM with the formatted prompt
+            with tracing_enabled(tags={"task": "generate_recommendations"}):
+                response = await self.llm.ainvoke(prompt)
+                
+            # Parse the structured response
+            try:
+                recommendations = self.output_parser.parse(response.content)
+            except Exception as e:
+                logger.warning(f"Error parsing LLM response: {str(e)}")
+                # Fallback to basic extraction if parsing fails
+                recommendations = {
+                    "final_brand_recommendation": response.content[:500],
+                    "brand_name_evaluation": "See final recommendation",
+                    "next_steps": "Review the generated brand names and analysis",
+                    "additional_considerations": "Consider trademark and domain availability"
+                }
+                
+            return recommendations
+            
+        except Exception as e:
+            logger.error(f"Error generating recommendations: {str(e)}")
+            # Return fallback recommendations if the LLM call fails
+            return {
+                "final_brand_recommendation": "Unable to generate specific recommendations due to an error.",
+                "brand_name_evaluation": "Please review the analysis results to evaluate brand names.",
+                "next_steps": "1. Review brand name analysis data\n2. Consider additional branding elements\n3. Conduct trademark searches",
+                "additional_considerations": "Consider domain availability, SEO potential, and international implications."
+            }
 
     def _generate_markdown(self, report_data: Dict[str, Any], run_id: str) -> str:
         """
@@ -343,17 +374,46 @@ class ReportCompilationExpert:
         try:
             now = datetime.now().isoformat()
             file_size = len(markdown_content.encode('utf-8')) // 1024  # Size in KB
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Create a proper URL with timestamp for uniqueness
+            report_path = f"reports/{run_id}/{timestamp}_report.md"
+            report_url = f"{settings.supabase_url}/storage/v1/object/public/{report_path}"
+            
+            # Upload the markdown file to Supabase Storage
+            try:
+                # Create a bucket for reports if it doesn't exist
+                try:
+                    await self.supabase.storage().create_bucket("reports")
+                except Exception as bucket_error:
+                    # Bucket likely already exists
+                    logger.debug(f"Bucket creation note: {str(bucket_error)}")
+                    
+                # Upload the file to Supabase Storage
+                encoded_content = markdown_content.encode('utf-8')
+                await self.supabase.storage().from_("reports").upload(
+                    f"{run_id}/{timestamp}_report.md",
+                    encoded_content,
+                    {"content-type": "text/markdown"}
+                )
+                
+                logger.info(f"Report uploaded to Supabase Storage: {report_path}")
+                
+            except Exception as storage_error:
+                logger.warning(f"Error uploading to Storage: {str(storage_error)}")
+                # Fallback to database-only storage if Storage upload fails
+                report_url = f"database-only://{run_id}"
             
             # Prepare report metadata
             report_metadata = {
                 "run_id": run_id,
-                "report_url": f"reports/{run_id}/report.md",  # Placeholder URL
-                "version": "1.0",
+                "report_url": report_url,
+                "version": 1,
                 "created_at": now,
                 "last_updated": now,
                 "format": "markdown",
                 "file_size_kb": file_size,
-                "notes": "Initial report generation",
+                "notes": "Report generated with complete LLM recommendations",
                 "report_data": report_data,
                 "markdown_content": markdown_content
             }

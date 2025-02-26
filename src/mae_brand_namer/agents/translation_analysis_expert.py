@@ -5,6 +5,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import json
 from pathlib import Path
+import asyncio
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -220,6 +221,14 @@ class TranslationAnalysisExpert:
         Raises:
             Exception: If storage fails
         """
+        # Setup event loop if not available
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop, create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
         try:
             data = {
                 "run_id": run_id,
@@ -229,6 +238,7 @@ class TranslationAnalysisExpert:
             }
             
             await self.supabase.table("translation_analysis").insert(data).execute()
+            logger.info(f"Stored translation analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
         except Exception as e:
             logger.error(

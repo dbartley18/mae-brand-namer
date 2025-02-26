@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
+import asyncio
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -179,6 +180,14 @@ class CulturalSensitivityExpert:
             brand_name: The analyzed brand name
             analysis: Analysis results to store
         """
+        # Setup event loop if not available
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop, create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
         try:
             data = {
                 "run_id": run_id,
@@ -188,6 +197,7 @@ class CulturalSensitivityExpert:
             }
             
             await self.supabase.table("cultural_sensitivity_analysis").insert(data).execute()
+            logger.info(f"Stored cultural sensitivity analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
         except APIError as e:
             logger.error(

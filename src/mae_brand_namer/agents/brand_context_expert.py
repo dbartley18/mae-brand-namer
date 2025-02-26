@@ -16,13 +16,13 @@ from pathlib import Path
 from langchain.prompts import load_prompt
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-from langchain.callbacks import tracing_enabled
+from langchain_core.tracers.context import tracing_v2_enabled
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.tracers import LangChainTracer
-from postgrest import APIError as PostgrestError
+from postgrest.exceptions import APIError
 
 from ..utils.logging import get_logger
 from ..utils.supabase_utils import SupabaseManager
@@ -135,7 +135,11 @@ class BrandContextExpert:
         self.parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
         self.format_instructions = self.parser.get_format_instructions()
     
-    async def extract_brand_context(self, user_prompt: str, run_id: str) -> Dict[str, Any]:
+    async def extract_brand_context(
+        self,
+        user_prompt: str,
+        run_id: str
+    ) -> Dict[str, Any]:
         """
         Extract structured brand context from the user prompt.
         
@@ -147,13 +151,7 @@ class BrandContextExpert:
             Dict[str, Any]: Structured brand context information
         """
         try:
-            with tracing_enabled(
-                tags={
-                    "agent": "BrandContextExpert",
-                    "task": "extract_brand_context",
-                    "run_id": run_id
-                }
-            ):
+            with tracing_v2_enabled():
                 # Create message sequence
                 system_message = SystemMessage(content=self.system_prompt.format())
                 extraction_prompt = self.extraction_prompt.format(
@@ -188,9 +186,7 @@ class BrandContextExpert:
                 extra={
                     "run_id": run_id,
                     "error_type": type(e).__name__,
-                    "error_message": str(e),
-                    "status_code": getattr(e, "code", None),
-                    "details": getattr(e, "details", None)
+                    "error_message": str(e)
                 }
             )
             raise
@@ -225,7 +221,7 @@ class BrandContextExpert:
                 data=brand_context
             )
             
-        except PostgrestError as e:
+        except APIError as e:
             logger.error(
                 "Supabase API error storing brand context",
                 extra={

@@ -6,11 +6,12 @@ from datetime import datetime
 import json
 from pathlib import Path
 import re
+import asyncio
 
 from langchain.prompts import load_prompt
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-from langchain.callbacks import tracing_enabled
+from langchain_core.tracers.context import tracing_v2_enabled
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from postgrest.exceptions import APIError
 from langchain.prompts import PromptTemplate
@@ -97,71 +98,57 @@ class BrandNameCreationExpert:
             # Create system message
             system_message = SystemMessage(content=self.system_prompt.format())
             
-            with tracing_enabled(
-                tags={
-                    "agent": "BrandNameCreationExpert",
-                    "task": "generate_brand_names",
-                    "run_id": run_id,
-                    "prompt_type": "brand_name_generation"
-                }
-            ):
-                for i in range(num_names):
-                    try:
-                        # Format the generation prompt
-                        formatted_prompt = self.generation_prompt.format(
-                            format_instructions=self.output_parser.get_format_instructions(),
-                            brand_context={
-                                "brand_promise": brand_context.get("brand_promise", "Not specified"),
-                                "brand_values": brand_values,
-                                "brand_personality": brand_context.get("brand_personality", []),
-                                "brand_tone_of_voice": brand_context.get("brand_tone_of_voice", "Not specified"),
-                                "brand_purpose": purpose,
-                                "brand_mission": brand_context.get("brand_mission", "Not specified"),
-                                "target_audience": brand_context.get("target_audience", "Not specified"),
-                                "customer_needs": brand_context.get("customer_needs", []),
-                                "market_positioning": brand_context.get("market_positioning", "Not specified"),
-                                "competitive_landscape": brand_context.get("competitive_landscape", "Not specified"),
-                                "industry_focus": brand_context.get("industry_focus", "Not specified"),
-                                "industry_trends": brand_context.get("industry_trends", [])
-                            }
-                        )
-                        
-                        # Create human message
-                        human_message = HumanMessage(content=formatted_prompt)
-                        
-                        # Get response from LLM
-                        response = await self.llm.ainvoke([system_message, human_message])
-                        
-                        # Parse the structured output
-                        parsed_output = self.output_parser.parse(response.content)
-                        parsed_output.update({
-                            "run_id": run_id,
-                            "timestamp": timestamp,
-                            "version": "1.0"
-                        })
-                        
-                        # Store in Supabase
-                        await self._store_in_supabase(run_id, parsed_output)
-                        generated_names.append(parsed_output)
-                        
-                        logger.info(
-                            f"Generated brand name {i+1}/{num_names}",
-                            extra={
+            with tracing_v2_enabled():
+                # Set up message sequence
+                generation_prompt = self.generation_prompt.format(
+                    brand_context=brand_context,
+                    brand_values=brand_values,
+                    purpose=purpose,
+                    key_attributes=key_attributes
+                )
+                
+                with tracing_v2_enabled():
+                    for i in range(num_names):
+                        try:
+                            # Format the generation prompt
+                            formatted_prompt = generation_prompt
+                            
+                            # Create human message
+                            human_message = HumanMessage(content=formatted_prompt)
+                            
+                            # Get response from LLM
+                            response = await self.llm.ainvoke([system_message, human_message])
+                            
+                            # Parse the structured output
+                            parsed_output = self.output_parser.parse(response.content)
+                            parsed_output.update({
                                 "run_id": run_id,
-                                "brand_name": parsed_output["brand_name"]
-                            }
-                        )
-                    except Exception as e:
-                        logger.error(
-                            f"Error generating brand name {i+1}/{num_names}",
-                            extra={
-                                "run_id": run_id,
-                                "error_type": type(e).__name__,
-                                "error_message": str(e)
-                            }
-                        )
-                        # Continue generating other names even if one fails
-                        continue
+                                "timestamp": timestamp,
+                                "version": "1.0"
+                            })
+                            
+                            # Store in Supabase
+                            await self._store_in_supabase(run_id, parsed_output)
+                            generated_names.append(parsed_output)
+                            
+                            logger.info(
+                                f"Generated brand name {i+1}/{num_names}",
+                                extra={
+                                    "run_id": run_id,
+                                    "brand_name": parsed_output["brand_name"]
+                                }
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Error generating brand name {i+1}/{num_names}",
+                                extra={
+                                    "run_id": run_id,
+                                    "error_type": type(e).__name__,
+                                    "error_message": str(e)
+                                }
+                            )
+                            # Continue generating other names even if one fails
+                            continue
                 
                 if not generated_names:
                     logger.error(
@@ -216,6 +203,14 @@ class BrandNameCreationExpert:
             APIError: If there's an API-level error with Supabase
             ValueError: If there's an error with data validation or preparation
         """
+        # Setup event loop if not available
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop, create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
         try:
             # Prepare data for Supabase
             supabase_data = {

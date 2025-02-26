@@ -215,6 +215,14 @@ class BrandNameEvaluator:
             run_id (str): Unique identifier for this workflow run
             evaluation_results (Dict[str, Any]): The evaluation results to store
         """
+        # Setup event loop if not available
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop, create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
         try:
             # Ensure numeric fields are properly typed
             numeric_fields = [
@@ -228,6 +236,7 @@ class BrandNameEvaluator:
             
             # Insert into brand_name_evaluation table
             await self.supabase.table("brand_name_evaluation").insert(evaluation_results).execute()
+            logger.info(f"Stored brand name evaluation for '{evaluation_results.get('brand_name', 'unknown')}' with run_id '{run_id}'")
             
         except Exception as e:
             error_msg = f"Error storing evaluation in Supabase: {str(e)}"

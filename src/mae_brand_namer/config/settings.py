@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     model_temperature: float = 0.7
     gemini_api_key: Optional[str] = None
     
+    # Add google_api_key to point to gemini_api_key for compatibility
+    @property
+    def google_api_key(self) -> Optional[str]:
+        """Return the Gemini API key to maintain compatibility with google_api_key references."""
+        return self.gemini_api_key
+    
     # Supabase configuration
     supabase_url: Optional[str] = None
     supabase_service_key: Optional[str] = None
@@ -41,6 +47,17 @@ class Settings(BaseSettings):
     # Graph configuration
     graph_name: str = "brand-naming-workflow"
     graph_description: str = "Brand naming workflow using expert agents"
+    
+    # Helper methods
+    def get_langsmith_callbacks(self):
+        """Return LangSmith callbacks if tracing is enabled."""
+        if self.langchain_tracing_v2:
+            from langchain_core.tracers import LangChainTracer
+            try:
+                return [LangChainTracer(project_name=self.langchain_project)]
+            except:
+                return None
+        return None
     
     model_config = SettingsConfigDict(
         env_file=".env",

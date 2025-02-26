@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import json
+import asyncio
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -144,6 +145,14 @@ class DomainAnalysisExpert:
         analysis: Dict[str, Any]
     ) -> None:
         """Store domain analysis results in Supabase."""
+        # Setup event loop if not available
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop, create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
         try:
             data = {
                 "run_id": run_id,
@@ -153,6 +162,7 @@ class DomainAnalysisExpert:
             }
             
             await self.supabase.table("domain_analysis").insert(data).execute()
+            logger.info(f"Stored domain analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
         except Exception as e:
             logger.error(

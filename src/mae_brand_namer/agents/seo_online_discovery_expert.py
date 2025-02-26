@@ -3,6 +3,7 @@
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
+import asyncio
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate, load_prompt
@@ -226,6 +227,14 @@ class SEOOnlineDiscoveryExpert:
         Raises:
             Exception: If storage fails
         """
+        # Setup event loop if not available
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop, create one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
         try:
             data = {
                 "run_id": run_id,
@@ -235,6 +244,7 @@ class SEOOnlineDiscoveryExpert:
             }
             
             await self.supabase.table("seo_analysis").insert(data).execute()
+            logger.info(f"Stored SEO analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
         except Exception as e:
             logger.error(
