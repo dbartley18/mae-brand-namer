@@ -645,14 +645,19 @@ async def process_brand_names(state: BrandNameGenerationState, agent: BrandNameC
                     "naming_category": brand_names[0].get("naming_category", ""),
                     "brand_personality_alignment": brand_names[0].get("brand_personality_alignment", ""),
                     "brand_promise_alignment": brand_names[0].get("brand_promise_alignment", ""),
-                    "target_audience_relevance": brand_names[0].get("target_audience_relevance", ""),
-                    "market_differentiation": brand_names[0].get("market_differentiation", ""),
-                    "memorability_score": brand_names[0].get("memorability_score", 0),
-                    "pronounceability_score": brand_names[0].get("pronounceability_score", 0),
-                    "visual_branding_potential": brand_names[0].get("visual_branding_potential", ""),
+                    "target_audience_relevance_score": brand_names[0].get("target_audience_relevance_score", 5.0),
+                    "target_audience_relevance_details": brand_names[0].get("target_audience_relevance_details", ""),
+                    "market_differentiation_score": brand_names[0].get("market_differentiation_score", 5.0),
+                    "market_differentiation_details": brand_names[0].get("market_differentiation_details", ""),
+                    "memorability_score": brand_names[0].get("memorability_score", 5.0),
+                    "memorability_score_details": brand_names[0].get("memorability_score_details", ""),
+                    "pronounceability_score": brand_names[0].get("pronounceability_score", 5.0),
+                    "pronounceability_score_details": brand_names[0].get("pronounceability_score_details", ""),
+                    "visual_branding_potential_score": brand_names[0].get("visual_branding_potential_score", 5.0),
+                    "visual_branding_potential_details": brand_names[0].get("visual_branding_potential_details", ""),
                     "name_generation_methodology": brand_names[0].get("name_generation_methodology", ""),
                     "timestamp": brand_names[0].get("timestamp", ""),
-                    "rank": brand_names[0].get("rank", 0)
+                    "rank": brand_names[0].get("rank", 5.0)
                 }
             else:
                 # Return empty state if no names were generated

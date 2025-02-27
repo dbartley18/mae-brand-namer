@@ -1,8 +1,8 @@
 _type: prompt
-input_variables: ["format_instructions", "brand_context", "brand_values", "purpose", "key_attributes"]
+input_variables: ["format_instructions", "brand_context", "brand_values", "purpose", "key_attributes", "category", "existing_names"]
 template: |
-  Generate strategic brand name options based on the following brand context:
-
+  Generate ONE strategic brand name based on the following brand context.
+  
   Brand Context:
   {brand_context}
   
@@ -15,7 +15,10 @@ template: |
   Key Attributes:
   {key_attributes}
 
-  Apply these naming strategies:
+  NAMING CATEGORY: {category}
+  
+  Apply the naming strategy for {category} names:
+  
   1. Descriptive Names
      - Direct description of offering
      - Benefit-focused terms
@@ -36,19 +39,60 @@ template: |
      - Sensory elements
      - Emotional triggers
 
-  For each name generated, provide:
-  - Naming category and rationale
-  - Brand personality alignment
-  - Target audience relevance
-  - Market differentiation potential
-  - Memorability factors
-  - Visual branding potential
+  Previously generated names (YOU MUST AVOID THESE):
+  {existing_names}
+
+  CRITICAL UNIQUENESS REQUIREMENT: Generate only ONE brand name that is COMPLETELY UNIQUE compared to all previously generated names. The name should not:
+  - Be a duplicate of any previously generated name (even with different capitalization or spacing)
+  - Be a minor variation of any previously generated name (changing just 1-2 letters)
+  - Be a substring of any previously generated name
+  - Share the same root words as any previously generated name
+  - Be phonetically similar to any previously generated name
+  - Use a different suffix/prefix but the same core word (e.g., if "Lumina" exists, don't use "Illumina", "LuminaTech", etc.)
+  - Be a plural or singular variation of an existing name
+  - Be a compound word that includes an existing name
+  
+  UNIQUENESS STRATEGIES:
+  - Create a completely new word with a different syllable structure
+  - Draw from a different conceptual or linguistic domain
+  - Use a different language influence than previous names
+  - Consider entirely different phonetic patterns
+  - Use a different number of syllables than previous names
+  
+  Do not provide multiple options or alternatives.
+  
+  For the ONE brand name you generate, provide:
+  - The brand name itself
+  - Naming category and rationale (must be: {category})
+  - Brand personality alignment (how it connects to the brand personality)
+  - Brand promise alignment (how it reflects the brand promise)
+  - Target audience relevance score (provide as a SINGLE NUMERIC VALUE from 1-10)
+  - Target audience relevance details (provide 2-3 explanatory bullet points as text)
+  - Market differentiation score (provide as a SINGLE NUMERIC VALUE from 1-10)
+  - Market differentiation details (provide 2-3 explanatory bullet points as text)
+  - Memorability score (provide as a SINGLE NUMERIC VALUE from 1-10)
+  - Memorability score details (provide 2-3 explanatory bullet points as text)
+  - Pronounceability score (provide as a SINGLE NUMERIC VALUE from 1-10)
+  - Pronounceability score details (provide 2-3 explanatory bullet points as text)
+  - Visual branding potential score (provide as a SINGLE NUMERIC VALUE from 1-10)
+  - Visual branding potential details (provide 2-3 explanatory bullet points as text)
+  - Name generation methodology used
+  - Rank (provide as a SINGLE NUMERIC VALUE from 1-10)
 
   Format your response according to this schema:
   {format_instructions}
 
-  Ensure each name:
+  IMPORTANT FORMAT INSTRUCTIONS:
+  1. For all scores (target_audience_relevance_score, market_differentiation_score, memorability_score, pronounceability_score, visual_branding_potential_score):
+     - Provide these as single numeric values from 1-10
+     - Example: 8 or 8.0 (not as a string or array)
+  
+  2. For all details fields (target_audience_relevance_details, market_differentiation_details, etc.):
+     - Provide these as text with 2-3 bullet points separated by newlines
+     - Example: "- First point about this\n- Second point about this\n- Third point if needed"
+
+  Ensure the name:
   - Is unique and ownable
   - Aligns with brand strategy
   - Has digital potential
-  - Is globally viable 
+  - Is globally viable

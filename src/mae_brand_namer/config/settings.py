@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = True
     
     # Model configuration
-    model_name: str = "gemini-1.5-pro"
-    model_temperature: float = 0.7
+    model_name: str = "gemini-2.0-flash"
+    model_temperature: float = 1.0
     gemini_api_key: Optional[str] = None
     
     # Add google_api_key to point to gemini_api_key for compatibility

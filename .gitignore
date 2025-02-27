@@ -109,4 +109,5 @@ dmypy.json
 # Project configuration files (sensitive)
 tasks.yaml
 agents.yaml
-Supabase Snippet Retrieve Tables and Columns Info (4).csv 
+Supabase Snippet Retrieve Tables and Columns Info (4).csv
+*.csv
