@@ -20,16 +20,41 @@ from postgrest import APIError
 from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..config.dependencies import Dependencies
+from ..models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
 class ReportCompiler:
     """Expert in compiling and formatting comprehensive brand naming reports."""
     
-    def __init__(self, dependencies: Dependencies):
+    def __init__(self, dependencies=None, supabase=None, app_config: AppConfig = None):
         """Initialize the ReportCompiler with dependencies."""
-        self.supabase = dependencies.supabase
-        self.langsmith = dependencies.langsmith
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase
+            self.langsmith = None
+        
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "report_compiler"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
+        
+        # Initialize Gemini model with agent-specific temperature
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.model_name,
+            temperature=self.temperature,
+            google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
+            convert_system_message_to_human=True,
+            callbacks=[self.langsmith] if self.langsmith else None
+        )
+        
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized Report Compiler with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
+        )
         
         # Agent identity
         self.role = "Brand Name Analysis Report Compiler"
@@ -67,14 +92,6 @@ class ReportCompiler:
                 system_message,
                 HumanMessage(content=human_template)
             ])
-            
-            # Initialize LLM
-            self.llm = ChatGoogleGenerativeAI(
-                model="gemini-1.5-pro",
-                temperature=0.2,
-                google_api_key=settings.google_api_key,
-                convert_system_message_to_human=True
-            )
         except Exception as e:
             logger.error(
                 "Error initializing ReportCompiler",
@@ -104,12 +121,7 @@ class ReportCompiler:
             ValueError: If report compilation fails
         """
         try:
-            with tracing_enabled(
-                tags={
-                    "agent": "ReportCompiler",
-                    "run_id": run_id
-                }
-            ):
+            with tracing_enabled():
                 # Prepare state data for the prompt
                 state_data = {
                     "run_id": run_id,

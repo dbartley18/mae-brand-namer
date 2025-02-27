@@ -44,21 +44,28 @@ from mae_brand_namer.utils.supabase_utils import SupabaseManager
 from mae_brand_namer.config.settings import settings
 from mae_brand_namer.config.dependencies import Dependencies, create_dependencies
 from mae_brand_namer.models.state import BrandNameGenerationState
+from mae_brand_namer.models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
-# Mapping of node names to agent types and task names for process monitoring
+# Map workflow node names to agent and task names
 node_to_agent_task = {
-    "generate_uid": ("UIDGeneratorAgent", "Generate_UID"),
-    "understand_brand_context": ("BrandContextExpert", "Understand_Brand_Context"),
-    "generate_brand_names": ("BrandNameCreationExpert", "Generate_Brand_Names"),
-    "process_linguistics": ("LinguisticsExpert", "Analyze_Linguistics"),
-    "process_cultural_sensitivity": ("CulturalSensitivityExpert", "Analyze_Cultural_Sensitivity"),
-    "process_analyses": ("AnalysisCoordinator", "Process_Analyses"),
-    "process_evaluation": ("BrandNameEvaluator", "Evaluate_Brand_Names"),
+    "process_uid": ("UIDGeneratorAgent", "Generate_UID"),
+    "process_brand_context": ("BrandContextExpert", "Understand_Brand_Context"),
+    "process_brand_names": ("BrandNameCreationExpert", "Generate_Brand_Name_Ideas"),
+    "process_semantic_analysis": ("SemanticAnalysisExpert", "Conduct_Semantic_Analysis"),
+    "process_linguistic_analysis": ("LinguisticsExpert", "Conduct_Linguistic_Analysis"),
+    "process_cultural_analysis": ("CulturalSensitivityExpert", "Conduct_Cultural_Sensitivity_Analysis"),
+    "process_translation_analysis": ("TranslationAnalysisExpert", "Conduct_Translation_Analysis"),
+    "process_analyses": ("AnalysisCoordinator", "Conduct_All_Analyses"),
+    "process_evaluation": ("BrandNameEvaluator", "Evaluate_Brand_Name_Ideas"),
+    "process_domain_analysis": ("DomainAnalysisExpert", "Conduct_Domain_Search"),
+    "process_seo_analysis": ("SEOOnlineDiscoveryExpert", "Analyze_SEO_and_Online_Discoverability"),
+    "process_competitor_analysis": ("CompetitorAnalysisExpert", "Analyze_Competitor_Names"),
+    "process_survey_simulation": ("SurveySimulationExpert", "Conduct_Survey_Simulation"),
     "process_market_research": ("MarketResearchExpert", "Analyze_Market_Research"),
-    "compile_report": ("ReportCompiler", "Compile_Report"),
-    "store_report": ("ReportStorer", "Store_Report")
+    "compile_report": ("ReportCompiler", "Compile_And_Format_Report"),
+    "store_report": ("ReportStorer", "Store_Report"),
 }
 
 class ProcessSupervisorCallbackHandler(BaseCallbackHandler):
@@ -365,48 +372,58 @@ def create_workflow(
     config: dict = None
 ) -> StateGraph:
     """
-    Create and configure the brand naming workflow graph.
-    
-    This function sets up the workflow state graph with all nodes, edges, and process monitoring.
-    It uses callback handlers for task logging and error management.
+    Create the brand naming workflow.
     
     Args:
-        config: RunnableConfig object containing configuration parameters.
-            May include 'langsmith_client', 'default_step_delay', and 'step_delays'.
+        config: Optional configuration dictionary
         
     Returns:
-        Configured StateGraph for the brand naming workflow
+        A StateGraph instance representing the workflow
     """
-    # Extract parameters from config if provided
-    if config is None:
-        config = {}
+    app_config = AppConfig.get_instance()
     
-    # Get configuration values with defaults
-    configurable = config.get("configurable", {})
-    langsmith_client = configurable.get("langsmith_client")
-    default_step_delay = configurable.get("default_step_delay", 2.0)
-    step_delays = configurable.get("step_delays")
+    # Create agents
+    uid_generator_agent = UIDGeneratorAgent()
+    brand_context_expert = BrandContextExpert(dependencies=Dependencies(supabase=SupabaseManager()))
+    brand_name_creation_expert = BrandNameCreationExpert(dependencies=Dependencies(supabase=SupabaseManager()))
+    semantic_expert = SemanticAnalysisExpert(dependencies=Dependencies(supabase=SupabaseManager()))
+    linguistic_expert = LinguisticsExpert(dependencies=Dependencies(supabase=SupabaseManager()))
+    cultural_sensitivity_expert = CulturalSensitivityExpert(dependencies=Dependencies(supabase=SupabaseManager()))
+    translation_expert = TranslationAnalysisExpert(dependencies=Dependencies(supabase=SupabaseManager()))
+    domain_analysis_expert = DomainAnalysisExpert(dependencies=Dependencies(supabase=SupabaseManager()))
+    seo_online_discovery_expert = SEOOnlineDiscoveryExpert(dependencies=Dependencies(supabase=SupabaseManager()))
+    competitor_analysis_expert = CompetitorAnalysisExpert(dependencies=Dependencies(supabase=SupabaseManager()))
+    survey_simulation_expert = SurveySimulationExpert(dependencies=Dependencies(supabase=SupabaseManager()))
+    market_research_expert = MarketResearchExpert(dependencies=Dependencies(supabase=SupabaseManager()))
+    report_compiler = ReportCompiler(dependencies=Dependencies(supabase=SupabaseManager()))
+    report_storer = ReportStorer(dependencies=Dependencies(supabase=SupabaseManager()))
+    brand_name_evaluator = BrandNameEvaluator(dependencies=Dependencies(supabase=SupabaseManager()))
     
-    # Create a single Supabase manager instance
-    supabase_manager = SupabaseManager()
-    
-    # Initialize supervisor for process monitoring
-    supervisor = ProcessSupervisor(dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client))
-    
-    # Initialize step_delays if None
+    # Get step delays from config or use defaults
+    step_delays = config.get("step_delays", None)
     if step_delays is None:
         step_delays = {
             # Fast steps
-            "generate_uid": 0.5,
+            "process_uid": 0.1,
+            "process_brand_context": 1.0,
+            # Analysis steps
+            "process_semantic_analysis": 2.0,
+            "process_linguistic_analysis": 2.0,
+            "process_cultural_analysis": 2.0,
+            "process_translation_analysis": 2.0,
+            "process_domain_analysis": 2.0,
+            "process_seo_analysis": 2.0,
+            "process_competitor_analysis": 2.0,
+            "process_survey_simulation": 2.0,
+            # Legacy combined analysis step
+            "process_analyses": 5.0,
             # Medium steps
-            "understand_brand_context": 2.0,
-            "compile_report": 2.0,
-            "store_report": 2.0,
-            # Slow steps that need more throttling
-            "generate_brand_names": 3.0,
-            "process_analyses": 5.0,  # This is a heavy step with multiple experts
+            "process_brand_names": 3.0,
             "process_evaluation": 3.0,
             "process_market_research": 3.0,
+            # Slow steps
+            "compile_report": 5.0,
+            "store_report": 1.0,
         }
     
     # Create workflow state graph
@@ -417,7 +434,7 @@ def create_workflow(
         """Wraps an async function to ensure it's properly awaited before returning"""
         async def wrapper(state):
             # Get the appropriate delay for this step (or use default)
-            step_delay = step_delays.get(step_name, default_step_delay)
+            step_delay = step_delays.get(step_name, 2.0)
             # Add throttling delay before executing the step
             await throttle_step(step_delay, step_name)
             # Execute the original function
@@ -425,71 +442,113 @@ def create_workflow(
             return result
         return wrapper
     
-    # Define agent nodes with proper async handling
-    workflow.add_node("generate_uid", 
-        wrap_async_node(process_uid, "generate_uid")
-    )
+    # Add nodes for each step in the workflow
+    workflow.add_node("process_uid", wrap_async_node(process_uid, "process_uid"))
+    workflow.add_node("process_brand_context", wrap_async_node(
+        lambda state: process_brand_context(state, brand_context_expert),
+        "process_brand_context"
+    ))
+    workflow.add_node("process_brand_names", wrap_async_node(
+        lambda state: process_brand_names(state, brand_name_creation_expert),
+        "process_brand_names"
+    ))
     
-    # Wrap process_brand_context and other async functions
-    workflow.add_node("understand_brand_context", 
-        wrap_async_node(lambda state: process_brand_context(state, BrandContextExpert(
-            dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
-        )), "understand_brand_context")
-    )
+    # Add separate nodes for each analysis type
+    workflow.add_node("process_semantic_analysis", wrap_async_node(
+        lambda state: process_semantic_analysis(state, semantic_expert),
+        "process_semantic_analysis"
+    ))
+    workflow.add_node("process_linguistic_analysis", wrap_async_node(
+        lambda state: process_linguistic_analysis(state, linguistic_expert),
+        "process_linguistic_analysis"
+    ))
+    workflow.add_node("process_cultural_analysis", wrap_async_node(
+        lambda state: process_cultural_analysis(state, cultural_sensitivity_expert),
+        "process_cultural_analysis"
+    ))
+    workflow.add_node("process_translation_analysis", wrap_async_node(
+        lambda state: process_translation_analysis(state, translation_expert),
+        "process_translation_analysis"
+    ))
     
-    workflow.add_node("generate_brand_names", 
-        wrap_async_node(lambda state: process_brand_names(state, BrandNameCreationExpert(
-            dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
-        )), "generate_brand_names")
-    )
+    # Keep the legacy combined node for backward compatibility
+    workflow.add_node("process_analyses", wrap_async_node(
+        lambda state: process_analyses(state, [
+            semantic_expert,
+            linguistic_expert, 
+            cultural_sensitivity_expert,
+            translation_expert
+        ]),
+        "process_analyses"
+    ))
     
-    # Use the original process_analyses function signature but with throttling
-    workflow.add_node("process_analyses", 
-        wrap_async_node(lambda state: process_analyses(state, [
-            SemanticAnalysisExpert(dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)),
-            LinguisticsExpert(dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)),
-            CulturalSensitivityExpert(dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)),
-            TranslationAnalysisExpert(dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)),
-            DomainAnalysisExpert(dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)),
-            SEOOnlineDiscoveryExpert(dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)),
-            CompetitorAnalysisExpert(dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)),
-            SurveySimulationExpert(dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client))
-        ]), "process_analyses")
-    )
+    workflow.add_node("process_evaluation", wrap_async_node(
+        lambda state: process_evaluation(state, brand_name_evaluator),
+        "process_evaluation"
+    ))
+    workflow.add_node("process_domain_analysis", wrap_async_node(
+        lambda state: process_domain_analysis(state, domain_analysis_expert),
+        "process_domain_analysis"
+    ))
+    workflow.add_node("process_seo_analysis", wrap_async_node(
+        lambda state: process_seo_analysis(state, seo_online_discovery_expert),
+        "process_seo_analysis"
+    ))
+    workflow.add_node("process_competitor_analysis", wrap_async_node(
+        lambda state: process_competitor_analysis(state, competitor_analysis_expert),
+        "process_competitor_analysis"
+    ))
+    workflow.add_node("process_survey_simulation", wrap_async_node(
+        lambda state: process_survey_simulation(state, survey_simulation_expert),
+        "process_survey_simulation"
+    ))
+    workflow.add_node("process_market_research", wrap_async_node(
+        lambda state: process_market_research(state, market_research_expert),
+        "process_market_research"
+    ))
+    workflow.add_node("compile_report", wrap_async_node(
+        lambda state: process_report(state, report_compiler),
+        "compile_report"
+    ))
+    workflow.add_node("store_report", wrap_async_node(
+        lambda state: process_report_storage(state, report_storer),
+        "store_report"
+    ))
     
-    workflow.add_node("process_evaluation", 
-        wrap_async_node(lambda state: process_evaluation(state, BrandNameEvaluator(
-            dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
-        )), "process_evaluation")
-    )
+    # Set the entry point
+    workflow.set_entry_point("process_uid")
     
-    workflow.add_node("process_market_research", 
-        wrap_async_node(lambda state: process_market_research(state, MarketResearchExpert(
-            dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
-        )), "process_market_research")
-    )
+    # Define edges
+    workflow.add_edge("process_uid", "process_brand_context")
+    workflow.add_edge("process_brand_context", "process_brand_names")
     
-    workflow.add_node("compile_report", 
-        wrap_async_node(lambda state: process_report(state, ReportCompiler(
-            dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
-        )), "compile_report")
-    )
+    # Connect brand name generation to individual analysis agents
+    workflow.add_edge("process_brand_names", "process_semantic_analysis")
+    workflow.add_edge("process_brand_names", "process_linguistic_analysis")
+    workflow.add_edge("process_brand_names", "process_cultural_analysis")  
+    workflow.add_edge("process_brand_names", "process_translation_analysis")
     
-    workflow.add_node("store_report", 
-        wrap_async_node(lambda state: process_report_storage(state, ReportStorer()), "store_report")
-    )
+    # Connect all analysis agents to evaluation
+    workflow.add_edge("process_semantic_analysis", "process_evaluation")
+    workflow.add_edge("process_linguistic_analysis", "process_evaluation")
+    workflow.add_edge("process_cultural_analysis", "process_evaluation")
+    workflow.add_edge("process_translation_analysis", "process_evaluation")
     
-    # Define conditional edges
-    workflow.add_edge("generate_uid", "understand_brand_context")
-    workflow.add_edge("understand_brand_context", "generate_brand_names")
-    workflow.add_edge("generate_brand_names", "process_analyses")
-    workflow.add_edge("process_analyses", "process_evaluation")
-    workflow.add_edge("process_evaluation", "process_market_research")
+    # Connect the evaluation to market research steps
+    workflow.add_edge("process_evaluation", "process_domain_analysis")
+    workflow.add_edge("process_evaluation", "process_seo_analysis")
+    workflow.add_edge("process_evaluation", "process_competitor_analysis")
+    workflow.add_edge("process_evaluation", "process_survey_simulation")
+    
+    # Connect market research to report compilation
+    workflow.add_edge("process_domain_analysis", "process_market_research")
+    workflow.add_edge("process_seo_analysis", "process_market_research")
+    workflow.add_edge("process_competitor_analysis", "process_market_research")
+    workflow.add_edge("process_survey_simulation", "process_market_research")
+    
+    # Connect report compilation to storage
     workflow.add_edge("process_market_research", "compile_report")
     workflow.add_edge("compile_report", "store_report")
-    
-    # Define entry point
-    workflow.set_entry_point("generate_uid")
     
     return workflow
 
@@ -636,7 +695,22 @@ async def process_brand_names(state: BrandNameGenerationState, agent: BrandNameC
             # IMPORTANT: These field names must exactly match the output_keys defined in tasks.yaml
             # for the Generate_Brand_Name_Ideas task to ensure proper data flow
             if brand_names:
-                # Store the list of generated names
+                # Safely convert values to float, defaulting to 0.0 if conversion fails
+                try:
+                    target_audience_relevance = float(brand_names[0].get("target_audience_relevance", 0))
+                except (ValueError, TypeError):
+                    target_audience_relevance = 0.0
+                    
+                try:
+                    market_differentiation = float(brand_names[0].get("market_differentiation", 0))
+                except (ValueError, TypeError):
+                    market_differentiation = 0.0
+                    
+                try:
+                    visual_branding_potential = float(brand_names[0].get("visual_branding_potential", 0))
+                except (ValueError, TypeError):
+                    visual_branding_potential = 0.0
+                    
                 return {
                     "generated_names": brand_names,
                     # The following fields will be derived from the first brand name for state tracking
@@ -645,11 +719,12 @@ async def process_brand_names(state: BrandNameGenerationState, agent: BrandNameC
                     "naming_category": brand_names[0].get("naming_category", ""),
                     "brand_personality_alignment": brand_names[0].get("brand_personality_alignment", ""),
                     "brand_promise_alignment": brand_names[0].get("brand_promise_alignment", ""),
-                    "target_audience_relevance": brand_names[0].get("target_audience_relevance", ""),
-                    "market_differentiation": brand_names[0].get("market_differentiation", ""),
+                    # Convert floats to strings and wrap in lists to match BrandNameGenerationState model
+                    "target_audience_relevance": [str(target_audience_relevance)],
+                    "market_differentiation": [str(market_differentiation)],
                     "memorability_score": brand_names[0].get("memorability_score", 0),
                     "pronounceability_score": brand_names[0].get("pronounceability_score", 0),
-                    "visual_branding_potential": brand_names[0].get("visual_branding_potential", ""),
+                    "visual_branding_potential": [str(visual_branding_potential)],
                     "name_generation_methodology": brand_names[0].get("name_generation_methodology", ""),
                     "timestamp": brand_names[0].get("timestamp", ""),
                     "rank": brand_names[0].get("rank", 0)
@@ -669,190 +744,526 @@ async def process_brand_names(state: BrandNameGenerationState, agent: BrandNameC
             "status": "error"
         }
 
-async def process_linguistics(state: BrandNameGenerationState, agent: LinguisticsExpert) -> Dict[str, Any]:
-    try:
-        with tracing_v2_enabled():
-            linguistics_analysis = await agent.analyze_names(
-                brand_names=[name["brand_name"] for name in state.generated_names],
-                run_id=state.run_id
-            )
-            
-            # Create a deep copy of generated names to update
-            generated_names = [dict(name) for name in state.generated_names]
-            
-            # Update with linguistics analysis
-            for i, name_data in enumerate(generated_names):
-                if i < len(linguistics_analysis):
-                    name_data["linguistic_analysis"] = linguistics_analysis[i]
-            
-            # IMPORTANT: Match the output_keys defined in tasks.yaml
-            # Create a flattened version of the first analysis for state tracking
-            if linguistics_analysis and len(linguistics_analysis) > 0:
-                first_analysis = linguistics_analysis[0]
-                return {
-                    "generated_names": generated_names,
-                    "run_id": state.run_id,
-                    "brand_name": first_analysis.get("brand_name", ""),
-                    "pronunciation_ease": first_analysis.get("pronunciation_ease", ""),
-                    "euphony_vs_cacophony": first_analysis.get("euphony_vs_cacophony", ""),
-                    "rhythm_and_meter": first_analysis.get("rhythm_and_meter", ""),
-                    "phoneme_frequency_distribution": first_analysis.get("phoneme_frequency_distribution", ""),
-                    "sound_symbolism": first_analysis.get("sound_symbolism", ""),
-                    "word_class": first_analysis.get("word_class", ""),
-                    "morphological_transparency": first_analysis.get("morphological_transparency", ""),
-                    "grammatical_gender": first_analysis.get("grammatical_gender", ""),
-                    "inflectional_properties": first_analysis.get("inflectional_properties", ""),
-                    "ease_of_marketing_integration": first_analysis.get("ease_of_marketing_integration", ""),
-                    "naturalness_in_collocations": first_analysis.get("naturalness_in_collocations", ""),
-                    "homophones_homographs": first_analysis.get("homophones_homographs", False),
-                    "semantic_distance_from_competitors": first_analysis.get("semantic_distance_from_competitors", ""),
-                    "neologism_appropriateness": first_analysis.get("neologism_appropriateness", ""),
-                    "overall_readability_score": first_analysis.get("overall_readability_score", ""),
-                    "notes": first_analysis.get("notes", ""),
-                    "rank": first_analysis.get("rank", 0)
-                }
-            else:
-                return {
-                    "generated_names": generated_names
-                }
-    except Exception as e:
-        logger.error(f"Error in process_linguistics: {str(e)}")
-        return {
-            "errors": [{
-                "step": "analyze_linguistics",
-                "error": str(e),
-                "traceback": traceback.format_exc(),
-                "timestamp": datetime.now().isoformat()
-            }],
-            "status": "error"
-        }
-
-async def process_cultural_sensitivity(state: BrandNameGenerationState, agent: CulturalSensitivityExpert) -> Dict[str, Any]:
-    try:
-        with tracing_v2_enabled():
-            cultural_analysis = await agent.analyze_names(
-                brand_names=[name["brand_name"] for name in state.generated_names],
-                run_id=state.run_id
-            )
-            
-            # Create a deep copy of generated names to update
-            generated_names = [dict(name) for name in state.generated_names]
-            
-            # Update with cultural sensitivity analysis
-            for i, name_data in enumerate(generated_names):
-                if i < len(cultural_analysis):
-                    name_data["cultural_analysis"] = cultural_analysis[i]
-            
-            # IMPORTANT: Match the output_keys defined in tasks.yaml
-            # Create a flattened version of the first analysis for state tracking
-            if cultural_analysis and len(cultural_analysis) > 0:
-                first_analysis = cultural_analysis[0]
-                return {
-                    "generated_names": generated_names,
-                    "run_id": state.run_id,
-                    "brand_name": first_analysis.get("brand_name", ""),
-                    "cultural_connotations": first_analysis.get("cultural_connotations", ""),
-                    "symbolic_meanings": first_analysis.get("symbolic_meanings", ""),
-                    "alignment_with_cultural_values": first_analysis.get("alignment_with_cultural_values", ""),
-                    "religious_sensitivities": first_analysis.get("religious_sensitivities", ""),
-                    "social_political_taboos": first_analysis.get("social_political_taboos", ""),
-                    "body_part_bodily_function_connotations": first_analysis.get("body_part_bodily_function_connotations", False),
-                    "age_related_connotations": first_analysis.get("age_related_connotations", ""),
-                    "gender_connotations": first_analysis.get("gender_connotations", ""),
-                    "regional_variations": first_analysis.get("regional_variations", ""),
-                    "historical_meaning": first_analysis.get("historical_meaning", ""),
-                    "current_event_relevance": first_analysis.get("current_event_relevance", ""),
-                    "overall_risk_rating": first_analysis.get("overall_risk_rating", ""),
-                    "notes": first_analysis.get("notes", ""),
-                    "rank": first_analysis.get("rank", 0)
-                }
-            else:
-                return {
-                    "generated_names": generated_names
-                }
-    except Exception as e:
-        logger.error(f"Error in process_cultural_sensitivity: {str(e)}")
-        return {
-            "errors": [{
-                "step": "analyze_cultural_sensitivity",
-                "error": str(e),
-                "traceback": traceback.format_exc(),
-                "timestamp": datetime.now().isoformat()
-            }],
-            "status": "error"
-        }
-
-async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEvaluator) -> Dict[str, Any]:
+async def process_semantic_analysis(state: BrandNameGenerationState, agent: SemanticAnalysisExpert) -> Dict[str, Any]:
     """
-    Evaluate brand names based on analyses and select top candidates.
+    Processes semantic analysis for each brand name.
     
     Args:
         state: The current workflow state
-        agent: The BrandNameEvaluator agent
+        agent: The semantic analysis expert agent
         
     Returns:
-        Dictionary with state updates including evaluation results and shortlisted names
+        Dict with semantic_analysis_output containing the analysis results
     """
     try:
-        with tracing_v2_enabled():
-            # Get input data
-            brand_names = state.generated_names
-            
-            # Extract relevant analyses from the state
-            semantic_analyses = [name.get("semantic_analysis") for name in brand_names]
-            linguistic_analyses = [name.get("linguistic_analysis") for name in brand_names]
-            cultural_analyses = [name.get("cultural_analysis") for name in brand_names]
-            
-            # Evaluate brand names
-            evaluation_results = await agent.evaluate_brand_names(
-                brand_names=[name["brand_name"] for name in brand_names],
-                semantic_analyses=semantic_analyses,
-                linguistic_analyses=linguistic_analyses, 
-                cultural_analyses=cultural_analyses,
-                run_id=state.run_id
-            )
-            
-            # Shortlist top brand names
-            shortlisted_names = [result for result in evaluation_results if result.get("shortlist_status") is True]
-            
-            logger.info(f"Evaluated {len(brand_names)} brand names; shortlisted {len(shortlisted_names)}")
-            
-            # IMPORTANT: Match the output_keys defined in tasks.yaml
-            # Create a flattened version of the first evaluation for state tracking
-            if evaluation_results and len(evaluation_results) > 0:
-                first_result = evaluation_results[0]
-                return {
-                    "evaluation_results": evaluation_results,
-                    "shortlisted_names": shortlisted_names,
-                    "run_id": state.run_id,
-                    "brand_name": first_result.get("brand_name", ""),
-                    "strategic_alignment_score": first_result.get("strategic_alignment_score", 0),
-                    "distinctiveness_score": first_result.get("distinctiveness_score", 0),
-                    "competitive_advantage": first_result.get("competitive_advantage", ""),
-                    "brand_fit_score": first_result.get("brand_fit_score", 0),
-                    "positioning_strength": first_result.get("positioning_strength", ""),
-                    "memorability_score": first_result.get("memorability_score", 0),
-                    "pronounceability_score": first_result.get("pronounceability_score", 0),
-                    "meaningfulness_score": first_result.get("meaningfulness_score", 0),
-                    "phonetic_harmony": first_result.get("phonetic_harmony", ""),
-                    "visual_branding_potential": first_result.get("visual_branding_potential", ""),
-                    "storytelling_potential": first_result.get("storytelling_potential", ""),
-                    "domain_viability_score": first_result.get("domain_viability_score", 0),
-                    "overall_score": first_result.get("overall_score", 0),
-                    "shortlist_status": first_result.get("shortlist_status", False),
-                    "evaluation_comments": first_result.get("evaluation_comments", ""),
-                    "rank": first_result.get("rank", 0)
-                }
-            else:
-                return {
-                    "evaluation_results": [],
-                    "shortlisted_names": []
-                }
+        logger.info(f"Running semantic analysis...")
+        
+        # Extract required input from state
+        run_id = state.run_id
+        brand_names = [name["brand_name"] for name in state.generated_names]
+        brand_context = getattr(state, "brand_context", {})
+        brand_values = getattr(state, "brand_values", [])
+        
+        # Run semantic analysis
+        semantic_analyses = []
+        for brand_name in brand_names:
+            try:
+                # Call the agent to perform semantic analysis
+                analysis = await agent.analyze_brand_name(
+                    run_id=run_id,
+                    brand_name=brand_name,
+                    brand_context=brand_context,
+                    brand_values=brand_values
+                )
+                
+                # Ensure all required fields are present and have appropriate data types
+                # Required fields (is_nullable=NO)
+                analysis["run_id"] = run_id
+                analysis["task_name"] = "Conduct_Semantic_Analysis"
+                analysis["brand_name"] = brand_name
+                
+                # Optional fields with appropriate data types
+                analysis.setdefault("denotative_meaning", "")
+                analysis.setdefault("etymology", "")
+                analysis.setdefault("descriptiveness", 0.0)  # numeric
+                analysis.setdefault("concreteness", 0.0)  # numeric
+                analysis.setdefault("emotional_valence", "")
+                analysis.setdefault("brand_personality", "")
+                analysis.setdefault("sensory_associations", "")
+                analysis.setdefault("figurative_language", "")
+                analysis.setdefault("ambiguity", False)  # boolean
+                analysis.setdefault("irony_or_paradox", False)  # boolean
+                analysis.setdefault("humor_playfulness", False)  # boolean
+                analysis.setdefault("phoneme_combinations", "")
+                analysis.setdefault("sound_symbolism", "")
+                analysis.setdefault("rhyme_rhythm", False)  # boolean
+                analysis.setdefault("alliteration_assonance", False)  # boolean
+                analysis.setdefault("word_length_syllables", 0)  # integer
+                analysis.setdefault("compounding_derivation", "")
+                analysis.setdefault("brand_name_type", "")
+                analysis.setdefault("memorability_score", 0.0)  # numeric
+                analysis.setdefault("pronunciation_ease", 0.0)  # numeric
+                analysis.setdefault("clarity_understandability", 0.0)  # numeric
+                analysis.setdefault("uniqueness_differentiation", 0.0)  # numeric
+                analysis.setdefault("brand_fit_relevance", 0.0)  # numeric
+                analysis.setdefault("semantic_trademark_risk", "")
+                analysis.setdefault("rank", 0)  # numeric
+                
+                semantic_analyses.append(analysis)
+            except Exception as e:
+                logger.error(f"Error in semantic analysis for {brand_name}: {str(e)}")
+                # Create a minimal analysis entry with required fields for failed analyses
+                semantic_analyses.append({
+                    "run_id": run_id,
+                    "task_name": "Conduct_Semantic_Analysis",
+                    "brand_name": brand_name,
+                    "denotative_meaning": f"Error: {str(e)}"
+                })
+        
+        return {
+            "semantic_analysis_output": semantic_analyses
+        }
+        
     except Exception as e:
-        logger.error(f"Error in process_evaluation: {str(e)}")
+        logger.error(f"Error in process_semantic_analysis: {str(e)}")
         return {
             "errors": [{
-                "step": "evaluate_brand_names",
+                "step": "semantic_analysis",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+            }],
+            "semantic_analysis_output": []
+        }
+
+async def process_linguistic_analysis(state: BrandNameGenerationState, agent: LinguisticsExpert) -> Dict[str, Any]:
+    """
+    Processes linguistic analysis for each brand name.
+    
+    Args:
+        state: The current workflow state
+        agent: The linguistics expert agent
+        
+    Returns:
+        Dict with linguistic_analysis_output containing the analysis results
+    """
+    try:
+        logger.info(f"Running linguistic analysis...")
+        
+        # Extract required input from state
+        run_id = state.run_id
+        brand_names = [name["brand_name"] for name in state.generated_names]
+        brand_context = getattr(state, "brand_context", {})
+        brand_values = getattr(state, "brand_values", [])
+        
+        # Run linguistic analysis
+        linguistic_analyses = []
+        for brand_name in brand_names:
+            try:
+                # Call the agent to perform linguistic analysis
+                analysis = await agent.analyze_brand_name(
+                    run_id=run_id,
+                    brand_name=brand_name,
+                    brand_context=brand_context,
+                    brand_values=brand_values
+                )
+                
+                # Ensure all required fields are present and have appropriate data types
+                # Required fields (is_nullable=NO)
+                analysis["run_id"] = run_id
+                analysis["brand_name"] = brand_name
+                
+                # Optional fields with appropriate data types
+                analysis.setdefault("pronunciation_ease", "")
+                analysis.setdefault("euphony_vs_cacophony", "")
+                analysis.setdefault("rhythm_and_meter", "")
+                analysis.setdefault("phoneme_frequency_distribution", "")
+                analysis.setdefault("sound_symbolism", "")
+                analysis.setdefault("word_class", "")
+                analysis.setdefault("morphological_transparency", "")
+                analysis.setdefault("grammatical_gender", "")
+                analysis.setdefault("inflectional_properties", "")
+                analysis.setdefault("ease_of_marketing_integration", "")
+                analysis.setdefault("naturalness_in_collocations", "")
+                analysis.setdefault("homophones_homographs", False)  # boolean
+                analysis.setdefault("semantic_distance_from_competitors", "")
+                analysis.setdefault("neologism_appropriateness", "")
+                analysis.setdefault("overall_readability_score", "")
+                analysis.setdefault("notes", "")
+                analysis.setdefault("rank", 0)  # numeric
+                
+                linguistic_analyses.append(analysis)
+            except Exception as e:
+                logger.error(f"Error in linguistic analysis for {brand_name}: {str(e)}")
+                # Create a minimal analysis entry with required fields for failed analyses
+                linguistic_analyses.append({
+                    "run_id": run_id,
+                    "brand_name": brand_name,
+                    "pronunciation_ease": f"Error: {str(e)}",
+                    "notes": f"Analysis failed: {str(e)}"
+                })
+        
+        return {
+            "linguistic_analysis_output": linguistic_analyses
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in process_linguistic_analysis: {str(e)}")
+        return {
+            "errors": [{
+                "step": "linguistic_analysis",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+            }],
+            "linguistic_analysis_output": []
+        }
+
+async def process_cultural_analysis(state: BrandNameGenerationState, agent: CulturalSensitivityExpert) -> Dict[str, Any]:
+    """
+    Processes cultural sensitivity analysis for each brand name.
+    
+    Args:
+        state: The current workflow state
+        agent: The cultural sensitivity expert agent
+        
+    Returns:
+        Dict with cultural_sensitivity_output containing the analysis results
+    """
+    try:
+        logger.info(f"Running cultural sensitivity analysis...")
+        
+        # Extract required input from state
+        run_id = state.run_id
+        brand_names = [name["brand_name"] for name in state.generated_names]
+        brand_context = getattr(state, "brand_context", {})
+        brand_values = getattr(state, "brand_values", [])
+        
+        # Run cultural sensitivity analysis
+        cultural_analyses = []
+        for brand_name in brand_names:
+            try:
+                # Call the agent to perform cultural analysis
+                analysis = await agent.analyze_brand_name(
+                    run_id=run_id,
+                    brand_name=brand_name,
+                    brand_context=brand_context,
+                    brand_values=brand_values
+                )
+                
+                # Ensure all required fields are present and have appropriate data types
+                # Required fields (is_nullable=NO)
+                analysis["run_id"] = run_id
+                analysis["brand_name"] = brand_name
+                
+                # Optional fields with appropriate data types
+                analysis.setdefault("cultural_connotations", "")
+                analysis.setdefault("symbolic_meanings", "")
+                analysis.setdefault("alignment_with_cultural_values", "")
+                analysis.setdefault("religious_sensitivities", "")
+                analysis.setdefault("social_political_taboos", "")
+                analysis.setdefault("body_part_bodily_function_connotations", False)  # boolean
+                analysis.setdefault("age_related_connotations", "")
+                analysis.setdefault("gender_connotations", "")
+                analysis.setdefault("regional_variations", "")
+                analysis.setdefault("historical_meaning", "")
+                analysis.setdefault("current_event_relevance", "")
+                analysis.setdefault("overall_risk_rating", "")
+                analysis.setdefault("notes", "")
+                analysis.setdefault("rank", 0)  # numeric
+                
+                cultural_analyses.append(analysis)
+            except Exception as e:
+                logger.error(f"Error in cultural sensitivity analysis for {brand_name}: {str(e)}")
+                # Create a minimal analysis entry with required fields for failed analyses
+                cultural_analyses.append({
+                    "run_id": run_id,
+                    "brand_name": brand_name,
+                    "cultural_connotations": f"Error: {str(e)}",
+                    "notes": f"Analysis failed: {str(e)}"
+                })
+        
+        return {
+            "cultural_sensitivity_output": cultural_analyses
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in process_cultural_analysis: {str(e)}")
+        return {
+            "errors": [{
+                "step": "cultural_sensitivity_analysis",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+            }],
+            "cultural_sensitivity_output": []
+        }
+
+async def process_translation_analysis(state: BrandNameGenerationState, agent: TranslationAnalysisExpert) -> Dict[str, Any]:
+    """
+    Processes translation analysis for each brand name.
+    
+    Args:
+        state: The current workflow state
+        agent: The translation analysis expert agent
+        
+    Returns:
+        Dict with translation_analysis_output containing the analysis results
+    """
+    try:
+        logger.info(f"Running translation analysis...")
+        
+        # Extract required input from state
+        run_id = state.run_id
+        brand_names = [name["brand_name"] for name in state.generated_names]
+        
+        # Run translation analysis
+        translation_analyses = []
+        for brand_name in brand_names:
+            try:
+                # Call the agent to perform translation analysis
+                analysis = await agent.analyze_brand_name(
+                    run_id=run_id,
+                    brand_name=brand_name
+                )
+                
+                # Ensure all required fields are present and have appropriate data types
+                # Required fields (is_nullable=NO)
+                analysis["run_id"] = run_id
+                analysis["brand_name"] = brand_name
+                analysis["target_language"] = analysis.get("target_language", "multiple")
+                
+                # Optional fields with appropriate data types
+                analysis.setdefault("direct_translation", "")
+                analysis.setdefault("semantic_shift", "")
+                analysis.setdefault("pronunciation_difficulty", "")
+                analysis.setdefault("phonetic_similarity_undesirable", False)  # boolean
+                analysis.setdefault("phonetic_retention", "")
+                analysis.setdefault("cultural_acceptability", "")
+                analysis.setdefault("adaptation_needed", False)  # boolean
+                analysis.setdefault("proposed_adaptation", "")
+                analysis.setdefault("brand_essence_preserved", "")
+                analysis.setdefault("global_consistency_vs_localization", "")
+                analysis.setdefault("notes", "")
+                analysis.setdefault("rank", 0)  # numeric
+                
+                translation_analyses.append(analysis)
+            except Exception as e:
+                logger.error(f"Error in translation analysis for {brand_name}: {str(e)}")
+                # Create a minimal analysis entry with required fields for failed analyses
+                translation_analyses.append({
+                    "run_id": run_id,
+                    "brand_name": brand_name,
+                    "target_language": "multiple",
+                    "direct_translation": f"Error: {str(e)}",
+                    "notes": f"Analysis failed: {str(e)}"
+                })
+        
+        return {
+            "translation_analysis_output": translation_analyses
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in process_translation_analysis: {str(e)}")
+        return {
+            "errors": [{
+                "step": "translation_analysis",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+            }],
+            "translation_analysis_output": []
+        }
+
+async def process_domain_analysis(state: BrandNameGenerationState, agent: DomainAnalysisExpert) -> Dict[str, Any]:
+    """Process domain name analysis with error handling and tracing."""
+    try:
+        with tracing_v2_enabled():
+            # Prepare brand names for analysis
+            brand_names = [name["brand_name"] for name in state.generated_names]
+            brand_context = getattr(state, "brand_context", {})
+            
+            # Run domain analysis
+            domain_analyses = []
+            for brand_name in brand_names:
+                try:
+                    analysis = await agent.analyze_brand_name(
+                        run_id=state.run_id,
+                        brand_name=brand_name,
+                        brand_context=brand_context
+                    )
+                    domain_analyses.append(analysis)
+                except Exception as e:
+                    logger.error(f"Error in domain analysis for {brand_name}: {str(e)}")
+                    # Continue with other brand names even if one fails
+            
+            # Create a deep copy of generated names to update
+            generated_names = [dict(name) for name in state.generated_names]
+            
+            # Update with domain analysis results
+            for i, name_data in enumerate(generated_names):
+                brand_name = name_data["brand_name"]
+                for analysis in domain_analyses:
+                    if analysis.get("brand_name") == brand_name:
+                        name_data["domain_analysis"] = analysis
+                        break
+            
+            return {
+                "generated_names": generated_names,
+                "domain_analyses": domain_analyses
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in process_domain_analysis: {str(e)}")
+        return {
+            "errors": [{
+                "step": "domain_analysis",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
+
+async def process_seo_analysis(state: BrandNameGenerationState, agent: SEOOnlineDiscoveryExpert) -> Dict[str, Any]:
+    """Process SEO analysis with error handling and tracing."""
+    try:
+        with tracing_v2_enabled():
+            # Prepare brand names for analysis
+            brand_names = [name["brand_name"] for name in state.generated_names]
+            brand_context = getattr(state, "brand_context", {})
+            
+            # Run SEO analysis
+            seo_analyses = []
+            for brand_name in brand_names:
+                try:
+                    analysis = await agent.analyze_brand_name(
+                        run_id=state.run_id,
+                        brand_name=brand_name,
+                        brand_context=brand_context
+                    )
+                    seo_analyses.append(analysis)
+                except Exception as e:
+                    logger.error(f"Error in SEO analysis for {brand_name}: {str(e)}")
+                    # Continue with other brand names even if one fails
+            
+            # Create a deep copy of generated names to update
+            generated_names = [dict(name) for name in state.generated_names]
+            
+            # Update with SEO analysis results
+            for i, name_data in enumerate(generated_names):
+                brand_name = name_data["brand_name"]
+                for analysis in seo_analyses:
+                    if analysis.get("brand_name") == brand_name:
+                        name_data["seo_analysis"] = analysis
+                        break
+            
+            return {
+                "generated_names": generated_names,
+                "seo_analyses": seo_analyses
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in process_seo_analysis: {str(e)}")
+        return {
+            "errors": [{
+                "step": "seo_analysis",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
+
+async def process_competitor_analysis(state: BrandNameGenerationState, agent: CompetitorAnalysisExpert) -> Dict[str, Any]:
+    """Process competitor analysis with error handling and tracing."""
+    try:
+        with tracing_v2_enabled():
+            # Prepare brand names for analysis
+            brand_names = [name["brand_name"] for name in state.generated_names]
+            brand_context = getattr(state, "brand_context", {})
+            
+            # Run competitor analysis
+            competitor_analyses = []
+            for brand_name in brand_names:
+                try:
+                    analysis = await agent.analyze_brand_name(
+                        run_id=state.run_id,
+                        brand_name=brand_name,
+                        brand_context=brand_context
+                    )
+                    competitor_analyses.append(analysis)
+                except Exception as e:
+                    logger.error(f"Error in competitor analysis for {brand_name}: {str(e)}")
+                    # Continue with other brand names even if one fails
+            
+            # Create a deep copy of generated names to update
+            generated_names = [dict(name) for name in state.generated_names]
+            
+            # Update with competitor analysis results
+            for i, name_data in enumerate(generated_names):
+                brand_name = name_data["brand_name"]
+                for analysis in competitor_analyses:
+                    if analysis.get("brand_name") == brand_name:
+                        name_data["competitor_analysis"] = analysis
+                        break
+            
+            return {
+                "generated_names": generated_names,
+                "competitor_analyses": competitor_analyses
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in process_competitor_analysis: {str(e)}")
+        return {
+            "errors": [{
+                "step": "competitor_analysis",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
+
+async def process_survey_simulation(state: BrandNameGenerationState, agent: SurveySimulationExpert) -> Dict[str, Any]:
+    """Process survey simulation with error handling and tracing."""
+    try:
+        with tracing_v2_enabled():
+            # Prepare brand names for analysis
+            brand_names = [name["brand_name"] for name in state.generated_names]
+            brand_context = getattr(state, "brand_context", {})
+            
+            # Run survey simulation
+            survey_analyses = []
+            for brand_name in brand_names:
+                try:
+                    analysis = await agent.analyze_brand_name(
+                        run_id=state.run_id,
+                        brand_name=brand_name,
+                        brand_context=brand_context
+                    )
+                    survey_analyses.append(analysis)
+                except Exception as e:
+                    logger.error(f"Error in survey simulation for {brand_name}: {str(e)}")
+                    # Continue with other brand names even if one fails
+            
+            # Create a deep copy of generated names to update
+            generated_names = [dict(name) for name in state.generated_names]
+            
+            # Update with survey simulation results
+            for i, name_data in enumerate(generated_names):
+                brand_name = name_data["brand_name"]
+                for analysis in survey_analyses:
+                    if analysis.get("brand_name") == brand_name:
+                        name_data["survey_analysis"] = analysis
+                        break
+            
+            return {
+                "generated_names": generated_names,
+                "survey_analyses": survey_analyses
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in process_survey_simulation: {str(e)}")
+        return {
+            "errors": [{
+                "step": "survey_simulation",
                 "error": str(e),
                 "traceback": traceback.format_exc(),
                 "timestamp": datetime.now().isoformat()
@@ -861,59 +1272,310 @@ async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEv
         }
 
 async def process_analyses(state: BrandNameGenerationState, analyzers: List[Any]) -> Dict[str, Any]:
-    """Run multiple analysis agents concurrently using LangGraph map."""
+    """
+    Legacy function that processes all analyses in one step for backward compatibility.
+    
+    Args:
+        state: The current workflow state
+        analyzers: List of analyzer agents
+        
+    Returns:
+        Dict with all analysis outputs
+    """
     try:
-        with tracing_v2_enabled():
-            # Prepare input data for map
-            input_data = [
-                {
-                    "run_id": state.run_id,
-                    "brand_name": name["brand_name"],
-                    "brand_context": getattr(state, "brand_context", {})
-                }
-                for name in state.generated_names
-            ]
+        logger.info(f"Running combined analyses for backward compatibility...")
+        
+        # Extract required input from state
+        run_id = state.run_id
+        brand_names = [name["brand_name"] for name in state.generated_names]
+        brand_context = getattr(state, "brand_context", {})
+        brand_values = getattr(state, "brand_values", [])
+        
+        # Initialize outputs
+        semantic_analyses = []
+        linguistic_analyses = []
+        cultural_analyses = []
+        translation_analyses = []
+        
+        # Get agents by type
+        semantic_agent = next((a for a in analyzers if isinstance(a, SemanticAnalysisExpert)), None)
+        linguistic_agent = next((a for a in analyzers if isinstance(a, LinguisticsExpert)), None)
+        cultural_agent = next((a for a in analyzers if isinstance(a, CulturalSensitivityExpert)), None)
+        translation_agent = next((a for a in analyzers if isinstance(a, TranslationAnalysisExpert)), None)
+        
+        # Process analyses concurrently
+        async def process_brand_name(brand_name):
+            results = {}
             
-            # Run analyses concurrently using client.map
-            # Use the client from dependencies if available
-            if hasattr(state, "client") and state.client:
-                # Use the client from state for map operation with callbacks
-                client = state.client
-            elif hasattr(state, "deps") and state.deps and state.deps.get("langsmith"):
-                # Use the client from dependencies
-                client = state.deps["langsmith"]
-                logger.info("Using LangSmith client from dependencies")
-            else:
-                # If no client is provided, create one for this operation
-                from langsmith import Client
-                logger.info("Creating new LangGraph client for map operation")
-                client = Client()
+            # Semantic analysis
+            if semantic_agent:
+                try:
+                    analysis = await semantic_agent.analyze_brand_name(
+                        run_id=run_id,
+                        brand_name=brand_name,
+                        brand_context=brand_context,
+                        brand_values=brand_values
+                    )
+                    
+                    # Ensure required fields are present
+                    analysis["run_id"] = run_id
+                    analysis["task_name"] = "Conduct_Semantic_Analysis"
+                    analysis["brand_name"] = brand_name
+                    
+                    # Set defaults for important fields to match Supabase schema
+                    analysis.setdefault("denotative_meaning", "")
+                    analysis.setdefault("brand_personality", "")
+                    analysis.setdefault("memorability_score", 0.0)
+                    
+                    results["semantic"] = analysis
+                    semantic_analyses.append(analysis)
+                except Exception as e:
+                    logger.error(f"Error in semantic analysis for {brand_name}: {str(e)}")
+                    error_analysis = {
+                        "run_id": run_id,
+                        "task_name": "Conduct_Semantic_Analysis",
+                        "brand_name": brand_name,
+                        "denotative_meaning": f"Error: {str(e)}"
+                    }
+                    results["semantic"] = error_analysis
+                    semantic_analyses.append(error_analysis)
             
-            # Use the client for map operation
-            results = await client.map(
-                analyzers,
-                input_data,
-                lambda agent, data: agent.analyze_brand_name(**data),
-                config={"callbacks": [client]}
-            )
+            # Linguistic analysis
+            if linguistic_agent:
+                try:
+                    analysis = await linguistic_agent.analyze_brand_name(
+                        run_id=run_id,
+                        brand_name=brand_name, 
+                        brand_context=brand_context,
+                        brand_values=brand_values
+                    )
+                    
+                    # Ensure required fields are present
+                    analysis["run_id"] = run_id
+                    analysis["brand_name"] = brand_name
+                    
+                    # Set defaults for important fields to match Supabase schema
+                    analysis.setdefault("pronunciation_ease", "")
+                    analysis.setdefault("overall_readability_score", "")
+                    
+                    results["linguistic"] = analysis
+                    linguistic_analyses.append(analysis)
+                except Exception as e:
+                    logger.error(f"Error in linguistic analysis for {brand_name}: {str(e)}")
+                    error_analysis = {
+                        "run_id": run_id,
+                        "brand_name": brand_name,
+                        "pronunciation_ease": f"Error: {str(e)}",
+                        "notes": f"Analysis failed: {str(e)}"
+                    }
+                    results["linguistic"] = error_analysis
+                    linguistic_analyses.append(error_analysis)
             
-            # Return dictionary of state updates
-            return {
-                "analysis_results": {
-                    "results": results
-                }
-            }
+            # Cultural sensitivity analysis
+            if cultural_agent:
+                try:
+                    analysis = await cultural_agent.analyze_brand_name(
+                        run_id=run_id,
+                        brand_name=brand_name,
+                        brand_context=brand_context,
+                        brand_values=brand_values
+                    )
+                    
+                    # Ensure required fields are present
+                    analysis["run_id"] = run_id
+                    analysis["brand_name"] = brand_name
+                    
+                    # Set defaults for important fields to match Supabase schema
+                    analysis.setdefault("cultural_connotations", "")
+                    analysis.setdefault("overall_risk_rating", "")
+                    
+                    results["cultural"] = analysis
+                    cultural_analyses.append(analysis)
+                except Exception as e:
+                    logger.error(f"Error in cultural sensitivity analysis for {brand_name}: {str(e)}")
+                    error_analysis = {
+                        "run_id": run_id,
+                        "brand_name": brand_name,
+                        "cultural_connotations": f"Error: {str(e)}",
+                        "notes": f"Analysis failed: {str(e)}"
+                    }
+                    results["cultural"] = error_analysis
+                    cultural_analyses.append(error_analysis)
             
+            # Translation analysis
+            if translation_agent:
+                try:
+                    analysis = await translation_agent.analyze_brand_name(
+                        run_id=run_id,
+                        brand_name=brand_name
+                    )
+                    
+                    # Ensure required fields are present
+                    analysis["run_id"] = run_id
+                    analysis["brand_name"] = brand_name
+                    analysis["target_language"] = analysis.get("target_language", "multiple")
+                    
+                    # Set defaults for important fields to match Supabase schema
+                    analysis.setdefault("direct_translation", "")
+                    analysis.setdefault("semantic_shift", "")
+                    
+                    results["translation"] = analysis
+                    translation_analyses.append(analysis)
+                except Exception as e:
+                    logger.error(f"Error in translation analysis for {brand_name}: {str(e)}")
+                    error_analysis = {
+                        "run_id": run_id,
+                        "brand_name": brand_name,
+                        "target_language": "multiple",
+                        "direct_translation": f"Error: {str(e)}",
+                        "notes": f"Analysis failed: {str(e)}"
+                    }
+                    results["translation"] = error_analysis
+                    translation_analyses.append(error_analysis)
+            
+            return results
+        
+        # Process all brand names concurrently
+        tasks = [process_brand_name(brand_name) for brand_name in brand_names]
+        analyses_results = await asyncio.gather(*tasks)
+        
+        # Create a deep copy of generated names to update
+        generated_names = [dict(name) for name in state.generated_names]
+        
+        # Update with analysis results
+        for i, name_data in enumerate(generated_names):
+            brand_name = name_data["brand_name"]
+            for result in analyses_results:
+                if result.get("semantic", {}).get("brand_name") == brand_name:
+                    name_data["semantic_analysis"] = result.get("semantic", {})
+                if result.get("linguistic", {}).get("brand_name") == brand_name:
+                    name_data["linguistic_analysis"] = result.get("linguistic", {})
+                if result.get("cultural", {}).get("brand_name") == brand_name:
+                    name_data["cultural_analysis"] = result.get("cultural", {})
+                if result.get("translation", {}).get("brand_name") == brand_name:
+                    name_data["translation_analysis"] = result.get("translation", {})
+        
+        return {
+            "generated_names": generated_names,
+            "semantic_analysis_output": semantic_analyses,
+            "linguistic_analysis_output": linguistic_analyses,
+            "cultural_sensitivity_output": cultural_analyses,
+            "translation_analysis_output": translation_analyses
+        }
+        
     except Exception as e:
         logger.error(f"Error in process_analyses: {str(e)}")
         return {
             "errors": [{
-                "step": "process_analyses",
+                "step": "analyses",
                 "error": str(e),
                 "traceback": traceback.format_exc(),
-                "timestamp": datetime.now().isoformat()
             }],
-            "status": "error"
+            "semantic_analysis_output": [],
+            "linguistic_analysis_output": [],
+            "cultural_sensitivity_output": [],
+            "translation_analysis_output": []
+        }
+
+async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEvaluator) -> Dict[str, Any]:
+    """
+    Processes evaluation of brand names based on all analyses.
+    
+    Args:
+        state: The current workflow state
+        agent: The brand name evaluator agent
+        
+    Returns:
+        Dict with evaluated_names containing the evaluation results
+    """
+    try:
+        logger.info(f"Running brand name evaluation...")
+        
+        # Extract required input from state
+        run_id = state.run_id
+        brand_names = [name["brand_name"] for name in state.generated_names]
+        
+        # Collect all analyses outputs
+        semantic_analyses = getattr(state, "semantic_analysis_output", [])
+        linguistic_analyses = getattr(state, "linguistic_analysis_output", [])
+        cultural_analyses = getattr(state, "cultural_sensitivity_output", [])
+        translation_analyses = getattr(state, "translation_analysis_output", [])
+        
+        # Organize analyses by brand name for easy access
+        analyses_by_name = {}
+        for brand_name in brand_names:
+            analyses_by_name[brand_name] = {
+                "semantic": next((a for a in semantic_analyses if a.get("brand_name") == brand_name), {}),
+                "linguistic": next((a for a in linguistic_analyses if a.get("brand_name") == brand_name), {}),
+                "cultural": next((a for a in cultural_analyses if a.get("brand_name") == brand_name), {}),
+                "translation": next((a for a in translation_analyses if a.get("brand_name") == brand_name), {})
+            }
+        
+        # Evaluate brand names
+        evaluations = []
+        for brand_name in brand_names:
+            try:
+                analyses = analyses_by_name.get(brand_name, {})
+                
+                evaluation = await agent.evaluate_brand_name(
+                    run_id=run_id,
+                    brand_name=brand_name,
+                    semantic_analysis=analyses.get("semantic", {}),
+                    linguistic_analysis=analyses.get("linguistic", {}),
+                    cultural_analysis=analyses.get("cultural", {}),
+                    translation_analysis=analyses.get("translation", {})
+                )
+                
+                # Ensure all required fields are present and have appropriate data types
+                # Required fields (is_nullable=NO)
+                evaluation["run_id"] = run_id
+                evaluation["brand_name"] = brand_name
+                evaluation["shortlist_status"] = evaluation.get("shortlist_status", False)
+                
+                # Optional fields with appropriate data types
+                evaluation.setdefault("strategic_alignment_score", 0)  # integer
+                evaluation.setdefault("distinctiveness_score", 0)  # integer
+                evaluation.setdefault("memorability_score", 0)  # integer
+                evaluation.setdefault("pronounceability_score", 0)  # integer
+                evaluation.setdefault("meaningfulness_score", 0)  # integer
+                evaluation.setdefault("brand_fit_score", 0)  # integer
+                evaluation.setdefault("domain_viability_score", 0)  # integer
+                evaluation.setdefault("overall_score", 0)  # integer
+                evaluation.setdefault("evaluation_comments", "")
+                evaluation.setdefault("created_at", datetime.now().isoformat())
+                evaluation.setdefault("rank", 0.0)  # numeric
+                
+                evaluations.append(evaluation)
+            except Exception as e:
+                logger.error(f"Error in evaluation for {brand_name}: {str(e)}")
+                # Create a minimal evaluation entry with required fields for failed evaluations
+                evaluations.append({
+                    "run_id": run_id,
+                    "brand_name": brand_name,
+                    "shortlist_status": False,
+                    "evaluation_comments": f"Evaluation failed: {str(e)}"
+                })
+        
+        # Sort evaluations by overall score (descending)
+        evaluations.sort(key=lambda x: x.get("overall_score", 0), reverse=True)
+        
+        # Assign ranks based on sorted order
+        for i, evaluation in enumerate(evaluations):
+            evaluation["rank"] = i + 1
+        
+        return {
+            "evaluated_names": evaluations
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in process_evaluation: {str(e)}")
+        return {
+            "errors": [{
+                "step": "evaluation",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+            }],
+            "evaluated_names": []
         }
 
 async def process_market_research(state: BrandNameGenerationState, agent: MarketResearchExpert) -> Dict[str, Any]:
@@ -1026,9 +1688,9 @@ async def process_report_storage(state: BrandNameGenerationState, agent: ReportS
 
 def create_langsmith_tracer() -> Optional[LangChainTracer]:
     """Create LangSmith tracer if enabled."""
-    if settings.langsmith_enabled:
+    if settings.langchain_tracing_v2:
         return LangChainTracer(
-            project_name=settings.langsmith_project,
+            project_name=settings.langchain_project,
             tags={
                 "application": "mae_brand_namer",
                 "version": settings.version,

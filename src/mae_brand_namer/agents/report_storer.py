@@ -7,11 +7,43 @@ from postgrest import APIError
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
+from ..utils.supabase_utils import SupabaseManager
+from ..models.app_config import AppConfig
+from ..llms.chat_google_generative_ai import ChatGoogleGenerativeAI
 
 logger = get_logger(__name__)
 
 class ReportStorer:
     """Expert in storing and delivering finished brand naming reports."""
+    
+    def __init__(self, dependencies=None, supabase=None, app_config: AppConfig = None):
+        """Initialize the ReportStorer with dependencies."""
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase
+            self.langsmith = None
+        
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "report_storer"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
+        
+        # Initialize Gemini model with agent-specific temperature
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.model_name,
+            temperature=self.temperature,
+            google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
+            convert_system_message_to_human=True,
+            callbacks=[self.langsmith] if self.langsmith else None
+        )
+        
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized Report Storer with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
+        )
     
     async def store_report(self, run_id: str, report_data: Dict[str, Any]) -> Dict[str, Any]:
         """Store the generated report and return access information.

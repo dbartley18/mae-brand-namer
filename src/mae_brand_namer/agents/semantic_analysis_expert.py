@@ -22,13 +22,14 @@ from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..models.state import SemanticAnalysisResult
 from ..utils.supabase_utils import SupabaseManager
+from ..models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
 class SemanticAnalysisExpert:
     """Expert in analyzing semantic meaning and brand associations."""
     
-    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None, app_config: AppConfig = None):
         """Initialize the SemanticAnalysisExpert with dependencies."""
         if dependencies:
             self.supabase = dependencies.supabase
@@ -43,6 +44,11 @@ class SemanticAnalysisExpert:
         linguistics, brand psychology, and consumer behavior. Your analyses help companies understand the 
         full semantic impact of their brand names."""
         
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "semantic_analysis_expert"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
+        
         # Initialize retry configuration
         self.max_retries = settings.max_retries
         self.retry_delay = settings.retry_delay
@@ -54,13 +60,19 @@ class SemanticAnalysisExpert:
                 project_name=os.getenv("LANGCHAIN_PROJECT", "mae-brand-namer")
             )
         
-        # Initialize Gemini model with tracing
+        # Initialize Gemini model with agent-specific temperature
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.7,
-            google_api_key=os.getenv("GEMINI_API_KEY"),
+            model=settings.model_name,
+            temperature=self.temperature,
+            google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
             convert_system_message_to_human=True,
             callbacks=[self.tracer] if self.tracer else None
+        )
+        
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized {self.role} with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
         )
         
         # Define output schemas for structured parsing
@@ -167,7 +179,7 @@ class SemanticAnalysisExpert:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
-            with tracing_enabled(tags={"agent": "SemanticAnalysisExpert", "run_id": run_id}):
+            with tracing_enabled():
                 # Format prompt with parser instructions
                 formatted_prompt = self.prompt.format_messages(
                     format_instructions=self.output_parser.get_format_instructions(),

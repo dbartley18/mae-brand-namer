@@ -4,6 +4,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
 import asyncio
+import os
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate, load_prompt
@@ -14,6 +15,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..config.dependencies import Dependencies
+from ..models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
@@ -34,25 +36,40 @@ class CompetitorAnalysisExpert:
         prompt (ChatPromptTemplate): Configured prompt template
     """
     
-    def __init__(self, dependencies: Dependencies) -> None:
+    def __init__(self, dependencies=None, supabase=None, app_config: AppConfig = None):
         """Initialize the CompetitorAnalysisExpert with dependencies.
         
         Args:
             dependencies: Container for application dependencies
+            supabase: Supabase client for data storage
+            app_config: Application configuration for agent-specific settings
         """
-        self.supabase = dependencies.supabase
-        self.langsmith = dependencies.langsmith
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase
+            self.langsmith = None
         
         # Agent identity
-        self.role = "Competitor Analysis & Market Positioning Expert"
+        self.role = "Competitor Analysis Expert"
         self.goal = (
-            "Evaluate brand names in the context of market competition, analyzing "
-            "differentiation, positioning, and competitive advantage potential."
+            "Analyze competitor brand names to identify patterns, trends, "
+            "and opportunities for differentiation in the marketplace."
         )
+        
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "competitor_analysis_expert"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
         
         # Load prompts from YAML files
         prompt_dir = Path(__file__).parent / "prompts" / "competitor_analysis"
-        self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
+        try:
+            self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
+        except Exception as e:
+            logger.error(f"Error loading prompts: {str(e)}")
+            raise
         
         # Define output schemas for structured parsing
         self.output_schemas = [
@@ -121,13 +138,19 @@ class CompetitorAnalysisExpert:
             self.output_schemas
         )
         
-        # Initialize Gemini model with tracing
+        # Initialize Gemini model with agent-specific temperature
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.7,
-            google_api_key=settings.google_api_key,
+            model=settings.model_name,
+            temperature=self.temperature,
+            google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
             convert_system_message_to_human=True,
             callbacks=[self.langsmith] if self.langsmith else None
+        )
+        
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized Competitor Analysis Expert with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
         )
         
         # Create the prompt template with metadata

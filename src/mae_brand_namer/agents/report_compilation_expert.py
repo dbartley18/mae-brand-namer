@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 class ReportCompilationExpert:
     """Expert in compiling and formatting comprehensive brand naming reports."""
     
-    def __init__(self, supabase: SupabaseManager = None):
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
         """Initialize the ReportCompilationExpert with necessary configurations."""
         # Agent identity
         self.role = "Enterprise Report Compilation & Formatting Specialist"
@@ -37,12 +37,17 @@ class ReportCompilationExpert:
         logically structured report."""
         
         # Initialize Supabase client
-        self.supabase = supabase or SupabaseManager()
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase or SupabaseManager()
+            self.langsmith = None
         
         # Initialize LangSmith tracer if enabled
         self.tracer = None
         if settings.langchain_tracing_v2:
-            self.tracer = LangChainTracer(project_name=settings.langsmith_project)
+            self.tracer = LangChainTracer(project_name=settings.langchain_project)
         
         # Initialize Gemini model with tracing
         self.llm = ChatGoogleGenerativeAI(
@@ -235,7 +240,7 @@ class ReportCompilationExpert:
             )
             
             # Call the LLM with the formatted prompt
-            with tracing_enabled(tags={"task": "generate_recommendations"}):
+            with tracing_enabled():
                 response = await self.llm.ainvoke(prompt)
                 
             # Parse the structured response

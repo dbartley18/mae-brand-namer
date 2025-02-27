@@ -4,6 +4,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import json
 from pathlib import Path
+import os
 
 from langchain.prompts import load_prompt
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -15,21 +16,41 @@ from postgrest.exceptions import APIError
 from ..utils.logging import get_logger
 from ..utils.supabase_utils import SupabaseManager
 from ..config.settings import settings
+from ..models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
 class MarketResearchExpert:
     """Expert in market research and brand name evaluation."""
     
-    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
-        """Initialize the MarketResearchExpert with necessary configurations."""
-        # Initialize Supabase client
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None, app_config: AppConfig = None):
+        """Initialize the MarketResearchExpert with dependencies."""
         if dependencies:
             self.supabase = dependencies.supabase
             self.langsmith = dependencies.langsmith
         else:
-            self.supabase = supabase or SupabaseManager()
+            self.supabase = supabase
             self.langsmith = None
+        
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "market_research_expert"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
+        
+        # Initialize Gemini model with agent-specific temperature
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.model_name,
+            temperature=self.temperature,
+            google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
+            convert_system_message_to_human=True,
+            callbacks=[self.langsmith] if self.langsmith else None
+        )
+        
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized Market Research Expert with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
+        )
         
         # Load prompts from YAML files
         try:
@@ -39,15 +60,6 @@ class MarketResearchExpert:
         except Exception as e:
             logger.error(f"Error loading prompts: {str(e)}")
             raise
-        
-        # Initialize Gemini model with tracing
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.3,  # Lower temperature for more consistent analysis
-            google_api_key=settings.google_api_key,
-            convert_system_message_to_human=True,
-            callbacks=settings.get_langsmith_callbacks()
-        )
         
         # Define output schemas for structured parsing
         self.output_schemas = [
@@ -93,14 +105,7 @@ class MarketResearchExpert:
             # Create system message
             system_message = SystemMessage(content=self.system_prompt.format())
             
-            with tracing_enabled(
-                tags={
-                    "agent": "MarketResearchExpert",
-                    "task": "analyze_market_potential",
-                    "run_id": run_id,
-                    "prompt_type": "market_research"
-                }
-            ):
+            with tracing_enabled():
                 for brand_name in brand_names:
                     # Format the research prompt
                     formatted_prompt = self.research_prompt.format(

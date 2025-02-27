@@ -19,6 +19,7 @@ from postgrest.exceptions import APIError
 from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..config.dependencies import Dependencies
+from ..models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
@@ -38,114 +39,122 @@ class TranslationAnalysisExpert:
         prompt (ChatPromptTemplate): Configured prompt template
     """
     
-    def __init__(self, dependencies: Dependencies) -> None:
-        """Initialize the TranslationAnalysisExpert with dependencies.
-        
-        Args:
-            dependencies: Container for application dependencies
-        """
-        self.supabase = dependencies.supabase
-        self.langsmith = dependencies.langsmith
-        
-        # Agent identity
-        self.role = "Global Linguistic Adaptation & Translation Specialist"
-        self.goal = (
-            "Ensure effective translation of brand names across global markets "
-            "while preserving meaning and avoiding negative connotations."
-        )
+    def __init__(self, dependencies=None, supabase=None, app_config: AppConfig = None):
+        """Initialize the TranslationAnalysisExpert with dependencies."""
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase
+            self.langsmith = None
+
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "translation_analysis_expert"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
         
         # Load prompts from YAML files
-        prompt_dir = Path(__file__).parent / "prompts" / "translation_analysis"
-        self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
-        
-        # Define output schemas for structured parsing
-        self.output_schemas = [
-            ResponseSchema(
-                name="direct_translation",
-                description="Direct translation analysis",
-                type="string"
-            ),
-            ResponseSchema(
-                name="semantic_shift",
-                description="Analysis of meaning changes across languages",
-                type="string"
-            ),
-            ResponseSchema(
-                name="pronunciation_difficulty",
-                description="Assessment of pronunciation challenges",
-                type="string"
-            ),
-            ResponseSchema(
-                name="cultural_implications",
-                description="Cultural context and implications",
-                type="string"
-            ),
-            ResponseSchema(
-                name="localization_needs",
-                description="Required adaptations for local markets",
-                type="array"
-            ),
-            ResponseSchema(
-                name="market_specific_issues",
-                description="Issues in specific target markets",
-                type="array"
-            ),
-            ResponseSchema(
-                name="global_viability_score",
-                description="Overall global viability score (1-10)",
-                type="number"
-            ),
-            ResponseSchema(
-                name="language_specific_scores",
-                description="Viability scores by language",
-                type="object"
-            ),
-            ResponseSchema(
-                name="adaptation_recommendations",
-                description="Recommendations for global adaptation",
-                type="array"
-            ),
-            ResponseSchema(
-                name="risk_assessment",
-                description="Potential risks in translation/adaptation",
-                type="array"
+        try:
+            prompt_dir = Path(__file__).parent / "prompts" / "translation_analysis"
+            self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
+            
+            # Define output schemas for structured parsing
+            self.output_schemas = [
+                ResponseSchema(
+                    name="direct_translation",
+                    description="Direct translation analysis",
+                    type="string"
+                ),
+                ResponseSchema(
+                    name="semantic_shift",
+                    description="Analysis of meaning changes across languages",
+                    type="string"
+                ),
+                ResponseSchema(
+                    name="pronunciation_difficulty",
+                    description="Assessment of pronunciation challenges",
+                    type="string"
+                ),
+                ResponseSchema(
+                    name="cultural_implications",
+                    description="Cultural context and implications",
+                    type="string"
+                ),
+                ResponseSchema(
+                    name="localization_needs",
+                    description="Required adaptations for local markets",
+                    type="array"
+                ),
+                ResponseSchema(
+                    name="market_specific_issues",
+                    description="Issues in specific target markets",
+                    type="array"
+                ),
+                ResponseSchema(
+                    name="global_viability_score",
+                    description="Overall global viability score (1-10)",
+                    type="number"
+                ),
+                ResponseSchema(
+                    name="language_specific_scores",
+                    description="Viability scores by language",
+                    type="object"
+                ),
+                ResponseSchema(
+                    name="adaptation_recommendations",
+                    description="Recommendations for global adaptation",
+                    type="array"
+                ),
+                ResponseSchema(
+                    name="risk_assessment",
+                    description="Potential risks in translation/adaptation",
+                    type="array"
+                )
+            ]
+            self.output_parser = StructuredOutputParser.from_response_schemas(
+                self.output_schemas
             )
-        ]
-        self.output_parser = StructuredOutputParser.from_response_schemas(
-            self.output_schemas
-        )
-        
-        # Initialize Gemini model with tracing
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.7,
-            google_api_key=settings.google_api_key,
-            convert_system_message_to_human=True,
-            callbacks=[self.langsmith] if self.langsmith else []
-        )
-        
-        # Create the prompt template with metadata
-        system_message = SystemMessage(
-            content=self.system_prompt.format(),
-            additional_kwargs={
-                "metadata": {
-                    "agent_type": "translation_analyzer",
-                    "methodology": "Global Brand Adaptation Framework"
+            
+            # Create the prompt template with metadata
+            system_message = SystemMessage(
+                content=self.system_prompt.format(),
+                additional_kwargs={
+                    "metadata": {
+                        "agent_type": "translation_analyzer",
+                        "methodology": "Global Brand Adaptation Framework"
+                    }
                 }
-            }
+            )
+            human_template = (
+                "Analyze the translation and global market adaptation needs for the "
+                "following brand name:\n"
+                "Brand Name: {brand_name}\n"
+                "Brand Context: {brand_context}\n"
+                "\nFormat your analysis according to this schema:\n"
+                "{format_instructions}"
+            )
+            self.prompt = ChatPromptTemplate.from_messages([
+                system_message,
+                HumanMessage(content=human_template)
+            ])
+        except Exception as e:
+            logger.error(f"Error loading prompts: {str(e)}")
+            raise
+        
+        # Initialize Gemini model with agent-specific temperature
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.model_name,
+            temperature=self.temperature,
+            google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
+            convert_system_message_to_human=True,
+            callbacks=[self.langsmith] if self.langsmith else None
         )
-        human_template = (
-            "Analyze the translation and global market adaptation needs for the "
-            "following brand name:\n"
-            "Brand Name: {brand_name}\n"
-            "Brand Context: {brand_context}\n"
-            "\nFormat your analysis according to this schema:\n"
-            "{format_instructions}"
+        
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized Translation Analysis Expert with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
         )
-        self.prompt = ChatPromptTemplate.from_messages([
-            system_message,
-            HumanMessage(content=human_template)
-        ])
 
     async def analyze_brand_name(
         self,

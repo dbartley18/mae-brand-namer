@@ -17,14 +17,15 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..utils.supabase_utils import SupabaseManager
+from ..models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
 class BrandNameEvaluator:
     """Expert in evaluating and shortlisting brand names based on comprehensive analysis."""
     
-    def __init__(self, supabase: SupabaseManager = None):
-        """Initialize the BrandNameEvaluator with necessary configurations."""
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None, app_config: AppConfig = None):
+        """Initialize the BrandNameEvaluator with dependencies."""
         # Agent identity from agents.yaml
         self.role = "Brand Name Evaluation Expert"
         self.goal = """Assess and score generated brand names based on linguistic qualities, cultural considerations, 
@@ -47,81 +48,101 @@ class BrandNameEvaluator:
         self.retry_delay = settings.retry_delay
         
         # Initialize Supabase client
-        self.supabase = supabase or SupabaseManager()
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase or SupabaseManager()
+            self.langsmith = None
         
         # Initialize LangSmith tracer if enabled
         self.tracer = None
         if settings.langchain_tracing_v2:
-            self.tracer = LangChainTracer(project_name=settings.langsmith_project)
+            self.tracer = LangChainTracer(project_name=settings.langchain_project)
         
-        # Initialize Gemini model with tracing
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.7,
-            google_api_key=settings.google_api_key,
-            convert_system_message_to_human=True,
-            callbacks=[self.tracer] if self.tracer else None
-        )
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "brand_name_evaluator"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
         
-        # Define output schemas for structured parsing
-        self.output_schemas = [
-            ResponseSchema(name="strategic_alignment_score", description="How well the name aligns with the Brand Identity Brief (1-10)", type="number"),
-            ResponseSchema(name="distinctiveness_score", description="How unique the name is compared to competitors (1-10)", type="number"),
-            ResponseSchema(name="competitive_advantage", description="Analysis of competitive differentiation"),
-            ResponseSchema(name="brand_fit_score", description="How well the name aligns with brand strategy (1-10)", type="number"),
-            ResponseSchema(name="positioning_strength", description="Effectiveness in market positioning"),
-            ResponseSchema(name="memorability_score", description="How easy the name is to recall (1-10)", type="number"),
-            ResponseSchema(name="pronounceability_score", description="How easily the name is spoken (1-10)", type="number"),
-            ResponseSchema(name="meaningfulness_score", description="Clarity and positive connotation (1-10)", type="number"),
-            ResponseSchema(name="phonetic_harmony", description="Analysis of sound patterns and flow"),
-            ResponseSchema(name="visual_branding_potential", description="Potential for visual identity development"),
-            ResponseSchema(name="storytelling_potential", description="Capacity for brand narrative development"),
-            ResponseSchema(name="domain_viability_score", description="Initial domain name availability assessment (1-10)", type="number"),
-            ResponseSchema(name="overall_score", description="Total weighted evaluation score (1-10)", type="number"),
-            ResponseSchema(name="shortlist_status", description="Whether selected for final round (Yes/No)"),
-            ResponseSchema(name="evaluation_comments", description="Detailed rationale for evaluation"),
-            ResponseSchema(name="rank", description="Final ranking among all candidates (1-N)", type="number")
-        ]
-        self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
-        
-        # Create the prompt template with metadata for LangGraph Studio
-        system_message = SystemMessage(
-            content=f"""You are a Brand Name Evaluator with the following profile:
-            Role: {self.role}
-            Goal: {self.goal}
-            Backstory: {self.backstory}
+        # Load prompts from YAML files
+        try:
+            # Define output schemas for structured parsing
+            self.output_schemas = [
+                ResponseSchema(name="strategic_alignment_score", description="How well the name aligns with the Brand Identity Brief (1-10)", type="number"),
+                ResponseSchema(name="distinctiveness_score", description="How unique the name is compared to competitors (1-10)", type="number"),
+                ResponseSchema(name="competitive_advantage", description="Analysis of competitive differentiation"),
+                ResponseSchema(name="brand_fit_score", description="How well the name aligns with brand strategy (1-10)", type="number"),
+                ResponseSchema(name="positioning_strength", description="Effectiveness in market positioning"),
+                ResponseSchema(name="memorability_score", description="How easy the name is to recall (1-10)", type="number"),
+                ResponseSchema(name="pronounceability_score", description="How easily the name is spoken (1-10)", type="number"),
+                ResponseSchema(name="meaningfulness_score", description="Clarity and positive connotation (1-10)", type="number"),
+                ResponseSchema(name="phonetic_harmony", description="Analysis of sound patterns and flow"),
+                ResponseSchema(name="visual_branding_potential", description="Potential for visual identity development"),
+                ResponseSchema(name="storytelling_potential", description="Capacity for brand narrative development"),
+                ResponseSchema(name="domain_viability_score", description="Initial domain name availability assessment (1-10)", type="number"),
+                ResponseSchema(name="overall_score", description="Total weighted evaluation score (1-10)", type="number"),
+                ResponseSchema(name="shortlist_status", description="Whether selected for final round (Yes/No)"),
+                ResponseSchema(name="evaluation_comments", description="Detailed rationale for evaluation"),
+                ResponseSchema(name="rank", description="Final ranking among all candidates (1-N)", type="number")
+            ]
+            self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
             
-            Evaluate the provided brand name based on comprehensive analysis results.
-            Consider:
-            1. Strategic Alignment & Brand Fit
-            2. Distinctiveness & Competitive Advantage
-            3. Memorability & Pronounceability
-            4. Linguistic & Cultural Considerations
-            5. Global Market Potential
-            6. Digital Viability
-            
-            Format your response according to the following schema:
-            {{format_instructions}}
-            """,
-            additional_kwargs={
-                "metadata": {
-                    "agent_type": "brand_name_evaluator",
-                    "methodology": "Alina Wheeler's Designing Brand Identity"
+            # Create the prompt template with metadata for LangGraph Studio
+            system_message = SystemMessage(
+                content=f"""You are a Brand Name Evaluator with the following profile:
+                Role: {self.role}
+                Goal: {self.goal}
+                Backstory: {self.backstory}
+                
+                Evaluate the provided brand name based on comprehensive analysis results.
+                Consider:
+                1. Strategic Alignment & Brand Fit
+                2. Distinctiveness & Competitive Advantage
+                3. Memorability & Pronounceability
+                4. Linguistic & Cultural Considerations
+                5. Global Market Potential
+                6. Digital Viability
+                
+                Format your response according to the following schema:
+                {{format_instructions}}
+                """,
+                additional_kwargs={
+                    "metadata": {
+                        "agent_type": "brand_name_evaluator",
+                        "methodology": "Alina Wheeler's Designing Brand Identity"
+                    }
                 }
-            }
+            )
+            human_template = """Evaluate the following brand name based on all analysis results:
+            Brand Name: {brand_name}
+            Brand Context: {brand_context}
+            Semantic Analysis: {semantic_analysis}
+            Linguistic Analysis: {linguistic_analysis}
+            Cultural Analysis: {cultural_analysis}
+            Translation Analysis: {translation_analysis}
+            """
+            self.prompt = ChatPromptTemplate.from_messages([
+                system_message,
+                HumanMessage(content=human_template)
+            ])
+        except Exception as e:
+            logger.error(f"Error loading prompts: {str(e)}")
+        
+        # Initialize Gemini model with agent-specific temperature
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.model_name,
+            temperature=self.temperature,
+            google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
+            convert_system_message_to_human=True,
+            callbacks=[self.langsmith] if self.langsmith else None
         )
-        human_template = """Evaluate the following brand name based on all analysis results:
-        Brand Name: {brand_name}
-        Brand Context: {brand_context}
-        Semantic Analysis: {semantic_analysis}
-        Linguistic Analysis: {linguistic_analysis}
-        Cultural Analysis: {cultural_analysis}
-        Translation Analysis: {translation_analysis}
-        """
-        self.prompt = ChatPromptTemplate.from_messages([
-            system_message,
-            HumanMessage(content=human_template)
-        ])
+        
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized Brand Name Evaluator with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
+        )
 
     async def evaluate_brand_names(
         self,

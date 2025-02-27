@@ -1,7 +1,7 @@
 """Cultural Sensitivity Expert for analyzing brand names across cultural contexts."""
 
 import os
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 from pathlib import Path
 import asyncio
@@ -18,16 +18,26 @@ from postgrest import APIError
 from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..config.dependencies import Dependencies
+from ..models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
 class CulturalSensitivityExpert:
     """Expert in analyzing brand names for cultural sensitivity and appropriateness."""
     
-    def __init__(self, dependencies: Dependencies):
-        """Initialize the CulturalSensitivityExpert."""
-        self.supabase = dependencies.supabase
-        self.langsmith = dependencies.langsmith
+    def __init__(self, dependencies=None, supabase=None, app_config: AppConfig = None):
+        """Initialize the CulturalSensitivityExpert with dependencies."""
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase
+            self.langsmith = None
+        
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "cultural_sensitivity_expert"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
         
         try:
             # Load prompts
@@ -67,12 +77,19 @@ class CulturalSensitivityExpert:
                 HumanMessage(content=human_template)
             ])
             
-            # Initialize LLM
+            # Initialize Gemini model with agent-specific temperature
             self.llm = ChatGoogleGenerativeAI(
-                model="gemini-1.5-pro",
-                temperature=0.3,
-                google_api_key=settings.google_api_key,
-                convert_system_message_to_human=True
+                model=settings.model_name,
+                temperature=self.temperature,
+                google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
+                convert_system_message_to_human=True,
+                callbacks=[self.langsmith] if self.langsmith else None
+            )
+            
+            # Log the temperature setting being used
+            logger.info(
+                f"Initialized Cultural Sensitivity Expert with temperature: {self.temperature}",
+                extra={"agent": agent_name, "temperature": self.temperature}
             )
         except Exception as e:
             logger.error(

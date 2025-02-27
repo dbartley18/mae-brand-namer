@@ -7,14 +7,33 @@ from langchain_core.messages import HumanMessage
 
 from ..models.state import BrandNameGenerationState
 from ..utils.logging import get_logger
+from ..models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
 class UIDGeneratorAgent:
     """Agent responsible for generating unique run IDs for the workflow."""
     
-    def __init__(self):
-        """Initialize the UIDGeneratorAgent."""
+    def __init__(self, dependencies=None, supabase=None, app_config: AppConfig = None):
+        """Initialize the UIDGeneratorAgent with dependencies."""
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase
+            self.langsmith = None
+        
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "uid_generator"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
+        
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized UID Generator with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
+        )
+        
         self.role = "Unique ID Generator"
         self.goal = "Generate unique identifiers for workflow tracking"
     

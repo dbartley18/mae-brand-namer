@@ -27,6 +27,7 @@ from postgrest.exceptions import APIError
 from ..utils.logging import get_logger
 from ..utils.supabase_utils import SupabaseManager
 from ..config.settings import settings
+from ..models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
@@ -64,26 +65,31 @@ class BrandContextExpert:
         ```
     """
     
-    def __init__(self, dependencies=None, supabase: Optional[SupabaseManager] = None):
+    def __init__(self, dependencies=None, supabase=None, app_config: AppConfig = None):
         """
-        Initialize the BrandContextExpert with necessary configurations.
+        Initialize the BrandContextExpert with dependencies.
         
         Args:
             dependencies: Optional dependencies object containing supabase and langsmith clients
             supabase (Optional[SupabaseManager]): Supabase connection manager.
                 If None, a new instance will be created.
+            app_config (AppConfig): App configuration for agent-specific settings
                 
         Raises:
             FileNotFoundError: If prompt files cannot be found
             ValueError: If prompt loading fails
         """
-        # Initialize Supabase client
         if dependencies:
             self.supabase = dependencies.supabase
             self.langsmith = dependencies.langsmith
         else:
-            self.supabase = supabase or SupabaseManager()
+            self.supabase = supabase
             self.langsmith = None
+        
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "brand_context_expert"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
         
         # Load prompts from YAML files
         try:
@@ -91,23 +97,22 @@ class BrandContextExpert:
             self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
             self.extraction_prompt = load_prompt(str(prompt_dir / "extraction.yaml"))
         except Exception as e:
-            logger.error(
-                "Error loading prompts",
-                extra={
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
-                    "prompt_dir": str(prompt_dir)
-                }
-            )
+            logger.error(f"Error loading prompts: {str(e)}")
             raise
         
-        # Initialize Gemini model with tracing
+        # Initialize Gemini model with agent-specific temperature
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.7,
-            google_api_key=settings.google_api_key,
+            model=settings.model_name,
+            temperature=self.temperature,
+            google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
             convert_system_message_to_human=True,
-            callbacks=settings.get_langsmith_callbacks(),
+            callbacks=[self.langsmith] if self.langsmith else None
+        )
+        
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized Brand Context Expert with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
         )
         
         # Define output schemas for structured parsing

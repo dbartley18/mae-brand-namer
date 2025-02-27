@@ -3,9 +3,6 @@
   "version": "0.1.0",
   "description": "A LangGraph-powered brand name generation and evaluation system",
   "dependencies": ["."],
-  "graphs": {
-    "brand_naming": "./src/mae_brand_namer/workflows/brand_naming.py:create_workflow"
-  },
   "env": ".env",
   "store": {
     "index": {
@@ -66,7 +63,6 @@
     "process_supervisor": "./src/mae_brand_namer/agents/process_supervisor.py:ProcessSupervisor"
   },
   "studio": {
-    "url": "${LANGGRAPH_STUDIO_URL}",
     "api_key": "${LANGGRAPH_STUDIO_API_KEY}",
     "project": "mae-brand-namer",
     "environment": "${ENVIRONMENT}",
@@ -85,4 +81,4 @@
       "asyncio_mode": "auto"
     }
   }
-} 
+}

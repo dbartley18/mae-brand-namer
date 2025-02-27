@@ -17,14 +17,15 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..utils.supabase_utils import SupabaseManager
+from ..models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
 class SurveySimulationExpert:
     """Expert in simulating market research surveys for brand name evaluation."""
     
-    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
-        """Initialize the SurveySimulationExpert with necessary configurations."""
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None, app_config: AppConfig = None):
+        """Initialize the SurveySimulationExpert with dependencies."""
         # Agent identity
         self.role = "Market Research & Consumer Insights Specialist"
         self.goal = """Simulate comprehensive market research surveys to evaluate brand name reception 
@@ -49,71 +50,87 @@ class SurveySimulationExpert:
         # Initialize LangSmith tracer if enabled
         self.tracer = None
         if settings.langchain_tracing_v2:
-            self.tracer = LangChainTracer(project_name=settings.langsmith_project)
+            self.tracer = LangChainTracer(project_name=settings.langchain_project)
         
-        # Initialize Gemini model with tracing
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.7,
-            google_api_key=settings.google_api_key,
-            convert_system_message_to_human=True,
-            callbacks=[self.tracer] if self.tracer else None
-        )
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "survey_simulation_expert"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
         
-        # Define output schemas for structured parsing
-        self.output_schemas = [
-            ResponseSchema(name="persona_segment", description="Target audience segments analyzed", type="array"),
-            ResponseSchema(name="brand_promise_perception_score", description="How well the name conveys brand promise (1-10)", type="number"),
-            ResponseSchema(name="personality_fit_score", description="Alignment with brand personality (1-10)", type="number"),
-            ResponseSchema(name="emotional_association", description="Key emotional responses", type="array"),
-            ResponseSchema(name="functional_association", description="Practical/functional associations", type="array"),
-            ResponseSchema(name="competitive_differentiation_score", description="Distinctiveness from competitors (1-10)", type="number"),
-            ResponseSchema(name="psychometric_sentiment_mapping", description="Detailed sentiment analysis", type="object"),
-            ResponseSchema(name="competitor_benchmarking_score", description="Performance vs competitors (1-10)", type="number"),
-            ResponseSchema(name="simulated_market_adoption_score", description="Predicted market acceptance (1-10)", type="number"),
-            ResponseSchema(name="qualitative_feedback_summary", description="Summary of simulated feedback"),
-            ResponseSchema(name="raw_qualitative_feedback", description="Detailed feedback responses", type="object"),
-            ResponseSchema(name="final_survey_recommendation", description="Final recommendation based on survey"),
-            ResponseSchema(name="strategic_ranking", description="Overall strategic ranking (1-N)", type="integer")
-        ]
-        self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
-        
-        # Create the prompt template with metadata for LangGraph Studio
-        system_message = SystemMessage(
-            content=f"""You are a Survey Simulation Expert with the following profile:
-            Role: {self.role}
-            Goal: {self.goal}
-            Backstory: {self.backstory}
+        # Load prompts from YAML files
+        try:
+            # Define output schemas for structured parsing
+            self.output_schemas = [
+                ResponseSchema(name="persona_segment", description="Target audience segments analyzed", type="array"),
+                ResponseSchema(name="brand_promise_perception_score", description="How well the name conveys brand promise (1-10)", type="number"),
+                ResponseSchema(name="personality_fit_score", description="Alignment with brand personality (1-10)", type="number"),
+                ResponseSchema(name="emotional_association", description="Key emotional responses", type="array"),
+                ResponseSchema(name="functional_association", description="Practical/functional associations", type="array"),
+                ResponseSchema(name="competitive_differentiation_score", description="Distinctiveness from competitors (1-10)", type="number"),
+                ResponseSchema(name="psychometric_sentiment_mapping", description="Detailed sentiment analysis", type="object"),
+                ResponseSchema(name="competitor_benchmarking_score", description="Performance vs competitors (1-10)", type="number"),
+                ResponseSchema(name="simulated_market_adoption_score", description="Predicted market acceptance (1-10)", type="number"),
+                ResponseSchema(name="qualitative_feedback_summary", description="Summary of simulated feedback"),
+                ResponseSchema(name="raw_qualitative_feedback", description="Detailed feedback responses", type="object"),
+                ResponseSchema(name="final_survey_recommendation", description="Final recommendation based on survey"),
+                ResponseSchema(name="strategic_ranking", description="Overall strategic ranking (1-N)", type="integer")
+            ]
+            self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
             
-            Simulate market research surveys for the provided brand name.
-            Consider:
-            1. Target Audience Segmentation
-            2. Brand Promise & Personality Alignment
-            3. Emotional & Functional Associations
-            4. Competitive Differentiation
-            5. Market Adoption Potential
-            
-            Format your response according to the following schema:
-            {{format_instructions}}
-            """,
-            additional_kwargs={
-                "metadata": {
-                    "agent_type": "survey_simulator",
-                    "methodology": "Alina Wheeler's Designing Brand Identity"
+            # Create the prompt template with metadata for LangGraph Studio
+            system_message = SystemMessage(
+                content=f"""You are a Survey Simulation Expert with the following profile:
+                Role: {self.role}
+                Goal: {self.goal}
+                Backstory: {self.backstory}
+                
+                Simulate market research surveys for the provided brand name.
+                Consider:
+                1. Target Audience Segmentation
+                2. Brand Promise & Personality Alignment
+                3. Emotional & Functional Associations
+                4. Competitive Differentiation
+                5. Market Adoption Potential
+                
+                Format your response according to the following schema:
+                {{format_instructions}}
+                """,
+                additional_kwargs={
+                    "metadata": {
+                        "agent_type": "survey_simulator",
+                        "methodology": "Alina Wheeler's Designing Brand Identity"
+                    }
                 }
-            }
+            )
+            human_template = """Simulate market research survey results for the following brand name:
+            Brand Name: {brand_name}
+            Brand Context: {brand_context}
+            Target Audience: {target_audience}
+            Brand Values: {brand_values}
+            Competitive Analysis: {competitive_analysis}
+            """
+            self.prompt = ChatPromptTemplate.from_messages([
+                system_message,
+                HumanMessage(content=human_template)
+            ])
+        except Exception as e:
+            logger.error(f"Error loading prompts: {str(e)}")
+            raise
+        
+        # Initialize Gemini model with agent-specific temperature
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.model_name,
+            temperature=self.temperature,
+            google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
+            convert_system_message_to_human=True,
+            callbacks=[self.langsmith] if self.langsmith else None
         )
-        human_template = """Simulate market research survey results for the following brand name:
-        Brand Name: {brand_name}
-        Brand Context: {brand_context}
-        Target Audience: {target_audience}
-        Brand Values: {brand_values}
-        Competitive Analysis: {competitive_analysis}
-        """
-        self.prompt = ChatPromptTemplate.from_messages([
-            system_message,
-            HumanMessage(content=human_template)
-        ])
+        
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized Survey Simulation Expert with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
+        )
 
     def simulate_survey(
         self,
@@ -138,7 +155,7 @@ class SurveySimulationExpert:
         Returns:
             Dict[str, Any]: Survey simulation results
         """
-        with tracing_enabled(tags={"agent": "SurveySimulationExpert", "run_id": run_id}):
+        with tracing_enabled():
             try:
                 # Format the prompt with parser instructions
                 formatted_prompt = self.prompt.format(

@@ -18,16 +18,26 @@ from pathlib import Path
 from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..config.dependencies import Dependencies
+from ..models.app_config import AppConfig
 
 logger = get_logger(__name__)
 
 class DomainAnalysisExpert:
     """Expert in analyzing domain name availability and digital presence strategy."""
     
-    def __init__(self, dependencies: Dependencies):
+    def __init__(self, dependencies=None, supabase=None, app_config: AppConfig = None):
         """Initialize the DomainAnalysisExpert with dependencies."""
-        self.supabase = dependencies.supabase
-        self.langsmith = dependencies.langsmith
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase
+            self.langsmith = None
+        
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "domain_analysis_expert"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
         
         # Agent identity
         self.role = "Domain Strategy & Digital Presence Expert"
@@ -35,57 +45,70 @@ class DomainAnalysisExpert:
         and overall web identity effectiveness."""
         
         # Load prompts from YAML files
-        prompt_dir = Path(__file__).parent / "prompts" / "domain_analysis"
-        self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
+        try:
+            prompt_dir = Path(__file__).parent / "prompts" / "domain_analysis"
+            self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
+            
+            # Define output schemas for structured parsing
+            self.output_schemas = [
+                ResponseSchema(name="exact_match_domain", description="Availability of exact match domain", type="boolean"),
+                ResponseSchema(name="alternative_domains", description="List of viable domain alternatives", type="array"),
+                ResponseSchema(name="domain_length", description="Analysis of domain length impact", type="string"),
+                ResponseSchema(name="domain_memorability", description="Assessment of domain memorability", type="string"),
+                ResponseSchema(name="domain_brandability", description="Potential for domain branding", type="string"),
+                ResponseSchema(name="domain_pronunciation", description="Ease of verbal communication", type="string"),
+                ResponseSchema(name="domain_spelling", description="Risk of misspelling", type="string"),
+                ResponseSchema(name="tld_strategy", description="Top-level domain recommendations", type="string"),
+                ResponseSchema(name="domain_availability", description="Overall domain availability assessment", type="string"),
+                ResponseSchema(name="domain_cost_estimate", description="Estimated cost range for domains", type="string"),
+                ResponseSchema(name="domain_history", description="Analysis of domain history if previously used", type="string"),
+                ResponseSchema(name="digital_presence_score", description="Overall digital presence score (1-10)", type="float"),
+                ResponseSchema(name="recommendations", description="Strategic domain recommendations", type="array")
+            ]
+            self.output_parser = StructuredOutputParser.from_response_schemas(
+                self.output_schemas
+            )
+            
+            # Create the prompt template with metadata
+            system_message = SystemMessage(
+                content=self.system_prompt.format(),
+                additional_kwargs={
+                    "metadata": {
+                        "agent_type": "domain_analyzer",
+                        "methodology": "Digital Brand Optimization Framework"
+                    }
+                }
+            )
+            human_template = (
+                "Analyze the domain availability and digital presence potential for the "
+                "following brand name:\n"
+                "Brand Name: {brand_name}\n"
+                "Brand Context: {brand_context}\n"
+                "\nFormat your analysis according to this schema:\n"
+                "{format_instructions}"
+            )
+            self.prompt = ChatPromptTemplate.from_messages([
+                system_message,
+                HumanMessage(content=human_template)
+            ])
+        except Exception as e:
+            logger.error(f"Error loading prompts: {str(e)}")
+            raise
         
-        # Define output schemas for structured parsing
-        self.output_schemas = [
-            ResponseSchema(name="exact_match_domain", description="Availability of exact match domain", type="boolean"),
-            ResponseSchema(name="alternative_domains", description="List of viable domain alternatives", type="array"),
-            ResponseSchema(name="domain_length", description="Analysis of domain length impact", type="string"),
-            ResponseSchema(name="domain_memorability", description="Assessment of domain memorability", type="string"),
-            ResponseSchema(name="domain_brandability", description="Potential for domain branding", type="string"),
-            ResponseSchema(name="domain_pronunciation", description="Ease of verbal communication", type="string"),
-            ResponseSchema(name="domain_spelling", description="Risk of misspelling", type="string"),
-            ResponseSchema(name="tld_strategy", description="Top-level domain recommendations", type="string"),
-            ResponseSchema(name="domain_availability", description="Overall domain availability assessment", type="string"),
-            ResponseSchema(name="domain_cost_estimate", description="Estimated cost range for domains", type="string"),
-            ResponseSchema(name="domain_history", description="Analysis of domain history if previously used", type="string"),
-            ResponseSchema(name="digital_presence_score", description="Overall digital presence score (1-10)", type="float"),
-            ResponseSchema(name="recommendations", description="Strategic domain recommendations", type="array")
-        ]
-        self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
-        
-        # Initialize Gemini model with tracing
+        # Initialize Gemini model with agent-specific temperature
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.7,
-            google_api_key=settings.google_api_key,
+            model=settings.model_name,
+            temperature=self.temperature,
+            google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
             convert_system_message_to_human=True,
             callbacks=[self.langsmith] if self.langsmith else None
         )
         
-        # Create the prompt template with metadata
-        system_message = SystemMessage(
-            content=self.system_prompt.format(),
-            additional_kwargs={
-                "metadata": {
-                    "agent_type": "domain_analyzer",
-                    "methodology": "Digital Brand Identity Framework"
-                }
-            }
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized Domain Analysis Expert with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
         )
-        human_template = """Analyze the domain strategy for the following brand name:
-        Brand Name: {brand_name}
-        Brand Context: {brand_context}
-        
-        Format your analysis according to this schema:
-        {format_instructions}
-        """
-        self.prompt = ChatPromptTemplate.from_messages([
-            system_message,
-            HumanMessage(content=human_template)
-        ])
 
     async def analyze_domain(
         self,
@@ -108,7 +131,7 @@ class DomainAnalysisExpert:
             ValueError: If analysis fails
         """
         try:
-            with tracing_enabled(tags={"agent": "DomainAnalysisExpert", "run_id": run_id}):
+            with tracing_enabled():
                 # Format prompt with parser instructions
                 formatted_prompt = self.prompt.format_messages(
                     format_instructions=self.output_parser.get_format_instructions(),

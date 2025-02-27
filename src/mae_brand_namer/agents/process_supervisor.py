@@ -4,33 +4,55 @@ from typing import Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import json
 import traceback
+import os
 
 from langchain.callbacks import tracing_enabled
 from supabase import create_client, Client
 from ..utils.logging import get_logger
 from ..config.settings import settings
 from ..utils.supabase_utils import SupabaseManager
+from ..models.app_config import AppConfig
+from ..llms.chat_google_generative_ai import ChatGoogleGenerativeAI
 
 logger = get_logger(__name__)
 
 class ProcessSupervisor:
     """Supervises and monitors the brand naming workflow process."""
     
-    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
-        """Initialize the ProcessSupervisor."""
+    def __init__(self, dependencies=None, supabase=None, app_config: AppConfig = None):
+        """Initialize the ProcessSupervisor with dependencies."""
         self.retry_counts: Dict[Tuple[str, str, str], int] = {}  # (run_id, agent_type, task_name) -> retry_count
         self.max_retries = settings.max_retries
         self.retry_delay = settings.retry_delay
         self.retry_backoff = settings.retry_backoff
         self.retry_max_delay = settings.retry_max_delay
         
-        # Initialize Supabase client
         if dependencies:
             self.supabase = dependencies.supabase
             self.langsmith = dependencies.langsmith
         else:
-            self.supabase = supabase or SupabaseManager()
+            self.supabase = supabase
             self.langsmith = None
+        
+        # Get agent-specific configuration
+        self.app_config = app_config or AppConfig()
+        agent_name = "process_supervisor"
+        self.temperature = self.app_config.get_temperature_for_agent(agent_name)
+        
+        # Initialize Gemini model with agent-specific temperature
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.model_name,
+            temperature=self.temperature,
+            google_api_key=os.getenv("GEMINI_API_KEY") or settings.google_api_key,
+            convert_system_message_to_human=True,
+            callbacks=[self.langsmith] if self.langsmith else None
+        )
+        
+        # Log the temperature setting being used
+        logger.info(
+            f"Initialized Process Supervisor with temperature: {self.temperature}",
+            extra={"agent": agent_name, "temperature": self.temperature}
+        )
     
     def _get_retry_key(self, run_id: str, agent_type: str, task_name: str) -> Tuple[str, str, str]:
         """Get the key for retry count tracking."""

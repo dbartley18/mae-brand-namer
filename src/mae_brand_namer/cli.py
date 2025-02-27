@@ -66,9 +66,9 @@ def config():
     click.echo("Mae Brand Namer Configuration:")
     click.echo(f"  Version: {settings.version}")
     click.echo(f"  Environment: {settings.environment}")
-    click.echo(f"  LangSmith Enabled: {settings.langsmith_enabled}")
-    if settings.langsmith_enabled:
-        click.echo(f"  LangSmith Project: {settings.langsmith_project}")
+    click.echo(f"  LangChain Tracing: {settings.langchain_tracing_v2}")
+    if settings.langchain_tracing_v2:
+        click.echo(f"  LangChain Project: {settings.langchain_project}")
     click.echo(f"  Max Retries: {settings.max_retries}")
 
 
