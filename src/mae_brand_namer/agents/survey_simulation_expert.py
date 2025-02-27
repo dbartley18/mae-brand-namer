@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 class SurveySimulationExpert:
     """Expert in simulating market research surveys for brand name evaluation."""
     
-    def __init__(self, supabase: SupabaseManager = None):
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
         """Initialize the SurveySimulationExpert with necessary configurations."""
         # Agent identity
         self.role = "Market Research & Consumer Insights Specialist"
@@ -39,11 +39,16 @@ class SurveySimulationExpert:
         self.retry_delay = settings.retry_delay
         
         # Initialize Supabase client
-        self.supabase = supabase or SupabaseManager()
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase or SupabaseManager()
+            self.langsmith = None
         
         # Initialize LangSmith tracer if enabled
         self.tracer = None
-        if settings.tracing_enabled:
+        if settings.langchain_tracing_v2:
             self.tracer = LangChainTracer(project_name=settings.langsmith_project)
         
         # Initialize Gemini model with tracing
@@ -188,14 +193,31 @@ class SurveySimulationExpert:
                 if field in simulation_results:
                     simulation_results[field] = float(simulation_results[field])
             
+            # Filter to include only fields that exist in the database schema
+            valid_fields = [
+                "run_id", "brand_name", "timestamp", 
+                "persona_segment", "emotional_association", "functional_association", 
+                "likability_score", "memorability_score", "relevance_score", 
+                "differentiation_score", "appeal_score", "overall_score", 
+                "open_feedback", "purchase_intent", "recommendations"
+            ]
+            
+            # First create a copy of the data with valid fields
+            filtered_data = {k: v for k, v in simulation_results.items() if k in valid_fields}
+            
             # Ensure array fields are properly formatted
             array_fields = ["persona_segment", "emotional_association", "functional_association"]
             for field in array_fields:
-                if field in simulation_results and isinstance(simulation_results[field], str):
-                    simulation_results[field] = simulation_results[field].split(",")
+                if field in filtered_data and filtered_data[field]:
+                    # If it's a string, convert from comma-separated string to proper PostgreSQL array format
+                    if isinstance(filtered_data[field], str):
+                        # Split by comma, strip whitespace, and filter out empty strings
+                        items = [item.strip() for item in filtered_data[field].split(',') if item.strip()]
+                        # Convert to PostgreSQL array format
+                        filtered_data[field] = items
             
             # Insert into survey_simulation table
-            self.supabase.table("survey_simulation").insert(simulation_results).execute()
+            self.supabase.table("survey_simulation").insert(filtered_data).execute()
             
         except Exception as e:
             error_msg = f"Error storing survey simulation in Supabase: {str(e)}"

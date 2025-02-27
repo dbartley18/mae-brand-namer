@@ -1,10 +1,10 @@
 _type: prompt
-input_variables: ["format_instructions", "brand_names", "brand_context", "semantic_analysis", "linguistic_analysis", "cultural_analysis", "translation_analysis"]
+input_variables: ["format_instructions", "brand_name", "brand_context", "semantic_analysis", "linguistic_analysis", "cultural_analysis", "translation_analysis"]
 template: |
-  Conduct a comprehensive evaluation of the following brand names using all available analysis:
+  Conduct a comprehensive evaluation of the following brand name using all available analysis:
 
-  Brand Names:
-  {brand_names}
+  Brand Name:
+  {brand_name}
 
   Brand Context:
   {brand_context}

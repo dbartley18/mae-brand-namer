@@ -1,10 +1,19 @@
 _type: prompt
-input_variables: ["format_instructions", "brand_context"]
+input_variables: ["format_instructions", "brand_context", "brand_values", "purpose", "key_attributes"]
 template: |
   Generate strategic brand name options based on the following brand context:
 
   Brand Context:
   {brand_context}
+  
+  Brand Values:
+  {brand_values}
+  
+  Brand Purpose:
+  {purpose}
+  
+  Key Attributes:
+  {key_attributes}
 
   Apply these naming strategies:
   1. Descriptive Names

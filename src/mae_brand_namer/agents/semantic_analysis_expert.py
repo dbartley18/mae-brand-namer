@@ -28,9 +28,14 @@ logger = get_logger(__name__)
 class SemanticAnalysisExpert:
     """Expert in analyzing semantic meaning and brand associations."""
     
-    def __init__(self, supabase: SupabaseManager = None):
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
         """Initialize the SemanticAnalysisExpert with dependencies."""
-        self.supabase = supabase or SupabaseManager()
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase or SupabaseManager()
+            self.langsmith = None
         
         self.role = "Semantic Analysis Expert"
         self.goal = "Analyze brand names for semantic meaning, associations, and brand fit"

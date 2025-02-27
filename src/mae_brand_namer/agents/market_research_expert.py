@@ -21,10 +21,15 @@ logger = get_logger(__name__)
 class MarketResearchExpert:
     """Expert in market research and brand name evaluation."""
     
-    def __init__(self, supabase: SupabaseManager = None):
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
         """Initialize the MarketResearchExpert with necessary configurations."""
         # Initialize Supabase client
-        self.supabase = supabase or SupabaseManager()
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase or SupabaseManager()
+            self.langsmith = None
         
         # Load prompts from YAML files
         try:
@@ -169,11 +174,28 @@ class MarketResearchExpert:
                 "version": analysis_data.get("version", "1.0")
             }
             
+            # Define the known valid fields for the market_research table
+            valid_fields = [
+                "run_id", "industry_name", "market_size", "market_growth_rate", 
+                "key_competitors", "target_customer_segments", "customer_pain_points", 
+                "market_entry_barriers", "regulatory_considerations", 
+                "emerging_trends", "overall_market_score", "potential_risks", 
+                "recommendations", "version"
+            ]
+            
+            # Filter out any fields that don't exist in the database schema
+            filtered_data = {k: v for k, v in supabase_data.items() if k in valid_fields}
+            
+            # Store metadata separately - not sent to database
+            metadata = {
+                "timestamp": analysis_data["timestamp"]
+            }
+            
             # Store in Supabase using the singleton client
             await self.supabase.execute_with_retry(
                 operation="insert",
                 table="market_research",
-                data=supabase_data
+                data=filtered_data
             )
             
         except (KeyError, TypeError, ValueError) as e:

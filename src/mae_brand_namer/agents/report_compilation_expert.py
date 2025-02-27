@@ -41,7 +41,7 @@ class ReportCompilationExpert:
         
         # Initialize LangSmith tracer if enabled
         self.tracer = None
-        if settings.tracing_enabled:
+        if settings.langchain_tracing_v2:
             self.tracer = LangChainTracer(project_name=settings.langsmith_project)
         
         # Initialize Gemini model with tracing

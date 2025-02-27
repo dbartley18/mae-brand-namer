@@ -6,6 +6,7 @@ from supabase.lib.client_options import ClientOptions
 from postgrest.exceptions import APIError
 from storage3.exceptions import StorageException
 from gotrue.errors import AuthError as AuthException
+import asyncio
 
 from ..config.settings import settings
 from .logging import get_logger
@@ -86,6 +87,16 @@ class SupabaseManager:
         retries = 0
         last_error = None
         
+        # Debug log the operation we're about to attempt
+        logger.debug(
+            f"Executing Supabase {operation} operation",
+            extra={
+                "table": table,
+                "operation": operation,
+                "data_keys": list(data.keys())
+            }
+        )
+        
         while retries < max_retries:
             try:
                 if operation == "insert":
@@ -99,25 +110,70 @@ class SupabaseManager:
                 else:
                     raise ValueError(f"Unsupported operation: {operation}")
                 
+                # Log successful operation
+                logger.debug(
+                    f"Supabase {operation} operation succeeded",
+                    extra={
+                        "table": table,
+                        "operation": operation,
+                        "status": "success",
+                    }
+                )
+                
                 return response.data
                 
-            except (APIError) as e:
+            except APIError as e:
                 last_error = e
+                # Check for specific error types
+                error_message = str(e)
+                error_code = getattr(e, "code", "unknown")
+                error_details = getattr(e, "details", "unknown")
+                
+                # Log more detailed error information
+                logger.error(
+                    f"Supabase {operation} operation failed",
+                    extra={
+                        "table": table,
+                        "operation": operation,
+                        "error_code": error_code,
+                        "error_message": error_message,
+                        "error_details": error_details,
+                        "attempt": retries + 1,
+                        "max_retries": max_retries
+                    }
+                )
+                
+                # Determine if we should retry
                 retries += 1
                 if retries < max_retries:
+                    # Add exponential backoff
+                    wait_time = 2 ** retries * 0.1  # 0.2s, 0.4s, 0.8s, etc.
                     logger.warning(
-                        "Supabase operation failed, retrying",
+                        f"Retrying Supabase operation in {wait_time:.2f}s",
                         extra={
                             "attempt": retries,
                             "max_retries": max_retries,
-                            "error": str(e),
-                            "operation": operation,
+                            "wait_time": wait_time,
                             "table": table
                         }
                     )
+                    await asyncio.sleep(wait_time)
                     continue
                 break
+            except Exception as e:
+                # Handle unexpected errors
+                logger.error(
+                    f"Unexpected error in Supabase {operation} operation",
+                    extra={
+                        "table": table,
+                        "operation": operation,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e)
+                    }
+                )
+                raise
                 
+        # If we get here, all retries have failed
         logger.error(
             "Supabase operation failed after all retries",
             extra={

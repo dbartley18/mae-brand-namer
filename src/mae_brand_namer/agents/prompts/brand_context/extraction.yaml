@@ -1,36 +1,32 @@
 _type: prompt
-input_variables: ["format_instructions", "user_prompt"]
+input_variables:
+  - format_instructions
+  - user_prompt
 template: |
   Analyze the following brand description and extract key brand identity elements.
-  Structure your response according to Alina Wheeler's brand identity framework.
-
-  Brand Description:
+  
+  Your task is to extract a comprehensive set of brand identity elements following Alina Wheeler's branding methodology. Your analysis should include:
+  
+  1. Brand Identity Brief - A comprehensive summary of the brand's identity
+  2. Brand Promise & Purpose - The core functional and emotional benefits, the brand's reason for existence
+  3. Brand Mission - The brand's mission statement
+  4. Brand Values - The core principles that guide the brand (3-5 key values)
+  5. Brand Personality - Key personality traits that define the brand character (3-5 traits)
+  6. Brand Tone of Voice - How the brand communicates with its audience
+  7. Target Audience - Detailed description of who the brand serves
+  8. Customer Needs - List of key needs the brand addresses for its customers
+  9. Market Positioning - How the brand positions itself in the market
+  10. Competitive Landscape - Overview of key competitors and differential factors
+  11. Industry Focus - The specific industry or sector the brand focuses on
+  12. Industry Trends - Current and emerging trends in the industry
+  
+  Brand description:
   {user_prompt}
-
-  Consider:
-  1. Core Brand Elements
-     - Brand promise and purpose
-     - Mission and vision
-     - Values and personality traits
-     - Tone of voice and communication style
-
-  2. Market Context
-     - Target audience definition
-     - Customer needs and pain points
-     - Market positioning strategy
-     - Competitive landscape analysis
-
-  3. Industry Analysis
-     - Primary industry focus
-     - Key trends and developments
-     - Growth opportunities
-     - Market challenges
-
-  Format your response according to this schema:
+  
   {format_instructions}
-
-  Ensure each element is:
+  
+  Your response should be:
   - Specific and actionable
-  - Aligned with the brand strategy
-  - Supported by the provided description
-  - Useful for guiding name generation 
+  - Aligned with modern brand strategy
+  - Useful for guiding name generation
+  - Comprehensive enough to inform the entire branding process

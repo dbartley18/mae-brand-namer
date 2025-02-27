@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 class ProcessSupervisor:
     """Supervises and monitors the brand naming workflow process."""
     
-    def __init__(self, supabase: SupabaseManager = None):
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
         """Initialize the ProcessSupervisor."""
         self.retry_counts: Dict[Tuple[str, str, str], int] = {}  # (run_id, agent_type, task_name) -> retry_count
         self.max_retries = settings.max_retries
@@ -25,7 +25,12 @@ class ProcessSupervisor:
         self.retry_max_delay = settings.retry_max_delay
         
         # Initialize Supabase client
-        self.supabase = supabase or SupabaseManager()
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase or SupabaseManager()
+            self.langsmith = None
     
     def _get_retry_key(self, run_id: str, agent_type: str, task_name: str) -> Tuple[str, str, str]:
         """Get the key for retry count tracking."""

@@ -51,7 +51,7 @@ class BrandNameEvaluator:
         
         # Initialize LangSmith tracer if enabled
         self.tracer = None
-        if settings.tracing_enabled:
+        if settings.langchain_tracing_v2:
             self.tracer = LangChainTracer(project_name=settings.langsmith_project)
         
         # Initialize Gemini model with tracing
@@ -138,6 +138,7 @@ class BrandNameEvaluator:
             translation_analysis = brand_name_data.get("translation_analysis", {})
             
             prompt = self.prompt.format_messages(
+                format_instructions=self.output_parser.get_format_instructions(),
                 brand_name=brand_name,
                 brand_context=json.dumps(brand_context, indent=2),
                 semantic_analysis=json.dumps(semantic_analysis, indent=2),

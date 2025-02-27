@@ -64,11 +64,12 @@ class BrandContextExpert:
         ```
     """
     
-    def __init__(self, supabase: Optional[SupabaseManager] = None):
+    def __init__(self, dependencies=None, supabase: Optional[SupabaseManager] = None):
         """
         Initialize the BrandContextExpert with necessary configurations.
         
         Args:
+            dependencies: Optional dependencies object containing supabase and langsmith clients
             supabase (Optional[SupabaseManager]): Supabase connection manager.
                 If None, a new instance will be created.
                 
@@ -77,7 +78,12 @@ class BrandContextExpert:
             ValueError: If prompt loading fails
         """
         # Initialize Supabase client
-        self.supabase = supabase or SupabaseManager()
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase or SupabaseManager()
+            self.langsmith = None
         
         # Load prompts from YAML files
         try:
@@ -123,12 +129,40 @@ class BrandContextExpert:
                 description="Description of the brand's tone of voice"
             ),
             ResponseSchema(
+                name="brand_identity_brief",
+                description="Comprehensive brand identity brief summarizing the core elements"
+            ),
+            ResponseSchema(
                 name="target_audience",
                 description="Description of the target audience"
             ),
             ResponseSchema(
                 name="market_positioning",
                 description="Description of the brand's market positioning"
+            ),
+            ResponseSchema(
+                name="brand_purpose",
+                description="Description of the brand's purpose and mission"
+            ),
+            ResponseSchema(
+                name="brand_mission",
+                description="The brand's mission statement"
+            ),
+            ResponseSchema(
+                name="customer_needs",
+                description="List of key customer needs the brand addresses"
+            ),
+            ResponseSchema(
+                name="competitive_landscape",
+                description="Overview of the competitive landscape"
+            ),
+            ResponseSchema(
+                name="industry_focus",
+                description="The industry or sector the brand focuses on"
+            ),
+            ResponseSchema(
+                name="industry_trends",
+                description="List of relevant industry trends"
             ),
         ]
         
@@ -172,11 +206,25 @@ class BrandContextExpert:
                 
                 # Add metadata
                 parsed_output["run_id"] = run_id
-                parsed_output["timestamp"] = datetime.now().isoformat()
-                parsed_output["user_prompt"] = user_prompt
+                
+                # Store these separately - don't send to Supabase
+                metadata = {
+                    "timestamp": datetime.now().isoformat(),
+                    "user_prompt": user_prompt
+                }
+                
+                # Convert array fields to Python lists for state management
+                array_fields = ["brand_values", "brand_personality", "customer_needs", "industry_trends"]
+                for field in array_fields:
+                    if field in parsed_output and isinstance(parsed_output[field], str):
+                        # Split by comma, strip whitespace, and filter out empty strings
+                        parsed_output[field] = [item.strip() for item in parsed_output[field].split(',') if item.strip()]
                 
                 # Store in Supabase
                 await self._store_in_supabase(run_id, parsed_output)
+                
+                # Add back metadata for the return value
+                parsed_output.update(metadata)
                 
                 return parsed_output
                 
@@ -205,7 +253,8 @@ class BrandContextExpert:
     def _validate_output(self, parsed_output: Dict[str, Any]) -> None:
         """Validate the parsed output to ensure all required fields are present."""
         required_fields = ["brand_promise", "brand_values", "brand_personality", 
-                          "brand_tone_of_voice", "target_audience", "market_positioning"]
+                          "brand_tone_of_voice", "target_audience", "market_positioning",
+                          "brand_identity_brief"]
         
         missing_fields = [field for field in required_fields if field not in parsed_output]
         
@@ -215,10 +264,36 @@ class BrandContextExpert:
     async def _store_in_supabase(self, run_id: str, brand_context: Dict[str, Any]) -> None:
         """Store the brand context in Supabase."""
         try:
+            # Filter to include only fields that exist in the database schema
+            valid_fields = [
+                "run_id", "brand_promise", "brand_personality", "brand_tone_of_voice",
+                "brand_values", "brand_purpose", "brand_mission", "target_audience",
+                "customer_needs", "market_positioning", "competitive_landscape",
+                "industry_focus", "industry_trends", "brand_identity_brief"
+            ]
+            
+            # First create a copy of the data with valid fields
+            filtered_data = {k: v for k, v in brand_context.items() if k in valid_fields}
+            
+            # Ensure run_id is included
+            filtered_data["run_id"] = run_id
+            
+            # Format array fields properly for PostgreSQL
+            array_fields = ["brand_values", "brand_personality", "customer_needs", "industry_trends"]
+            
+            for field in array_fields:
+                if field in filtered_data and filtered_data[field]:
+                    # If it's a string, convert from comma-separated string to proper PostgreSQL array format
+                    if isinstance(filtered_data[field], str):
+                        # Split by comma, strip whitespace, and filter out empty strings
+                        items = [item.strip() for item in filtered_data[field].split(',') if item.strip()]
+                        # Convert to PostgreSQL array format
+                        filtered_data[field] = items
+            
             await self.supabase.execute_with_retry(
                 operation="insert",
                 table="brand_context",
-                data=brand_context
+                data=filtered_data
             )
             
         except APIError as e:

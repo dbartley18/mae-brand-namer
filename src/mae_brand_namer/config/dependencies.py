@@ -23,9 +23,9 @@ def create_dependencies() -> Dependencies:
         supabase_key=settings.supabase_key  # This is already configured to use SUPABASE_SERVICE_KEY
     )
     
-    # Initialize LangSmith client if enabled
+    # Initialize LangSmith client if tracing is enabled
     langsmith = None
-    if settings.tracing_enabled:
+    if settings.langchain_tracing_v2:
         langsmith = LangSmithClient(
             api_url=settings.langsmith_endpoint,
             api_key=settings.langsmith_api_key,

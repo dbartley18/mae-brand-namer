@@ -121,7 +121,7 @@ class TranslationAnalysisExpert:
             temperature=0.7,
             google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,
-            callbacks=[self.langsmith] if self.langsmith else None
+            callbacks=[self.langsmith] if self.langsmith else []
         )
         
         # Create the prompt template with metadata

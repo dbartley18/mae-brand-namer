@@ -154,14 +154,41 @@ class DomainAnalysisExpert:
             asyncio.set_event_loop(loop)
             
         try:
-            data = {
+            # Filter to include only fields that exist in the database schema
+            valid_fields = [
+                "run_id", "brand_name", "timestamp", "exact_match_domain", 
+                "alternative_domains", "alternative_tlds", "domain_length", 
+                "domain_memorability", "domain_brandability", "domain_pronunciation", 
+                "domain_spelling", "tld_strategy", "domain_availability", 
+                "domain_cost_estimate", "domain_history", "digital_presence_score", 
+                "recommendations", "social_media_availability"
+            ]
+            
+            # Create a copy of the data with valid fields
+            filtered_data = {
                 "run_id": run_id,
                 "brand_name": brand_name,
-                "timestamp": datetime.now().isoformat(),
-                **analysis
+                "timestamp": datetime.now().isoformat()
             }
             
-            await self.supabase.table("domain_analysis").insert(data).execute()
+            # Add valid fields from analysis
+            for k, v in analysis.items():
+                if k in valid_fields:
+                    filtered_data[k] = v
+            
+            # Format array fields properly for PostgreSQL
+            array_fields = ["alternative_tlds", "social_media_availability", "recommendations", "alternative_domains"]
+            
+            for field in array_fields:
+                if field in filtered_data and filtered_data[field]:
+                    # If it's a string, convert from comma-separated string to proper PostgreSQL array format
+                    if isinstance(filtered_data[field], str):
+                        # Split by comma, strip whitespace, and filter out empty strings
+                        items = [item.strip() for item in filtered_data[field].split(',') if item.strip()]
+                        # Convert to PostgreSQL array format
+                        filtered_data[field] = items
+            
+            await self.supabase.table("domain_analysis").insert(filtered_data).execute()
             logger.info(f"Stored domain analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
         except Exception as e:
