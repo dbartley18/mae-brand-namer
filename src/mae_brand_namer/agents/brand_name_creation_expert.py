@@ -50,8 +50,8 @@ class BrandNameCreationExpert:
         
         # Initialize Gemini model with tracing
         self.llm = ChatGoogleGenerativeAI(
-            model=os.getenv("GOOGLE_MODEL_NAME", "gemini-2.0-flash"),  # Default to gemini-2.0-flash if env var not set
-            temperature=1.0,  # Higher temperature for more creative name generation
+            model="gemini-1.5-pro",
+            temperature=0.9,  # Higher temperature for more creative name generation
             google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,
             callbacks=settings.get_langsmith_callbacks()
@@ -63,16 +63,21 @@ class BrandNameCreationExpert:
             ResponseSchema(name="naming_category", description="The category or type of name (e.g., descriptive, abstract, evocative)"),
             ResponseSchema(name="brand_personality_alignment", description="How the name aligns with the defined brand personality"),
             ResponseSchema(name="brand_promise_alignment", description="The degree to which the name reflects the brand's promise and value proposition"),
-            ResponseSchema(name="target_audience_relevance_score", description="Score from 1-10 indicating relevance to target audience", type="number"),
-            ResponseSchema(name="target_audience_relevance_details", description="2-3 bullet points explaining the target audience relevance"),
-            ResponseSchema(name="market_differentiation_score", description="Score from 1-10 indicating potential for market differentiation", type="number"),
-            ResponseSchema(name="market_differentiation_details", description="2-3 bullet points explaining the market differentiation potential"),
+            
+            # Score fields (numeric values)
+            ResponseSchema(name="target_audience_relevance_score", description="Score from 1-10 indicating how well the name resonates with the target audience", type="number"),
+            ResponseSchema(name="market_differentiation_score", description="Score from 1-10 indicating how distinctive the name is in the market", type="number"),
+            ResponseSchema(name="visual_branding_potential_score", description="Score from 1-10 indicating the name's potential for visual branding elements", type="number"),
             ResponseSchema(name="memorability_score", description="Score from 1-10 indicating how easily the name can be remembered", type="number"),
-            ResponseSchema(name="memorability_score_details", description="2-3 bullet points explaining the memorability factors"),
             ResponseSchema(name="pronounceability_score", description="Score from 1-10 indicating how easily the name can be pronounced", type="number"),
-            ResponseSchema(name="pronounceability_score_details", description="2-3 bullet points explaining the pronounceability factors"),
-            ResponseSchema(name="visual_branding_potential_score", description="Score from 1-10 indicating potential for visual branding elements", type="number"),
-            ResponseSchema(name="visual_branding_potential_details", description="2-3 bullet points explaining the visual branding potential"),
+            
+            # Details fields (text explanations)
+            ResponseSchema(name="target_audience_relevance_details", description="2-3 bullet points explaining the target audience relevance score"),
+            ResponseSchema(name="market_differentiation_details", description="2-3 bullet points explaining the market differentiation score"),
+            ResponseSchema(name="visual_branding_potential_details", description="2-3 bullet points explaining the visual branding potential score"),
+            ResponseSchema(name="memorability_score_details", description="2-3 bullet points explaining the memorability score"),
+            ResponseSchema(name="pronounceability_score_details", description="2-3 bullet points explaining the pronounceability score"),
+            
             ResponseSchema(name="name_generation_methodology", description="The structured approach used to generate and refine the brand name"),
             ResponseSchema(name="rank", description="The ranking score assigned to the name based on strategic fit", type="number")
         ]
@@ -145,12 +150,15 @@ class BrandNameCreationExpert:
             with tracing_v2_enabled():
                 # Track all generated names to avoid duplicates across categories
                 all_generated_names = []
+                # Use a set for faster lookups when checking duplicates
+                all_brand_names_set = set()
                 
-                # Normalize a name for duplicate checking - keep this simple
+                # Normalize a name for duplicate checking
                 def normalize_name(name):
                     if not name:
                         return ""
-                    return name.lower().strip()
+                    # Remove special characters, convert to lowercase, and strip whitespace
+                    return re.sub(r'[^\w\s]', '', name.lower()).strip()
                 
                 # Iterate through each naming category
                 for category in categories:
@@ -167,7 +175,7 @@ class BrandNameCreationExpert:
                                 extra={"run_id": run_id}
                             )
                             
-                            # Format existing names to avoid duplication - this guides the LLM
+                            # Format existing names to avoid duplication
                             existing_names = "\n".join([f"- {name['brand_name']}" for name in all_generated_names])
                             if not existing_names:
                                 existing_names = "None yet"
@@ -186,155 +194,18 @@ class BrandNameCreationExpert:
                             # Create human message
                             human_message = HumanMessage(content=generation_prompt)
                             
-                            # Simplified retry mechanism - just handle basic failures
+                            # Try to generate a unique name with retries
                             max_retries = 3
                             retry_count = 0
+                            is_duplicate = False
                             
                             while retry_count < max_retries:
                                 try:
                                     # Get response from LLM
                                     response = await self.llm.ainvoke([system_message, human_message])
                                     
-                                    # Log the raw response for debugging
-                                    logger.debug(
-                                        "Raw LLM response",
-                                        extra={
-                                            "run_id": run_id,
-                                            "response_content": response.content[:1000]  # Log first 1000 chars to avoid excessive logging
-                                        }
-                                    )
-                                    
-                                    try:
-                                        # Parse the structured output
-                                        parsed_output = self.output_parser.parse(response.content)
-                                    except Exception as parse_error:
-                                        logger.warning(
-                                            f"Error parsing LLM response: {str(parse_error)}",
-                                            extra={"run_id": run_id}
-                                        )
-                                        # Try a simplified approach to extract just the brand name if parsing fails
-                                        if "brand_name:" in response.content or "brand_name\":" in response.content:
-                                            # Simple regex to extract brand name
-                                            import re
-                                            match = re.search(r'["\']?brand_name["\']?\s*[:=]\s*["\']([^"\'\n]+)', response.content)
-                                            if match:
-                                                brand_name = match.group(1).strip()
-                                                logger.info(f"Extracted brand name using fallback method: {brand_name}")
-                                                # Create a minimal valid output
-                                                parsed_output = {
-                                                    "brand_name": brand_name,
-                                                    "naming_category": category,
-                                                    "brand_personality_alignment": "Generated using fallback parsing",
-                                                    "brand_promise_alignment": "Generated using fallback parsing",
-                                                    "target_audience_relevance_score": 5,
-                                                    "target_audience_relevance_details": "Generated using fallback parsing",
-                                                    "market_differentiation_score": 5,
-                                                    "market_differentiation_details": "Generated using fallback parsing",
-                                                    "memorability_score": 5,
-                                                    "memorability_score_details": "Generated using fallback parsing",
-                                                    "pronounceability_score": 5,
-                                                    "pronounceability_score_details": "Generated using fallback parsing",
-                                                    "visual_branding_potential_score": 5,
-                                                    "visual_branding_potential_details": "Generated using fallback parsing",
-                                                    "name_generation_methodology": "Generated using fallback parsing",
-                                                    "rank": 5
-                                                }
-                                            else:
-                                                # Try another approach: look for any likely brand name
-                                                # This handles cases where the LLM outputs a brand name but not in the expected format
-                                                # Look for capitalized words or quotes that might indicate a brand name
-                                                lines = response.content.split('\n')
-                                                for line in lines:
-                                                    # Skip empty lines
-                                                    if not line.strip():
-                                                        continue
-                                                    
-                                                    # Check if line starts with something that looks like a brand name label
-                                                    if re.search(r'^(brand\s*name|name|suggested\s*name)[\s:]*(.+)', line, re.IGNORECASE):
-                                                        match = re.search(r'^(?:brand\s*name|name|suggested\s*name)[\s:]*["\'"]?([^"\'\n]+)["\'"]?', line, re.IGNORECASE)
-                                                        if match:
-                                                            brand_name = match.group(1).strip()
-                                                            logger.info(f"Extracted brand name using line search: {brand_name}")
-                                                            # Create a minimal valid output
-                                                            parsed_output = {
-                                                                "brand_name": brand_name,
-                                                                "naming_category": category,
-                                                                "brand_personality_alignment": "Generated using line search parsing",
-                                                                "brand_promise_alignment": "Generated using line search parsing",
-                                                                "target_audience_relevance_score": 5,
-                                                                "target_audience_relevance_details": "Generated using line search parsing",
-                                                                "market_differentiation_score": 5,
-                                                                "market_differentiation_details": "Generated using line search parsing",
-                                                                "memorability_score": 5,
-                                                                "memorability_score_details": "Generated using line search parsing",
-                                                                "pronounceability_score": 5,
-                                                                "pronounceability_score_details": "Generated using line search parsing",
-                                                                "visual_branding_potential_score": 5,
-                                                                "visual_branding_potential_details": "Generated using line search parsing",
-                                                                "name_generation_methodology": "Generated using line search parsing",
-                                                                "rank": 5
-                                                            }
-                                                            break
-                                                    
-                                                    # Look for quoted content that might be a brand name
-                                                    quotes_match = re.search(r'["\'"]([A-Z][a-zA-Z0-9]*(?:\s*[A-Z][a-zA-Z0-9]*)*)["\'"]', line)
-                                                    if quotes_match:
-                                                        brand_name = quotes_match.group(1).strip()
-                                                        logger.info(f"Extracted brand name from quotes: {brand_name}")
-                                                        # Create a minimal valid output
-                                                        parsed_output = {
-                                                            "brand_name": brand_name,
-                                                            "naming_category": category,
-                                                            "brand_personality_alignment": "Generated using quotes extraction",
-                                                            "brand_promise_alignment": "Generated using quotes extraction",
-                                                            "target_audience_relevance_score": 5,
-                                                            "target_audience_relevance_details": "Generated using quotes extraction",
-                                                            "market_differentiation_score": 5,
-                                                            "market_differentiation_details": "Generated using quotes extraction",
-                                                            "memorability_score": 5,
-                                                            "memorability_score_details": "Generated using quotes extraction",
-                                                            "pronounceability_score": 5,
-                                                            "pronounceability_score_details": "Generated using quotes extraction",
-                                                            "visual_branding_potential_score": 5,
-                                                            "visual_branding_potential_details": "Generated using quotes extraction",
-                                                            "name_generation_methodology": "Generated using quotes extraction",
-                                                            "rank": 5
-                                                        }
-                                                        break
-                                                    
-                                                    # Look for capitalized words that might be a brand name (last resort)
-                                                    caps_match = re.search(r'\b([A-Z][a-zA-Z0-9]*(?:\s*[A-Z][a-zA-Z0-9]*)*)\b', line)
-                                                    if caps_match and len(caps_match.group(1)) > 3:  # Avoid short acronyms
-                                                        brand_name = caps_match.group(1).strip()
-                                                        logger.info(f"Extracted brand name from capitalized text: {brand_name}")
-                                                        # Create a minimal valid output
-                                                        parsed_output = {
-                                                            "brand_name": brand_name,
-                                                            "naming_category": category,
-                                                            "brand_personality_alignment": "Generated using capitalization extraction",
-                                                            "brand_promise_alignment": "Generated using capitalization extraction",
-                                                            "target_audience_relevance_score": 5,
-                                                            "target_audience_relevance_details": "Generated using capitalization extraction",
-                                                            "market_differentiation_score": 5,
-                                                            "market_differentiation_details": "Generated using capitalization extraction",
-                                                            "memorability_score": 5,
-                                                            "memorability_score_details": "Generated using capitalization extraction",
-                                                            "pronounceability_score": 5,
-                                                            "pronounceability_score_details": "Generated using capitalization extraction",
-                                                            "visual_branding_potential_score": 5,
-                                                            "visual_branding_potential_details": "Generated using capitalization extraction",
-                                                            "name_generation_methodology": "Generated using capitalization extraction",
-                                                            "rank": 5
-                                                        }
-                                                        break
-                                                
-                                                # If we still don't have a parsed output, retry
-                                                if 'parsed_output' not in locals():
-                                                    retry_count += 1
-                                                    continue
-                                        else:
-                                            retry_count += 1
-                                            continue
+                                    # Parse the structured output
+                                    parsed_output = self.output_parser.parse(response.content)
                                     
                                     # Ensure required fields exist
                                     if "brand_name" not in parsed_output or not parsed_output["brand_name"]:
@@ -345,140 +216,47 @@ class BrandNameCreationExpert:
                                         retry_count += 1
                                         continue
                                     
-                                    # Log successful generation
-                                    logger.info(
-                                        f"Successfully generated brand name: {parsed_output['brand_name']}",
-                                        extra={"run_id": run_id}
-                                    )
+                                    # Check for duplicates
+                                    normalized_name = normalize_name(parsed_output["brand_name"])
+                                    if normalized_name in all_brand_names_set:
+                                        logger.warning(
+                                            f"Generated duplicate brand name: {parsed_output['brand_name']}, retrying",
+                                            extra={"run_id": run_id}
+                                        )
+                                        retry_count += 1
+                                        is_duplicate = True
+                                        
+                                        # Update prompt with stronger duplicate avoidance instruction
+                                        generation_prompt = self.generation_prompt.format(
+                                            format_instructions=self.output_parser.get_format_instructions(),
+                                            brand_context=brand_context,
+                                            brand_values=brand_values,
+                                            purpose=purpose,
+                                            key_attributes=key_attributes,
+                                            category=category,
+                                            existing_names=existing_names + f"\n- {parsed_output['brand_name']} (JUST GENERATED - DO NOT REUSE)"
+                                        )
+                                        human_message = HumanMessage(content=generation_prompt)
+                                        continue
                                     
-                                    # Trust that the LLM followed our uniqueness instructions
-                                    # The final Supabase check will catch any duplicates as a safety net
+                                    # If we got here, we have a unique name
+                                    is_duplicate = False
                                     break
                                     
                                 except Exception as e:
                                     logger.warning(
-                                        f"Error during brand name generation attempt: {str(e)}",
-                                        extra={
-                                            "run_id": run_id,
-                                            "error_type": type(e).__name__,
-                                            "retry_count": retry_count
-                                        }
-                                    )
-                                    retry_count += 1
-                                    
-                                    # If we've had multiple failures, reduce the complexity of the prompt
-                                    if retry_count >= 2:
-                                        logger.info("Using simplified prompt after multiple failures")
-                                        # Create a simpler prompt focused just on generating a name
-                                        simplified_prompt = f"""
-                                        Generate ONE unique brand name for a {brand_context.get('industry_focus', 'business')} company.
-                                        
-                                        Important facts:
-                                        - Industry: {brand_context.get('industry_focus', 'business')}
-                                        - Values: {', '.join(brand_values[:3]) if brand_values else 'Innovation, Quality'}
-                                        - Purpose: {purpose[:100] + '...' if len(purpose) > 100 else purpose}
-                                        
-                                        Previously generated names (AVOID): {existing_names}
-                                        
-                                        Output the name in this format only:
-                                        Brand Name: [YOUR BRAND NAME]
-                                        
-                                        For example: Brand Name: TechNexus
-                                        
-                                        Do not include any explanations, just the brand name line.
-                                        """
-                                        human_message = HumanMessage(content=simplified_prompt)
-                            
-                            # If we couldn't generate a valid name after retries, try a last resort approach
-                            if retry_count >= max_retries:
-                                logger.warning(
-                                    f"Failed to generate valid brand name after {max_retries} attempts, trying last resort approach",
-                                    extra={"run_id": run_id}
-                                )
-                                
-                                # Last resort approach: generate a basic name based on the category
-                                try:
-                                    # Very simple prompt
-                                    last_resort_prompt = f"""
-                                    Create a single unique brand name for a {brand_context.get('industry_focus', 'business')} company.
-                                    
-                                    The name should be in this format: Brand Name: [YOUR SUGGESTED BRAND NAME]
-                                    
-                                    For example: Brand Name: TechNexus
-                                    
-                                    ONLY output the brand name in the format above. Do not add any explanations.
-                                    """
-                                    
-                                    last_resort_message = HumanMessage(content=last_resort_prompt)
-                                    last_resort_response = await self.llm.ainvoke([last_resort_message])
-                                    
-                                    # Get just the text, no formatting
-                                    response_text = last_resort_response.content.strip()
-                                    
-                                    # Extract using regex - look for the format "Brand Name: XYZ"
-                                    brand_name_match = re.search(r'brand\s*name\s*:\s*(.+)', response_text, re.IGNORECASE)
-                                    if brand_name_match:
-                                        brand_name = brand_name_match.group(1).strip()
-                                        # Remove any quotes or formatting
-                                        brand_name = re.sub(r'["\'"`]', '', brand_name)
-                                    else:
-                                        # If specific format wasn't followed, just take first non-empty line
-                                        for line in response_text.split('\n'):
-                                            if line.strip():
-                                                brand_name = line.strip()
-                                                # Remove any labels like "Brand Name:" if present
-                                                brand_name = re.sub(r'^(?:brand\s*name\s*:?\s*)?', '', brand_name, flags=re.IGNORECASE)
-                                                # Remove any quotes or formatting
-                                                brand_name = re.sub(r'["\'"`]', '', brand_name)
-                                                break
-                                        else:
-                                            # If somehow we still don't have a name, use the whole response
-                                            brand_name = response_text
-                                            # Remove any quotes or formatting
-                                            brand_name = re.sub(r'["\'"`]', '', brand_name)
-                                    
-                                    # Truncate if too long
-                                    if len(brand_name) > 50:
-                                        brand_name = brand_name[:50]
-                                    
-                                    # Ensure first character is capitalized
-                                    if brand_name:
-                                        brand_name = brand_name[0].upper() + brand_name[1:]
-                                    
-                                    if brand_name:
-                                        logger.info(f"Generated emergency fallback name: {brand_name}")
-                                        # Create a minimal valid output
-                                        parsed_output = {
-                                            "brand_name": brand_name,
-                                            "naming_category": category,
-                                            "brand_personality_alignment": "Generated using emergency fallback",
-                                            "brand_promise_alignment": "Generated using emergency fallback",
-                                            "target_audience_relevance_score": 5,
-                                            "target_audience_relevance_details": "Generated using emergency fallback",
-                                            "market_differentiation_score": 5,
-                                            "market_differentiation_details": "Generated using emergency fallback",
-                                            "memorability_score": 5,
-                                            "memorability_score_details": "Generated using emergency fallback",
-                                            "pronounceability_score": 5,
-                                            "pronounceability_score_details": "Generated using emergency fallback",
-                                            "visual_branding_potential_score": 5,
-                                            "visual_branding_potential_details": "Generated using emergency fallback",
-                                            "name_generation_methodology": "Generated using emergency fallback",
-                                            "rank": 5
-                                        }
-                                    else:
-                                        # If we still couldn't generate a name, skip this iteration
-                                        logger.error(
-                                            "Emergency fallback name generation failed, skipping",
-                                            extra={"run_id": run_id}
-                                        )
-                                        continue
-                                except Exception as e:
-                                    logger.error(
-                                        f"Emergency fallback generation failed: {str(e)}, skipping",
+                                        f"Error during brand name generation attempt: {str(e)}, retrying",
                                         extra={"run_id": run_id}
                                     )
-                                    continue
+                                    retry_count += 1
+                            
+                            # If we couldn't generate a unique name after retries, skip this iteration
+                            if is_duplicate:
+                                logger.warning(
+                                    f"Failed to generate unique brand name after {max_retries} attempts, skipping",
+                                    extra={"run_id": run_id}
+                                )
+                                continue
                                 
                             # Add metadata to output
                             parsed_output.update({
@@ -487,23 +265,26 @@ class BrandNameCreationExpert:
                                 "category": category  # Add the category to the output
                             })
                             
-                            # Store the name data in Supabase - has built-in duplicate check
+                            # Store the name data in Supabase
                             await self._store_in_supabase(run_id, parsed_output)
+                            
+                            # Add to our duplicate checking set
+                            all_brand_names_set.add(normalize_name(parsed_output["brand_name"]))
                             
                             # For the return data, ensure all numeric fields are properly converted to floats
                             return_data = parsed_output.copy()
                             
                             # Ensure all numeric fields are float type for consistent processing downstream
-                            numeric_fields = [
+                            simple_numeric_fields = [
+                                "memorability_score",
+                                "pronounceability_score",
                                 "target_audience_relevance_score",
                                 "market_differentiation_score",
-                                "memorability_score",
-                                "pronounceability_score", 
                                 "visual_branding_potential_score",
                                 "rank"
                             ]
                             
-                            for field in numeric_fields:
+                            for field in simple_numeric_fields:
                                 try:
                                     if field in return_data:
                                         return_data[field] = float(return_data[field])
@@ -522,7 +303,7 @@ class BrandNameCreationExpert:
                                 }
                             )
                             
-                            # Add to our tracking lists
+                            # Add to our tracking lists - use the original data for uniqueness checking
                             generated_names.append(return_data)
                             all_generated_names.append(parsed_output)
                             
@@ -548,57 +329,10 @@ class BrandNameCreationExpert:
             
             if not generated_names:
                 logger.error(
-                    "Failed to generate any brand names, creating a default emergency name",
+                    "Failed to generate any brand names",
                     extra={"run_id": run_id}
                 )
-                # Instead of failing, create a default emergency name as a last resort
-                try:
-                    # Create an emergency brand name based on the industry
-                    industry = brand_context.get('industry_focus', 'Tech')
-                    default_name = f"Nexus{industry.replace(' ', '')}Solutions"
-                    
-                    # Create a minimal valid output
-                    emergency_name = {
-                        "run_id": run_id,
-                        "brand_name": default_name,
-                        "naming_category": "Emergency Generated Name",
-                        "brand_personality_alignment": "Emergency generated name due to generation failures",
-                        "brand_promise_alignment": "Emergency generated name due to generation failures",
-                        "target_audience_relevance_score": 5.0,
-                        "target_audience_relevance_details": "Generated as emergency fallback",
-                        "market_differentiation_score": 5.0,
-                        "market_differentiation_details": "Generated as emergency fallback",
-                        "memorability_score": 5.0,
-                        "memorability_score_details": "Generated as emergency fallback",
-                        "pronounceability_score": 5.0,
-                        "pronounceability_score_details": "Generated as emergency fallback",
-                        "visual_branding_potential_score": 5.0,
-                        "visual_branding_potential_details": "Generated as emergency fallback",
-                        "name_generation_methodology": "Emergency fallback when all other generation methods failed",
-                        "timestamp": datetime.now().isoformat(),
-                        "rank": 1.0
-                    }
-                    
-                    # Store the emergency name in Supabase
-                    await self._store_in_supabase(run_id, emergency_name)
-                    
-                    # Add to generated names
-                    generated_names.append(emergency_name)
-                    
-                    logger.info(
-                        "Created emergency fallback brand name",
-                        extra={
-                            "run_id": run_id,
-                            "brand_name": default_name
-                        }
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Error creating emergency brand name: {str(e)}",
-                        extra={"run_id": run_id}
-                    )
-                    # Now we have to fail if we couldn't even create an emergency name
-                    raise ValueError("Failed to generate any valid brand names, including emergency fallback")
+                raise ValueError("Failed to generate any valid brand names")
                 
             logger.info(
                 "Brand name generation completed",
@@ -660,29 +394,11 @@ class BrandNameCreationExpert:
                 raise ValueError("Missing required field: run_id")
             if not name_data.get("brand_name"):
                 raise ValueError("Missing required field: brand_name")
-            
-            # Check if this brand name already exists in the database for this run
-            brand_name = name_data["brand_name"].strip()
-            existing_data = await self.supabase.select(
-                table="brand_name_generation",
-                columns=["id"],
-                filters={
-                    "run_id": run_id,
-                    "brand_name": brand_name
-                }
-            )
-            
-            if existing_data and len(existing_data) > 0:
-                logger.warning(
-                    f"Brand name '{brand_name}' already exists in database for run_id {run_id}, skipping insertion",
-                    extra={"run_id": run_id}
-                )
-                return
                 
             # Prepare data for Supabase
             supabase_data = {
                 "run_id": run_id,
-                "brand_name": brand_name,  # Use the stripped version
+                "brand_name": name_data["brand_name"],
             }
             
             # Add optional fields with safe defaults
@@ -690,43 +406,57 @@ class BrandNameCreationExpert:
             supabase_data["brand_personality_alignment"] = name_data.get("brand_personality_alignment", "")
             supabase_data["brand_promise_alignment"] = name_data.get("brand_promise_alignment", "")
             
-            # Handle score fields - ensure they're stored as floats
-            score_fields = [
-                "target_audience_relevance_score",
-                "market_differentiation_score",
-                "memorability_score", 
-                "pronounceability_score",
-                "visual_branding_potential_score",
-                "rank"
-            ]
-            
-            for field in score_fields:
+            # Handle list fields - these need to be converted to strings for the text columns in Supabase
+            # For special fields that contain both scores and explanatory text
+            for field in ["target_audience_relevance_score", "market_differentiation_score", "visual_branding_potential_score"]:
                 try:
-                    if field in name_data and name_data[field] is not None:
-                        supabase_data[field] = float(name_data[field])
+                    field_value = name_data.get(field)
+                    
+                    # If not provided, use default
+                    if field_value is None:
+                        supabase_data[field] = 5.0
                     else:
-                        supabase_data[field] = 5.0  # Default value
-                except (ValueError, TypeError):
-                    logger.warning(f"Invalid {field}: {name_data.get(field)}, defaulting to 5.0")
+                        # Convert to float for numeric fields
+                        try:
+                            supabase_data[field] = float(field_value)
+                        except (ValueError, TypeError):
+                            logger.warning(f"Invalid {field}: {field_value}, defaulting to 5.0")
+                            supabase_data[field] = 5.0
+                except Exception as e:
+                    logger.warning(f"Error processing {field}: {str(e)}. Using default value.")
                     supabase_data[field] = 5.0
             
-            # Handle details fields - store as text
-            details_fields = [
-                "target_audience_relevance_details",
-                "market_differentiation_details",
-                "memorability_score_details",
-                "pronounceability_score_details",
-                "visual_branding_potential_details"
-            ]
-            
-            for field in details_fields:
-                if field in name_data and name_data[field]:
-                    supabase_data[field] = str(name_data[field])
-                else:
-                    supabase_data[field] = "No details provided"
+            # Handle details fields - these should be stored as text
+            for field in ["target_audience_relevance_details", "market_differentiation_details", 
+                         "visual_branding_potential_details", "memorability_score_details", 
+                         "pronounceability_score_details"]:
+                try:
+                    field_value = name_data.get(field)
+                    
+                    # If not provided, use default
+                    if field_value is None:
+                        supabase_data[field] = "No details provided"
+                    elif isinstance(field_value, list):
+                        # Convert list to formatted bullet points
+                        bullet_points = [f"• {point}" for point in field_value]
+                        supabase_data[field] = "\n".join(bullet_points)
+                    else:
+                        # Use as is if it's already a string
+                        supabase_data[field] = str(field_value)
+                except Exception as e:
+                    logger.warning(f"Error processing {field}: {str(e)}. Using default value.")
+                    supabase_data[field] = "Error processing details"
             
             # Name generation methodology is stored as plain text
             supabase_data["name_generation_methodology"] = name_data.get("name_generation_methodology", "")
+            
+            # Handle numeric fields that are stored as numeric types in Supabase
+            for field in ["memorability_score", "pronounceability_score", "rank"]:
+                try:
+                    supabase_data[field] = float(name_data.get(field, 0))
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid {field}: {name_data.get(field)}, defaulting to 0")
+                    supabase_data[field] = 0.0
             
             # Handle timestamp - use ISO format which PostgreSQL can properly interpret
             try:
@@ -754,10 +484,11 @@ class BrandNameCreationExpert:
             valid_fields = [
                 "run_id", "brand_name", "naming_category", "brand_personality_alignment",
                 "brand_promise_alignment", "target_audience_relevance_score", "market_differentiation_score",
-                "memorability_score", "pronounceability_score", "visual_branding_potential_score",
+                "visual_branding_potential_score", "memorability_score", "pronounceability_score",
+                "name_generation_methodology", "timestamp", "rank", "category",
                 "target_audience_relevance_details", "market_differentiation_details",
-                "memorability_score_details", "pronounceability_score_details", "visual_branding_potential_details",
-                "name_generation_methodology", "timestamp", "rank", "category"
+                "visual_branding_potential_details", "memorability_score_details",
+                "pronounceability_score_details"
             ]
             
             # Filter out any fields that don't exist in the database schema

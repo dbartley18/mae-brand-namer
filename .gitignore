@@ -93,9 +93,11 @@ reports/*
 
 # Local development
 *.env.local
+*.venv
 *.env.development.local
 *.env.test.local
 *.env.production.local
+*zz
 
 # Jupyter Notebook
 .ipynb_checkpoints

@@ -42,22 +42,14 @@ template: |
   Previously generated names (YOU MUST AVOID THESE):
   {existing_names}
 
-  CRITICAL UNIQUENESS REQUIREMENT: Generate only ONE brand name that is COMPLETELY UNIQUE compared to all previously generated names. The name should not:
-  - Be a duplicate of any previously generated name (even with different capitalization or spacing)
-  - Be a minor variation of any previously generated name (changing just 1-2 letters)
-  - Be a substring of any previously generated name
-  - Share the same root words as any previously generated name
-  - Be phonetically similar to any previously generated name
-  - Use a different suffix/prefix but the same core word (e.g., if "Lumina" exists, don't use "Illumina", "LuminaTech", etc.)
-  - Be a plural or singular variation of an existing name
-  - Be a compound word that includes an existing name
+  CRITICAL REQUIREMENT: Generate only ONE brand name that is COMPLETELY UNIQUE compared to all previously generated names. The name should not be:
+  - A duplicate of any previously generated name (even with different capitalization or spacing)
+  - A minor variation of any previously generated name (changing just 1-2 letters)
+  - A substring of any previously generated name
+  - Sharing the same root words as any previously generated name
+  - Phonetically similar to any previously generated name
   
-  UNIQUENESS STRATEGIES:
-  - Create a completely new word with a different syllable structure
-  - Draw from a different conceptual or linguistic domain
-  - Use a different language influence than previous names
-  - Consider entirely different phonetic patterns
-  - Use a different number of syllables than previous names
+  For example, if "Lumina" was previously generated, do not suggest "Luminar", "Illumina", "LuminaTech", etc.
   
   Do not provide multiple options or alternatives.
   
@@ -67,15 +59,15 @@ template: |
   - Brand personality alignment (how it connects to the brand personality)
   - Brand promise alignment (how it reflects the brand promise)
   - Target audience relevance score (provide as a SINGLE NUMERIC VALUE from 1-10)
-  - Target audience relevance details (provide 2-3 explanatory bullet points as text)
+  - Target audience relevance details (provide 2-3 bullet points explaining the score)
   - Market differentiation score (provide as a SINGLE NUMERIC VALUE from 1-10)
-  - Market differentiation details (provide 2-3 explanatory bullet points as text)
+  - Market differentiation details (provide 2-3 bullet points explaining the score)
   - Memorability score (provide as a SINGLE NUMERIC VALUE from 1-10)
-  - Memorability score details (provide 2-3 explanatory bullet points as text)
+  - Memorability score details (provide 2-3 bullet points explaining the score)
   - Pronounceability score (provide as a SINGLE NUMERIC VALUE from 1-10)
-  - Pronounceability score details (provide 2-3 explanatory bullet points as text)
+  - Pronounceability score details (provide 2-3 bullet points explaining the score)
   - Visual branding potential score (provide as a SINGLE NUMERIC VALUE from 1-10)
-  - Visual branding potential details (provide 2-3 explanatory bullet points as text)
+  - Visual branding potential details (provide 2-3 bullet points explaining the score)
   - Name generation methodology used
   - Rank (provide as a SINGLE NUMERIC VALUE from 1-10)
 
@@ -83,13 +75,13 @@ template: |
   {format_instructions}
 
   IMPORTANT FORMAT INSTRUCTIONS:
-  1. For all scores (target_audience_relevance_score, market_differentiation_score, memorability_score, pronounceability_score, visual_branding_potential_score):
-     - Provide these as single numeric values from 1-10
-     - Example: 8 or 8.0 (not as a string or array)
+  1. For all score fields (target_audience_relevance_score, market_differentiation_score, etc.):
+     - Provide these as single numeric values from 1-10 (e.g., 8 or 8.0)
+     - DO NOT wrap scores in quotes or arrays
   
   2. For all details fields (target_audience_relevance_details, market_differentiation_details, etc.):
-     - Provide these as text with 2-3 bullet points separated by newlines
-     - Example: "- First point about this\n- Second point about this\n- Third point if needed"
+     - Provide these as strings containing 2-3 bullet points
+     - Format as "• First point\n• Second point\n• Third point"
 
   Ensure the name:
   - Is unique and ownable
