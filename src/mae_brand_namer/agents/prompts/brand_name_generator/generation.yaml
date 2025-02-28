@@ -49,7 +49,6 @@ template: |
   - Sharing the same root words as any previously generated name
   - Phonetically similar to any previously generated name
   
-  For example, if "Lumina" was previously generated, do not suggest "Luminar", "Illumina", "LuminaTech", etc.
   
   Do not provide multiple options or alternatives.
   

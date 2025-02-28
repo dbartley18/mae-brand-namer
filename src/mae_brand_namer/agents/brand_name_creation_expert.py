@@ -406,9 +406,9 @@ class BrandNameCreationExpert:
             supabase_data["brand_personality_alignment"] = name_data.get("brand_personality_alignment", "")
             supabase_data["brand_promise_alignment"] = name_data.get("brand_promise_alignment", "")
             
-            # Handle list fields - these need to be converted to strings for the text columns in Supabase
-            # For special fields that contain both scores and explanatory text
-            for field in ["target_audience_relevance_score", "market_differentiation_score", "visual_branding_potential_score"]:
+            # Handle score fields - these should be stored as floats
+            for field in ["target_audience_relevance_score", "market_differentiation_score", 
+                         "visual_branding_potential_score", "memorability_score", "pronounceability_score"]:
                 try:
                     field_value = name_data.get(field)
                     
@@ -416,7 +416,7 @@ class BrandNameCreationExpert:
                     if field_value is None:
                         supabase_data[field] = 5.0
                     else:
-                        # Convert to float for numeric fields
+                        # Convert to float
                         try:
                             supabase_data[field] = float(field_value)
                         except (ValueError, TypeError):
@@ -426,7 +426,7 @@ class BrandNameCreationExpert:
                     logger.warning(f"Error processing {field}: {str(e)}. Using default value.")
                     supabase_data[field] = 5.0
             
-            # Handle details fields - these should be stored as text
+            # Handle details fields - these should be stored as strings
             for field in ["target_audience_relevance_details", "market_differentiation_details", 
                          "visual_branding_potential_details", "memorability_score_details", 
                          "pronounceability_score_details"]:
@@ -434,15 +434,11 @@ class BrandNameCreationExpert:
                     field_value = name_data.get(field)
                     
                     # If not provided, use default
-                    if field_value is None:
+                    if field_value is None or field_value == "":
                         supabase_data[field] = "No details provided"
-                    elif isinstance(field_value, list):
-                        # Convert list to formatted bullet points
-                        bullet_points = [f"• {point}" for point in field_value]
-                        supabase_data[field] = "\n".join(bullet_points)
                     else:
-                        # Use as is if it's already a string
-                        supabase_data[field] = str(field_value)
+                        # Store the value as is (should already be a string)
+                        supabase_data[field] = field_value
                 except Exception as e:
                     logger.warning(f"Error processing {field}: {str(e)}. Using default value.")
                     supabase_data[field] = "Error processing details"
@@ -450,13 +446,12 @@ class BrandNameCreationExpert:
             # Name generation methodology is stored as plain text
             supabase_data["name_generation_methodology"] = name_data.get("name_generation_methodology", "")
             
-            # Handle numeric fields that are stored as numeric types in Supabase
-            for field in ["memorability_score", "pronounceability_score", "rank"]:
-                try:
-                    supabase_data[field] = float(name_data.get(field, 0))
-                except (ValueError, TypeError):
-                    logger.warning(f"Invalid {field}: {name_data.get(field)}, defaulting to 0")
-                    supabase_data[field] = 0.0
+            # Handle rank - stored as a float
+            try:
+                supabase_data["rank"] = float(name_data.get("rank", 0))
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid rank: {name_data.get('rank')}, defaulting to 0")
+                supabase_data["rank"] = 0.0
             
             # Handle timestamp - use ISO format which PostgreSQL can properly interpret
             try:
@@ -483,12 +478,12 @@ class BrandNameCreationExpert:
             # Define known valid fields for the brand_name_generation table
             valid_fields = [
                 "run_id", "brand_name", "naming_category", "brand_personality_alignment",
-                "brand_promise_alignment", "target_audience_relevance_score", "market_differentiation_score",
-                "visual_branding_potential_score", "memorability_score", "pronounceability_score",
-                "name_generation_methodology", "timestamp", "rank", "category",
-                "target_audience_relevance_details", "market_differentiation_details",
-                "visual_branding_potential_details", "memorability_score_details",
-                "pronounceability_score_details"
+                "brand_promise_alignment", "target_audience_relevance_score", "target_audience_relevance_details",
+                "market_differentiation_score", "market_differentiation_details",
+                "visual_branding_potential_score", "visual_branding_potential_details", 
+                "memorability_score", "memorability_score_details",
+                "pronounceability_score", "pronounceability_score_details",
+                "name_generation_methodology", "timestamp", "rank", "category"
             ]
             
             # Filter out any fields that don't exist in the database schema
