@@ -1,0 +1,53 @@
+_type: prompt
+input_variables: ["brand_name", "brand_context", "format_instructions"]
+template: |
+  Analyze the following brand name in its context:
+  
+  Brand Name: {brand_name}
+  Brand Context: {brand_context}
+  
+  Your task is to provide a comprehensive semantic analysis of this brand name, focusing specifically on:
+  
+  1. Literal Meaning: What the name directly means (denotative_meaning)
+  2. Word Origins: Etymology and linguistic history (etymology)
+  3. Descriptive Properties: How well it describes the product/service (descriptiveness)
+  4. Linguistic Structure: Word formation, syllables, phonetic properties
+  5. Emotional & Sensory Impact: What feelings and senses it evokes
+  6. Memorability Factors: What makes it stick in customers' minds
+  7. Market Differentiation: How distinct it is from competitors
+  8. Brand Alignment: How well it fits the intended brand positioning
+  
+  IMPORTANT FORMATTING INSTRUCTIONS:
+  - Your response MUST be a valid JSON object
+  - Include ONLY the exact field names specified in the schema
+  - Place all fields at the TOP LEVEL of the JSON (do not nest them)
+  - Do not add any fields that aren't in the schema
+  - Do not rename, combine, or reorganize fields
+  - Do not include explanatory text outside the JSON structure
+  - Do not wrap the JSON in markdown code blocks
+  
+  Example of CORRECT format:
+  ```
+  {
+    "denotative_meaning": "The literal meaning of the term",
+    "etymology": "The word origin and history",
+    "descriptiveness": 7,
+    ...other fields with exact names...
+  }
+  ```
+  
+  Example of INCORRECT format (don't do this):
+  ```
+  {
+    "analysis": {
+      "meaning": "The meaning of the term",
+      "word_origin": "The etymology"
+    },
+    "scores": {
+      "descriptive_score": 7
+    }
+  }
+  ```
+  
+  Format your analysis according to this schema:
+  {format_instructions} 

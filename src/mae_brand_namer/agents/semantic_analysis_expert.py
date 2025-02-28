@@ -5,18 +5,19 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import json
 import asyncio
+from pathlib import Path
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, load_prompt
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-from langchain.callbacks import tracing_enabled
 from langchain_core.tracers import LangChainTracer
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from supabase.lib.client_options import ClientOptions
 from postgrest.exceptions import APIError
 from storage3.exceptions import StorageException
 from gotrue.errors import AuthError as AuthException
+from langchain_core.tracers.context import tracing_v2_enabled
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
@@ -71,57 +72,133 @@ class SemanticAnalysisExpert:
                 type="string"
             ),
             ResponseSchema(
-                name="connotative_associations",
-                description="Indirect associations and implications",
-                type="list[string]"
+                name="etymology",
+                description="Word origin and history",
+                type="string"
             ),
             ResponseSchema(
-                name="brand_personality_alignment",
-                description="How well the name aligns with desired brand personality (1-10)",
+                name="descriptiveness",
+                description="How descriptive the name is of the product/service (1-10)",
                 type="number"
             ),
             ResponseSchema(
-                name="emotional_resonance",
-                description="Emotional impact and memorability score (1-10)",
+                name="concreteness",
+                description="How concrete vs abstract the name is (1-10)",
                 type="number"
             ),
             ResponseSchema(
-                name="conceptual_clarity",
-                description="How clearly the name communicates intended concepts (1-10)",
+                name="emotional_valence",
+                description="Emotional response the name evokes (positive/neutral/negative)",
+                type="string"
+            ),
+            ResponseSchema(
+                name="brand_personality",
+                description="Brand personality traits conveyed by the name",
+                type="string"
+            ),
+            ResponseSchema(
+                name="sensory_associations",
+                description="Sensory connections the name triggers",
+                type="string"
+            ),
+            ResponseSchema(
+                name="figurative_language",
+                description="Metaphors, analogies, or other figurative aspects",
+                type="string"
+            ),
+            ResponseSchema(
+                name="ambiguity",
+                description="Whether the name has multiple possible meanings",
+                type="boolean"
+            ),
+            ResponseSchema(
+                name="irony_or_paradox",
+                description="Whether the name contains irony or paradoxical elements",
+                type="boolean"
+            ),
+            ResponseSchema(
+                name="humor_playfulness",
+                description="Whether the name incorporates humor or wordplay",
+                type="boolean"
+            ),
+            ResponseSchema(
+                name="phoneme_combinations",
+                description="Notable sound combinations in the name",
+                type="string"
+            ),
+            ResponseSchema(
+                name="sound_symbolism",
+                description="How sounds in the name symbolize meaning",
+                type="string"
+            ),
+            ResponseSchema(
+                name="rhyme_rhythm",
+                description="Whether the name contains rhyming or rhythmic elements",
+                type="boolean"
+            ),
+            ResponseSchema(
+                name="alliteration_assonance",
+                description="Whether the name uses alliteration or assonance",
+                type="boolean"
+            ),
+            ResponseSchema(
+                name="word_length_syllables",
+                description="Number of syllables in the name",
+                type="integer"
+            ),
+            ResponseSchema(
+                name="compounding_derivation",
+                description="How the name is constructed linguistically",
+                type="string"
+            ),
+            ResponseSchema(
+                name="brand_name_type",
+                description="Type or category of brand name",
+                type="string"
+            ),
+            ResponseSchema(
+                name="memorability_score",
+                description="How memorable the name is (1-10)",
                 type="number"
             ),
             ResponseSchema(
-                name="semantic_distinctiveness",
-                description="How semantically unique the name is in the market (1-10)",
+                name="pronunciation_ease",
+                description="How easy the name is to pronounce (1-10)",
                 type="number"
             ),
             ResponseSchema(
-                name="analysis_notes",
-                description="Detailed semantic analysis notes",
+                name="clarity_understandability",
+                description="How clear and understandable the name is (1-10)",
+                type="number"
+            ),
+            ResponseSchema(
+                name="uniqueness_differentiation",
+                description="How unique the name is in the market (1-10)",
+                type="number"
+            ),
+            ResponseSchema(
+                name="brand_fit_relevance",
+                description="How well the name fits the brand (1-10)",
+                type="number"
+            ),
+            ResponseSchema(
+                name="semantic_trademark_risk",
+                description="Assessment of potential trademark issues based on meaning",
                 type="string"
             )
         ]
         self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
         
+        # Load prompts from YAML files
+        prompt_dir = Path(__file__).parent / "prompts" / "semantic_analysis"
+        self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
+        self.human_prompt = load_prompt(str(prompt_dir / "human.yaml"))
+        
         # Create the prompt template with metadata for LangGraph Studio
         system_message = SystemMessage(
-            content=f"""You are a Semantic Analysis Expert with the following profile:
-            Role: {self.role}
-            Goal: {self.goal}
-            Backstory: {self.backstory}
-            
-            Analyze the provided brand name based on its semantic meaning and brand context.
-            Consider:
-            1. Denotative & Connotative Meaning
-            2. Brand Personality Alignment
-            3. Emotional Impact & Memorability
-            4. Conceptual Clarity & Communication
-            5. Semantic Distinctiveness
-            6. Market Context & Relevance
-            
-            Format your response according to the following schema:
-            {{format_instructions}}
-            """,
+            content=self.system_prompt.format(
+                format_instructions=self.output_parser.get_format_instructions()
+            ),
             additional_kwargs={
                 "metadata": {
                     "agent_type": "semantic_analyzer",
@@ -129,13 +206,9 @@ class SemanticAnalysisExpert:
                 }
             }
         )
-        human_template = """Analyze the following brand name in its context:
-        Brand Name: {brand_name}
-        Brand Context: {brand_context}
-        """
         self.prompt = ChatPromptTemplate.from_messages([
             system_message,
-            HumanMessage(content=human_template)
+            HumanMessage(content=self.human_prompt.template)
         ])
 
     async def analyze_brand_name(
@@ -167,12 +240,12 @@ class SemanticAnalysisExpert:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
-            with tracing_enabled(tags={"agent": "SemanticAnalysisExpert", "run_id": run_id}):
-                # Format prompt with parser instructions
+            with tracing_v2_enabled():
+                # Format prompt with variables
                 formatted_prompt = self.prompt.format_messages(
-                    format_instructions=self.output_parser.get_format_instructions(),
                     brand_name=brand_name,
-                    brand_context=json.dumps(brand_context, indent=2)
+                    brand_context=str(brand_context) if isinstance(brand_context, dict) else brand_context,
+                    format_instructions=self.output_parser.get_format_instructions()
                 )
                 
                 # Get response from LLM
@@ -184,9 +257,8 @@ class SemanticAnalysisExpert:
                 # Store results in Supabase
                 await self._store_analysis(run_id, brand_name, analysis_result)
                 
-                # Create a result dictionary with brand_name and run_id
+                # Create a result dictionary with brand_name (without duplicating run_id since that's handled by LangGraph)
                 result = {
-                    "run_id": run_id,
                     "brand_name": brand_name,
                     "task_name": "semantic_analysis",
                 }

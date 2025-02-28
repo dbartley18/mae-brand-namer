@@ -10,10 +10,10 @@ from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate, load_prompt
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-from langchain.callbacks import tracing_enabled
 from langchain_core.tracers import LangChainTracer
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from pathlib import Path
+from langchain_core.tracers.context import tracing_v2_enabled
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
@@ -108,7 +108,7 @@ class DomainAnalysisExpert:
             ValueError: If analysis fails
         """
         try:
-            with tracing_enabled(tags={"agent": "DomainAnalysisExpert", "run_id": run_id}):
+            with tracing_v2_enabled():
                 # Format prompt with parser instructions
                 formatted_prompt = self.prompt.format_messages(
                     format_instructions=self.output_parser.get_format_instructions(),

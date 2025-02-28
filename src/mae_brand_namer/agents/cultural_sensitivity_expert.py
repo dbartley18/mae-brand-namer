@@ -36,31 +36,47 @@ class CulturalSensitivityExpert:
             
             # Define output schemas for structured parsing
             self.output_schemas = [
-                ResponseSchema(name="cultural_connotations", description="Global cultural associations"),
-                ResponseSchema(name="potential_sensitivities", description="Areas of potential concern"),
-                ResponseSchema(name="regional_considerations", description="Regional market considerations"),
-                ResponseSchema(name="language_considerations", description="Cross-language issues"),
-                ResponseSchema(name="religious_implications", description="Religious associations or taboos"),
-                ResponseSchema(name="historical_context", description="Historical associations or baggage"),
-                ResponseSchema(name="gender_implications", description="Gender associations or bias"),
-                ResponseSchema(name="age_appropriateness", description="Age-related considerations"),
-                ResponseSchema(name="socioeconomic_implications", description="Class or socioeconomic associations"),
-                ResponseSchema(name="overall_risk_rating", description="Overall risk rating (Low/Medium/High)"),
-                ResponseSchema(name="risk_score", description="Quantified risk score (1-10)"),
-                ResponseSchema(name="recommendations", description="Recommendations for addressing concerns"),
-                ResponseSchema(name="rank", description="Overall cultural sensitivity score (1-10)")
+                ResponseSchema(name="cultural_connotations", description="Global cultural associations", type="string"),
+                ResponseSchema(name="symbolic_meanings", description="Symbolic interpretations across cultures", type="string"),
+                ResponseSchema(name="alignment_with_cultural_values", description="How well it aligns with cultural values", type="string"),
+                ResponseSchema(name="religious_sensitivities", description="Religious associations or concerns", type="string"),
+                ResponseSchema(name="social_political_taboos", description="Social or political issues to consider", type="string"),
+                ResponseSchema(name="body_part_bodily_function_connotations", description="Whether it has associations with body parts or functions", type="boolean"),
+                ResponseSchema(name="age_related_connotations", description="Age-related considerations", type="string"),
+                ResponseSchema(name="gender_connotations", description="Gender associations or bias", type="string"),
+                ResponseSchema(name="regional_variations", description="How meanings vary by region", type="string"),
+                ResponseSchema(name="historical_meaning", description="Historical associations or context", type="string"),
+                ResponseSchema(name="current_event_relevance", description="Relevance to current events", type="string"),
+                ResponseSchema(name="overall_risk_rating", description="Overall risk rating (Low/Medium/High)", type="string"),
+                ResponseSchema(name="notes", description="Additional cultural sensitivity observations", type="string"),
+                ResponseSchema(name="rank", description="Overall cultural sensitivity score (1-10)", type="number")
             ]
             
             self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
             
             # Create prompt template
-            system_message = SystemMessage(content=self.system_prompt.format())
+            system_message = SystemMessage(content=self.system_prompt.format() + 
+                "\n\nIMPORTANT: You must respond with a valid JSON object that matches EXACTLY the schema provided." +
+                "\nThe JSON MUST contain all the fields specified below at the TOP LEVEL of the object." +
+                "\nDo NOT nest fields under additional keys or create your own object structure." +
+                "\nUse EXACTLY the field names provided in the schema - do not modify, merge, or rename any fields." +
+                "\nDo not include any preamble or explanation outside the JSON structure." +
+                "\nDo not use markdown formatting for the JSON." +
+                "\n\nExample of correct structure:" +
+                "\n{" +
+                '\n  "cultural_connotations": "text here",' +
+                '\n  "symbolic_meanings": "text here",' +
+                "\n  ... other fields exactly as named ..." +
+                "\n}")
             human_template = (
                 "Analyze the cultural sensitivity of the following brand name:\n"
                 "Brand Name: {brand_name}\n"
                 "Brand Context: {brand_context}\n\n"
                 "Format your analysis according to this schema:\n"
-                "{format_instructions}"
+                "{format_instructions}\n\n"
+                "Remember to respond with ONLY a valid JSON object exactly matching the required schema.\n"
+                "Use the EXACT field names from the schema at the top level of your JSON response.\n"
+                "Do NOT create nested structures or use different field names."
             )
             self.prompt = ChatPromptTemplate.from_messages([
                 system_message,
@@ -111,7 +127,7 @@ class CulturalSensitivityExpert:
                 formatted_prompt = self.prompt.format_messages(
                     format_instructions=self.output_parser.get_format_instructions(),
                     brand_name=brand_name,
-                    brand_context=brand_context
+                    brand_context=str(brand_context) if isinstance(brand_context, dict) else brand_context
                 )
                 
                 # Get response from LLM
@@ -126,18 +142,20 @@ class CulturalSensitivityExpert:
                 # Return the analysis
                 return {
                     "brand_name": brand_name,
+                    "task_name": "cultural_sensitivity_analysis",
                     "cultural_connotations": analysis["cultural_connotations"],
-                    "potential_sensitivities": analysis["potential_sensitivities"],
-                    "regional_considerations": analysis["regional_considerations"],
-                    "language_considerations": analysis["language_considerations"],
-                    "religious_implications": analysis["religious_implications"],
-                    "historical_context": analysis["historical_context"],
-                    "gender_implications": analysis["gender_implications"],
-                    "age_appropriateness": analysis["age_appropriateness"],
-                    "socioeconomic_implications": analysis["socioeconomic_implications"],
+                    "symbolic_meanings": analysis["symbolic_meanings"],
+                    "alignment_with_cultural_values": analysis["alignment_with_cultural_values"],
+                    "religious_sensitivities": analysis["religious_sensitivities"],
+                    "social_political_taboos": analysis["social_political_taboos"],
+                    "body_part_bodily_function_connotations": analysis["body_part_bodily_function_connotations"],
+                    "age_related_connotations": analysis["age_related_connotations"],
+                    "gender_connotations": analysis["gender_connotations"],
+                    "regional_variations": analysis["regional_variations"],
+                    "historical_meaning": analysis["historical_meaning"],
+                    "current_event_relevance": analysis["current_event_relevance"],
                     "overall_risk_rating": analysis["overall_risk_rating"],
-                    "risk_score": analysis["risk_score"],
-                    "recommendations": analysis["recommendations"],
+                    "notes": analysis["notes"],
                     "rank": float(analysis["rank"])
                 }
                 

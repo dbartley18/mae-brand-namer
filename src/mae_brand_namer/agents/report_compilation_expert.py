@@ -10,11 +10,12 @@ import asyncio
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, PromptTemplate
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-from langchain.callbacks import tracing_enabled
 from langchain_core.tracers import LangChainTracer
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.tracers.context import tracing_v2_enabled
+from langchain.chains import LLMChain
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
@@ -235,7 +236,7 @@ class ReportCompilationExpert:
             )
             
             # Call the LLM with the formatted prompt
-            with tracing_enabled(tags={"task": "generate_recommendations"}):
+            with tracing_v2_enabled():
                 response = await self.llm.ainvoke(prompt)
                 
             # Parse the structured response

@@ -42,6 +42,20 @@ template: |
   Format your analysis according to this schema:
   {format_instructions}
 
+  IMPORTANT: You must respond with a valid JSON object that matches EXACTLY the schema provided.
+  The JSON MUST contain all the fields specified below at the TOP LEVEL of the object.
+  Do NOT nest fields under additional keys or create your own object structure.
+  Use EXACTLY the field names provided in the schema - do not modify, merge, or rename any fields.
+  Do not include any preamble or explanation outside the JSON structure.
+  Do not use markdown formatting for the JSON.
+
+  Example of correct structure:
+  {
+    "pronunciation_ease": "text here",
+    "euphony_vs_cacophony": "text here",
+    ... other fields exactly as named ...
+  }
+
   For each name, provide:
   - Detailed linguistic breakdown
   - Potential strengths/weaknesses

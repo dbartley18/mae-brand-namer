@@ -61,13 +61,18 @@ class TranslationAnalysisExpert:
         # Define output schemas for structured parsing
         self.output_schemas = [
             ResponseSchema(
+                name="target_language",
+                description="Target language being analyzed",
+                type="string"
+            ),
+            ResponseSchema(
                 name="direct_translation",
                 description="Direct translation analysis",
                 type="string"
             ),
             ResponseSchema(
                 name="semantic_shift",
-                description="Analysis of meaning changes across languages",
+                description="Analysis of meaning changes in this language",
                 type="string"
             ),
             ResponseSchema(
@@ -76,39 +81,49 @@ class TranslationAnalysisExpert:
                 type="string"
             ),
             ResponseSchema(
-                name="cultural_implications",
-                description="Cultural context and implications",
+                name="phonetic_similarity_undesirable",
+                description="Whether it sounds like something undesirable",
+                type="boolean"
+            ),
+            ResponseSchema(
+                name="phonetic_retention",
+                description="How well the original sound is preserved",
                 type="string"
             ),
             ResponseSchema(
-                name="localization_needs",
-                description="Required adaptations for local markets",
-                type="array"
+                name="cultural_acceptability",
+                description="Cultural acceptability in target language",
+                type="string"
             ),
             ResponseSchema(
-                name="market_specific_issues",
-                description="Issues in specific target markets",
-                type="array"
+                name="adaptation_needed",
+                description="Whether adaptation is needed for this market",
+                type="boolean"
             ),
             ResponseSchema(
-                name="global_viability_score",
-                description="Overall global viability score (1-10)",
+                name="proposed_adaptation",
+                description="Suggested adaptation if needed",
+                type="string"
+            ),
+            ResponseSchema(
+                name="brand_essence_preserved",
+                description="How well brand essence is preserved",
+                type="string"
+            ),
+            ResponseSchema(
+                name="global_consistency_vs_localization",
+                description="Balance between global consistency and local adaptation",
+                type="string"
+            ),
+            ResponseSchema(
+                name="notes",
+                description="Additional observations about translation",
+                type="string"
+            ),
+            ResponseSchema(
+                name="rank",
+                description="Overall translation viability score (1-10)",
                 type="number"
-            ),
-            ResponseSchema(
-                name="language_specific_scores",
-                description="Viability scores by language",
-                type="object"
-            ),
-            ResponseSchema(
-                name="adaptation_recommendations",
-                description="Recommendations for global adaptation",
-                type="array"
-            ),
-            ResponseSchema(
-                name="risk_assessment",
-                description="Potential risks in translation/adaptation",
-                type="array"
             )
         ]
         self.output_parser = StructuredOutputParser.from_response_schemas(
@@ -126,7 +141,19 @@ class TranslationAnalysisExpert:
         
         # Create the prompt template with metadata
         system_message = SystemMessage(
-            content=self.system_prompt.format(),
+            content=self.system_prompt.format() + 
+                "\n\nIMPORTANT: You must respond with a valid JSON object that matches EXACTLY the schema provided." +
+                "\nThe JSON MUST contain all the fields specified below at the TOP LEVEL of the object." +
+                "\nDo NOT nest fields under additional keys or create your own object structure." +
+                "\nUse EXACTLY the field names provided in the schema - do not modify, merge, or rename any fields." +
+                "\nDo not include any preamble or explanation outside the JSON structure." +
+                "\nDo not use markdown formatting for the JSON." +
+                "\n\nExample of correct structure:" +
+                "\n{" +
+                '\n  "target_language": "text here",' +
+                '\n  "direct_translation": "text here",' +
+                "\n  ... other fields exactly as named ..." +
+                "\n}",
             additional_kwargs={
                 "metadata": {
                     "agent_type": "translation_analyzer",
@@ -140,7 +167,10 @@ class TranslationAnalysisExpert:
             "Brand Name: {brand_name}\n"
             "Brand Context: {brand_context}\n"
             "\nFormat your analysis according to this schema:\n"
-            "{format_instructions}"
+            "{format_instructions}\n\n"
+            "Remember to respond with ONLY a valid JSON object exactly matching the required schema.\n"
+            "Use the EXACT field names from the schema at the top level of your JSON response.\n"
+            "Do NOT create nested structures or use different field names."
         )
         self.prompt = ChatPromptTemplate.from_messages([
             system_message,
@@ -180,7 +210,7 @@ class TranslationAnalysisExpert:
                 formatted_prompt = self.prompt.format_messages(
                     format_instructions=self.output_parser.get_format_instructions(),
                     brand_name=brand_name,
-                    brand_context=brand_context
+                    brand_context=str(brand_context) if isinstance(brand_context, dict) else brand_context
                 )
                 
                 # Get response from LLM
@@ -192,7 +222,18 @@ class TranslationAnalysisExpert:
                 # Store results
                 await self._store_analysis(run_id, brand_name, analysis)
                 
-                return analysis
+                # Create a result with brand_name but without run_id (which is handled by LangGraph)
+                result = {
+                    "brand_name": brand_name,
+                    "task_name": "translation_analysis",
+                }
+                
+                # Add all analysis results
+                for key, value in analysis.items():
+                    if key not in result and key != "run_id":  # Avoid duplicating keys or including run_id
+                        result[key] = value
+                
+                return result
                 
         except Exception as e:
             logger.error(
