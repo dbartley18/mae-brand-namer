@@ -123,11 +123,11 @@ class CompetitorAnalysisExpert:
         
         # Initialize Gemini model with tracing
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.7,
+            model=settings.model_name,
+            temperature=settings.model_temperature,
             google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,
-            callbacks=[self.langsmith] if self.langsmith else None
+            callbacks=settings.get_langsmith_callbacks()
         )
         
         # Create the prompt template with metadata

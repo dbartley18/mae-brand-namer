@@ -83,8 +83,8 @@ class LinguisticsExpert:
             
             # Initialize LLM
             self.llm = ChatGoogleGenerativeAI(
-                model="gemini-1.5-pro",
-                temperature=0.2,
+                model=settings.model_name,
+                temperature=0.5,
                 google_api_key=settings.google_api_key,
                 convert_system_message_to_human=True
             )

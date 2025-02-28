@@ -263,6 +263,8 @@ class BrandNameGenerationState(Serializable, BaseModel):
     run_id: Optional[str] = Field(default=None, description="Unique identifier for this workflow run")
     user_prompt: str = Field(description="Original user prompt describing the brand")
     errors: List[ErrorInfo] = Field(default_factory=list, description="List of errors encountered during workflow")
+    start_time: Optional[str] = Field(default=None, description="Timestamp when the workflow started")
+    status: Optional[str] = Field(default=None, description="Current status of the workflow")
     
     # Message tracking for LangGraph Studio
     messages: List[BaseMessage] = Field(default_factory=list, description="List of messages in the conversation")
@@ -284,17 +286,37 @@ class BrandNameGenerationState(Serializable, BaseModel):
     
     # Brand name generation fields (from tasks.yaml)
     generated_names: List[BrandNameData] = Field(default_factory=list, description="List of generated brand names with metadata")
+    brand_name: Optional[str] = Field(default=None, description="The selected brand name")
+    naming_category: Optional[str] = Field(default=None, description="Category of the selected brand name")
+    brand_personality_alignment: Optional[str] = Field(default=None, description="Alignment with brand personality")
+    brand_promise_alignment: Optional[str] = Field(default=None, description="Alignment with brand promise")
+    target_audience_relevance: Optional[float] = Field(default=None, description="Relevance to target audience (1-10)")
+    market_differentiation: Optional[float] = Field(default=None, description="Market differentiation score (1-10)")
+    visual_branding_potential: Optional[float] = Field(default=None, description="Visual branding potential score (1-10)")
+    memorability_score: Optional[float] = Field(default=None, description="Memorability score (1-10)")
+    pronounceability_score: Optional[float] = Field(default=None, description="Pronounceability score (1-10)")
+    
+    # Details fields for brand name generation
+    target_audience_relevance_details: Optional[str] = Field(default=None, description="Details about target audience relevance")
+    market_differentiation_details: Optional[str] = Field(default=None, description="Details about market differentiation")
+    visual_branding_potential_details: Optional[str] = Field(default=None, description="Details about visual branding potential")
+    memorability_score_details: Optional[str] = Field(default=None, description="Details about memorability score")
+    pronounceability_score_details: Optional[str] = Field(default=None, description="Details about pronounceability score")
+    
+    name_generation_methodology: Optional[str] = Field(default=None, description="Methodology used for name generation")
+    timestamp: Optional[str] = Field(default=None, description="Timestamp of name generation")
+    rank: Optional[float] = Field(default=None, description="Ranking score based on strategic fit")
+    
+    # Lists for multiple brand names
     naming_categories: List[str] = Field(default_factory=list, description="Categories for each generated name")
     brand_personality_alignments: List[str] = Field(default_factory=list, description="Alignment with brand personality for each name")
     brand_promise_alignments: List[str] = Field(default_factory=list, description="Alignment with brand promise for each name")
-    target_audience_relevance: List[str] = Field(default_factory=list, description="Relevance to target audience for each name")
-    market_differentiation: List[str] = Field(default_factory=list, description="Market differentiation for each name")
+    target_audience_relevance_list: List[str] = Field(default_factory=list, description="Relevance to target audience for each name")
+    market_differentiation_list: List[str] = Field(default_factory=list, description="Market differentiation for each name")
     memorability_scores: List[float] = Field(default_factory=list, description="Memorability scores for each name")
     pronounceability_scores: List[float] = Field(default_factory=list, description="Pronounceability scores for each name")
-    visual_branding_potential: List[str] = Field(default_factory=list, description="Visual branding potential for each name")
-    name_generation_methodology: Optional[str] = None
+    visual_branding_potential_list: List[str] = Field(default_factory=list, description="Visual branding potential for each name")
     name_rankings: List[float] = Field(default_factory=list, description="Ranking scores for each name")
-    timestamp: Optional[str] = None
     
     # Process monitoring
     task_statuses: Dict[str, TaskStatus] = Field(
@@ -309,10 +331,50 @@ class BrandNameGenerationState(Serializable, BaseModel):
         description="Linguistic analysis results for each brand name"
     )
     
+    # Semantic analysis
+    semantic_analysis_results: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Semantic analysis results for each brand name"
+    )
+    
     # Cultural sensitivity analysis
     cultural_analysis_results: Dict[str, CulturalAnalysisResult] = Field(
         default_factory=dict,
         description="Cultural sensitivity analysis results for each brand name"
+    )
+    
+    # Translation analysis
+    translation_analysis_results: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Translation analysis results for each brand name"
+    )
+    
+    # Analysis completion flags
+    semantic_analysis_complete: bool = Field(
+        default=False, 
+        description="Flag indicating if semantic analysis is complete"
+    )
+    linguistic_analysis_complete: bool = Field(
+        default=False, 
+        description="Flag indicating if linguistic analysis is complete"
+    )
+    cultural_analysis_complete: bool = Field(
+        default=False, 
+        description="Flag indicating if cultural analysis is complete"
+    )
+    translation_analysis_complete: bool = Field(
+        default=False, 
+        description="Flag indicating if translation analysis is complete"
+    )
+    analyses_complete: bool = Field(
+        default=False, 
+        description="Flag indicating if all analyses are complete"
+    )
+    
+    # Consolidated analysis results
+    analysis_results: Dict[str, List[Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="Combined results from all analyses"
     )
     
     # Brand name evaluation

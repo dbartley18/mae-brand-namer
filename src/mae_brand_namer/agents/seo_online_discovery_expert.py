@@ -123,7 +123,7 @@ class SEOOnlineDiscoveryExpert:
         
         # Initialize Gemini model with tracing
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
+            model=settings.model_name,
             temperature=0.7,
             google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,

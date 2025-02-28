@@ -56,11 +56,11 @@ class SemanticAnalysisExpert:
         
         # Initialize Gemini model with tracing
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
-            temperature=0.7,
-            google_api_key=os.getenv("GEMINI_API_KEY"),
+            model=settings.model_name,
+            temperature=0.5,  # Balanced temperature for analysis
+            google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,
-            callbacks=[self.tracer] if self.tracer else None
+            callbacks=settings.get_langsmith_callbacks()
         )
         
         # Define output schemas for structured parsing

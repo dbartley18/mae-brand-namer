@@ -73,6 +73,19 @@ client = Client()
 # Create the workflow
 workflow = create_workflow(langsmith_client=client)
 
+# Create a LangSmith client
+client = Client()
+
+# Create the workflow with proper config
+workflow_config = {
+    "configurable": {
+        "langsmith_client": client,
+        "default_step_delay": 2.0,
+        "step_delays": None  # Use default step delays
+    }
+}
+workflow = create_workflow(workflow_config)
+
 # Create the callback handler
 supervisor_handler = ProcessSupervisorCallbackHandler(langsmith_client=client)
 

@@ -64,6 +64,23 @@ class SupabaseManager:
             raise RuntimeError("Supabase client not initialized")
         return self._client
     
+    def table(self, table_name: str):
+        """
+        Access a Supabase table directly.
+        
+        Args:
+            table_name (str): Name of the table to access
+            
+        Returns:
+            Table query builder for the specified table
+            
+        Raises:
+            RuntimeError: If the client is not initialized
+        """
+        if self._client is None:
+            raise RuntimeError("Supabase client not initialized")
+        return self._client.table(table_name)
+    
     async def execute_with_retry(self, operation: str, table: str, data: dict, max_retries: Optional[int] = None) -> dict:
         """
         Execute a Supabase operation with retry logic.
@@ -107,6 +124,25 @@ class SupabaseManager:
                     response = self.client.table(table).upsert(data).execute()
                 elif operation == "delete":
                     response = self.client.table(table).delete().eq("id", data["id"]).execute()
+                elif operation == "select":
+                    # Handle select operations
+                    query = self.client.table(table).select(data.get("select", "*"))
+                    
+                    # Apply filters if provided
+                    for key, value in data.items():
+                        if key != "select" and key != "order" and key != "limit":
+                            query = query.eq(key, value)
+                    
+                    # Apply ordering if specified
+                    if "order" in data:
+                        query = query.order(data["order"])
+                    
+                    # Apply limit if specified
+                    if "limit" in data:
+                        query = query.limit(data["limit"])
+                    
+                    # Execute the query
+                    response = query.execute()
                 else:
                     raise ValueError(f"Unsupported operation: {operation}")
                 

@@ -77,7 +77,14 @@ async def run_with_custom_callback(
     )
     
     # 5. Create the workflow with the LangSmith client
-    workflow = create_workflow(langsmith_client=client)
+    workflow_config = {
+        "configurable": {
+            "langsmith_client": client,
+            "default_step_delay": 2.0,
+            "step_delays": None  # Use default step delays
+        }
+    }
+    workflow = create_workflow(workflow_config)
     
     # 6. Log the start of the workflow
     run_start_time = datetime.now()

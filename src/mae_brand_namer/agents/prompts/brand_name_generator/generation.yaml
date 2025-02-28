@@ -57,30 +57,29 @@ template: |
   - Naming category and rationale (must be: {category})
   - Brand personality alignment (how it connects to the brand personality)
   - Brand promise alignment (how it reflects the brand promise)
-  - Target audience relevance score (provide as a SINGLE NUMERIC VALUE from 1-10)
+  - Target audience relevance (provide as a SINGLE NUMERIC VALUE from 1-10)
   - Target audience relevance details (provide 2-3 bullet points explaining the score)
-  - Market differentiation score (provide as a SINGLE NUMERIC VALUE from 1-10)
+  - Market differentiation (provide as a SINGLE NUMERIC VALUE from 1-10)
   - Market differentiation details (provide 2-3 bullet points explaining the score)
   - Memorability score (provide as a SINGLE NUMERIC VALUE from 1-10)
   - Memorability score details (provide 2-3 bullet points explaining the score)
   - Pronounceability score (provide as a SINGLE NUMERIC VALUE from 1-10)
   - Pronounceability score details (provide 2-3 bullet points explaining the score)
-  - Visual branding potential score (provide as a SINGLE NUMERIC VALUE from 1-10)
+  - Visual branding potential (provide as a SINGLE NUMERIC VALUE from 1-10)
   - Visual branding potential details (provide 2-3 bullet points explaining the score)
-  - Name generation methodology used
+  - Detailed Name generation methodology used
   - Rank (provide as a SINGLE NUMERIC VALUE from 1-10)
 
   Format your response according to this schema:
   {format_instructions}
 
   IMPORTANT FORMAT INSTRUCTIONS:
-  1. For all score fields (target_audience_relevance_score, market_differentiation_score, etc.):
-     - Provide these as single numeric values from 1-10 (e.g., 8 or 8.0)
+  1. For all score fields (target_audience_relevance, market_differentiation, etc.):
+     - Provide these as single numeric values (integers not floats) from 1-10 (e.g., 8 or 7)
      - DO NOT wrap scores in quotes or arrays
   
   2. For all details fields (target_audience_relevance_details, market_differentiation_details, etc.):
-     - Provide these as strings containing 2-3 bullet points
-     - Format as "• First point\n• Second point\n• Third point"
+     - Provide these as strings containing an explanation of the score
 
   Ensure the name:
   - Is unique and ownable

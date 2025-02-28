@@ -4,7 +4,7 @@
   "description": "A LangGraph-powered brand name generation and evaluation system",
   "dependencies": ["."],
   "graphs": {
-    "brand_naming": "./src/mae_brand_namer/workflows/brand_naming.py:create_workflow"
+    "brand_naming": "./src/mae_brand_namer/workflows/brand_naming.py:graph_factory"
   },
   "env": ".env",
   "store": {

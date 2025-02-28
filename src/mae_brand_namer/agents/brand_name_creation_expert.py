@@ -50,7 +50,7 @@ class BrandNameCreationExpert:
         
         # Initialize Gemini model with tracing
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
+            model=settings.model_name,
             temperature=0.9,  # Higher temperature for more creative name generation
             google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,
@@ -64,17 +64,17 @@ class BrandNameCreationExpert:
             ResponseSchema(name="brand_personality_alignment", description="How the name aligns with the defined brand personality"),
             ResponseSchema(name="brand_promise_alignment", description="The degree to which the name reflects the brand's promise and value proposition"),
             
-            # Score fields (numeric values)
-            ResponseSchema(name="target_audience_relevance_score", description="Score from 1-10 indicating how well the name resonates with the target audience", type="number"),
-            ResponseSchema(name="market_differentiation_score", description="Score from 1-10 indicating how distinctive the name is in the market", type="number"),
-            ResponseSchema(name="visual_branding_potential_score", description="Score from 1-10 indicating the name's potential for visual branding elements", type="number"),
+            # Score and text fields
+            ResponseSchema(name="target_audience_relevance", description="Score from 1-10 indicating how well the name resonates with the target audience"),
+            ResponseSchema(name="market_differentiation", description="Score from 1-10 indicating how distinctive the name is in the market"),
+            ResponseSchema(name="visual_branding_potential", description="Score from 1-10 indicating the name's potential for visual branding elements"),
             ResponseSchema(name="memorability_score", description="Score from 1-10 indicating how easily the name can be remembered", type="number"),
             ResponseSchema(name="pronounceability_score", description="Score from 1-10 indicating how easily the name can be pronounced", type="number"),
             
             # Details fields (text explanations)
-            ResponseSchema(name="target_audience_relevance_details", description="2-3 bullet points explaining the target audience relevance score"),
-            ResponseSchema(name="market_differentiation_details", description="2-3 bullet points explaining the market differentiation score"),
-            ResponseSchema(name="visual_branding_potential_details", description="2-3 bullet points explaining the visual branding potential score"),
+            ResponseSchema(name="target_audience_relevance_details", description="2-3 bullet points explaining the target audience relevance"),
+            ResponseSchema(name="market_differentiation_details", description="2-3 bullet points explaining the market differentiation"),
+            ResponseSchema(name="visual_branding_potential_details", description="2-3 bullet points explaining the visual branding potential"),
             ResponseSchema(name="memorability_score_details", description="2-3 bullet points explaining the memorability score"),
             ResponseSchema(name="pronounceability_score_details", description="2-3 bullet points explaining the pronounceability score"),
             
@@ -153,12 +153,40 @@ class BrandNameCreationExpert:
                 # Use a set for faster lookups when checking duplicates
                 all_brand_names_set = set()
                 
+                # Check existing names already in the database for this run_id to avoid duplicates
+                try:
+                    # Query Supabase for existing brand names with this run_id
+                    response = await self.supabase.execute_with_retry(
+                        operation="select",
+                        table="brand_name_generation",
+                        data={"select": "brand_name", "run_id": run_id}
+                    )
+                    
+                    # Add existing names to our duplicate checking set
+                    if response and isinstance(response, list):
+                        for item in response:
+                            if item and "brand_name" in item:
+                                normalized_name = self._normalize_name(item["brand_name"])
+                                all_brand_names_set.add(normalized_name)
+                                
+                        logger.info(f"Found {len(response)} existing brand names for run_id: {run_id}")
+                except Exception as e:
+                    logger.warning(f"Error checking existing brand names: {str(e)}")
+                
                 # Normalize a name for duplicate checking
-                def normalize_name(name):
+                def _normalize_name(name):
                     if not name:
                         return ""
                     # Remove special characters, convert to lowercase, and strip whitespace
                     return re.sub(r'[^\w\s]', '', name.lower()).strip()
+                
+                # Move the normalize function outside the loop to make it accessible for checking existing names
+                self._normalize_name = _normalize_name
+                
+                # Generate up to twice the requested names to ensure we have enough after filtering duplicates
+                max_generation_attempts = num_names_per_category * len(categories) * 2
+                generation_attempts = 0
+                duplicate_count = 0
                 
                 # Iterate through each naming category
                 for category in categories:
@@ -217,7 +245,7 @@ class BrandNameCreationExpert:
                                         continue
                                     
                                     # Check for duplicates
-                                    normalized_name = normalize_name(parsed_output["brand_name"])
+                                    normalized_name = self._normalize_name(parsed_output["brand_name"])
                                     if normalized_name in all_brand_names_set:
                                         logger.warning(
                                             f"Generated duplicate brand name: {parsed_output['brand_name']}, retrying",
@@ -269,7 +297,7 @@ class BrandNameCreationExpert:
                             await self._store_in_supabase(run_id, parsed_output)
                             
                             # Add to our duplicate checking set
-                            all_brand_names_set.add(normalize_name(parsed_output["brand_name"]))
+                            all_brand_names_set.add(normalized_name)
                             
                             # For the return data, ensure all numeric fields are properly converted to floats
                             return_data = parsed_output.copy()
@@ -278,9 +306,9 @@ class BrandNameCreationExpert:
                             simple_numeric_fields = [
                                 "memorability_score",
                                 "pronounceability_score",
-                                "target_audience_relevance_score",
-                                "market_differentiation_score",
-                                "visual_branding_potential_score",
+                                "target_audience_relevance",
+                                "market_differentiation",
+                                "visual_branding_potential",
                                 "rank"
                             ]
                             
@@ -406,9 +434,26 @@ class BrandNameCreationExpert:
             supabase_data["brand_personality_alignment"] = name_data.get("brand_personality_alignment", "")
             supabase_data["brand_promise_alignment"] = name_data.get("brand_promise_alignment", "")
             
-            # Handle score fields - these should be stored as floats
-            for field in ["target_audience_relevance_score", "market_differentiation_score", 
-                         "visual_branding_potential_score", "memorability_score", "pronounceability_score"]:
+            # Handle score fields - these are text fields in the database for target_audience_relevance, 
+            # market_differentiation, and visual_branding_potential, but numeric for memorability_score and pronounceability_score
+            
+            # First, handle text-based score fields
+            for field in ["target_audience_relevance", "market_differentiation", "visual_branding_potential"]:
+                try:
+                    field_value = name_data.get(field)
+                    
+                    # If not provided, use default
+                    if field_value is None:
+                        supabase_data[field] = "Not evaluated"
+                    else:
+                        # Store as text
+                        supabase_data[field] = str(field_value)
+                except Exception as e:
+                    logger.warning(f"Error processing {field}: {str(e)}. Using default value.")
+                    supabase_data[field] = "Not evaluated"
+            
+            # Then, handle numeric score fields
+            for field in ["memorability_score", "pronounceability_score"]:
                 try:
                     field_value = name_data.get(field)
                     
@@ -475,19 +520,47 @@ class BrandNameCreationExpert:
                 logger.warning(f"Error processing timestamp: {str(e)}. Using current time.")
                 supabase_data["timestamp"] = datetime.now().isoformat()
             
-            # Define known valid fields for the brand_name_generation table
-            valid_fields = [
-                "run_id", "brand_name", "naming_category", "brand_personality_alignment",
-                "brand_promise_alignment", "target_audience_relevance_score", "target_audience_relevance_details",
-                "market_differentiation_score", "market_differentiation_details",
-                "visual_branding_potential_score", "visual_branding_potential_details", 
-                "memorability_score", "memorability_score_details",
-                "pronounceability_score", "pronounceability_score_details",
-                "name_generation_methodology", "timestamp", "rank", "category"
-            ]
+            # Define known valid fields for the brand_name_generation table - map fields to those in the database
+            db_field_mapping = {
+                "run_id": "run_id", 
+                "brand_name": "brand_name", 
+                "naming_category": "naming_category", 
+                "category": "naming_category",  # Map category to naming_category
+                "brand_personality_alignment": "brand_personality_alignment",
+                "brand_promise_alignment": "brand_promise_alignment", 
+                "target_audience_relevance": "target_audience_relevance", 
+                "target_audience_relevance_details": "target_audience_relevance_details",
+                "market_differentiation": "market_differentiation", 
+                "market_differentiation_details": "market_differentiation_details",
+                "visual_branding_potential": "visual_branding_potential",
+                "visual_branding_potential_details": "visual_branding_potential_details", 
+                "memorability_score": "memorability_score", 
+                "memorability_score_details": "memorability_score_details",
+                "pronounceability_score": "pronounceability_score", 
+                "pronounceability_score_details": "pronounceability_score_details",
+                "name_generation_methodology": "name_generation_methodology", 
+                "timestamp": "timestamp", 
+                "rank": "rank"
+            }
             
-            # Filter out any fields that don't exist in the database schema
-            filtered_data = {k: v for k, v in supabase_data.items() if k in valid_fields}
+            # Build filtered data using the field mapping
+            filtered_data = {}
+            for input_field, db_field in db_field_mapping.items():
+                if input_field in supabase_data:
+                    filtered_data[db_field] = supabase_data[input_field]
+            
+            # Handle special case for market_differentiation and market_differentiation_details
+            # If market_differentiation_details is missing but market_differentiation exists, use that
+            if "market_differentiation_details" not in filtered_data and "market_differentiation" in filtered_data:
+                filtered_data["market_differentiation_details"] = filtered_data["market_differentiation"]
+            
+            # Special handling for target_audience_relevance field
+            if "target_audience_relevance" not in filtered_data and "target_audience_relevance_details" in filtered_data:
+                filtered_data["target_audience_relevance"] = filtered_data["target_audience_relevance_details"]
+            
+            # Visual branding potential field
+            if "visual_branding_potential" not in filtered_data and "visual_branding_potential_details" in filtered_data:
+                filtered_data["visual_branding_potential"] = filtered_data["visual_branding_potential_details"]
             
             # Log the data we're about to insert (for debugging)
             logger.debug(
