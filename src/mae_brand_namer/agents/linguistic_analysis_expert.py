@@ -19,6 +19,8 @@ from postgrest import APIError
 from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..config.dependencies import Dependencies
+from ..utils.rate_limiter import google_api_limiter
+from ..utils.supabase_utils import SupabaseManager
 
 logger = get_logger(__name__)
 
@@ -40,14 +42,14 @@ class LinguisticsExpert:
         prompt (ChatPromptTemplate): Configured prompt template
     """
     
-    def __init__(self, dependencies: Dependencies) -> None:
-        """Initialize the LinguisticsExpert with dependencies.
-        
-        Args:
-            dependencies: Container for application dependencies
-        """
-        self.supabase = dependencies.supabase
-        self.langsmith = dependencies.langsmith
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
+        """Initialize the LinguisticAnalysisExpert with dependencies."""
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase or SupabaseManager()
+            self.langsmith = None
         
         # Agent identity
         self.role = "Linguistic Analysis & Phonetic Optimization Expert"
@@ -177,47 +179,34 @@ class LinguisticsExpert:
                     if "brand_context" in self.prompt.input_variables:
                         required_vars["brand_context"] = brand_context if brand_context else "A brand name for consideration"
                     
-                    # Log the variables being passed to the template
-                    logger.info(f"Formatting linguistics prompt with variables: {list(required_vars.keys())}")
-                    logger.debug(f"Brand name value: '{brand_name}'")
-                    
                     # Format the prompt with all required variables
                     formatted_prompt = self.prompt.format_messages(**required_vars)
                     
-                    # Log details about the formatted prompt for debugging
-                    if len(formatted_prompt) > 1:
-                        logger.debug(f"Formatted prompt sample: {formatted_prompt[1].content[:200]}...")
-                        logger.info(f"Brand name in formatted prompt: {brand_name in formatted_prompt[1].content}")
+                    # Wait if needed to respect rate limits before making the LLM call
+                    call_id = f"linguistic_analysis_{brand_name}_{run_id[-8:]}"
+                    wait_time = await google_api_limiter.wait_if_needed(call_id)
+                    if wait_time > 0:
+                        logger.info(f"Rate limited: waited {wait_time:.2f}s before LLM call for {brand_name}")
                     
-                    # Get response from LLM - with detailed logging
-                    logger.info(f"Invoking LLM for linguistics analysis on '{brand_name}'")
-                    try:
-                        response = await self.llm.ainvoke(formatted_prompt)
-                        logger.info(f"LLM invocation successful for linguistics analysis")
-                    except Exception as llm_error:
-                        logger.error(f"Error invoking LLM: {str(llm_error)}")
-                        raise
-                    
-                    # Log the raw response for debugging
-                    if hasattr(response, 'content'):
-                        logger.debug(f"LLM response: {response.content[:200]}...")
-                        logger.info(f"LLM response length: {len(response.content)}")
-                    else:
-                        logger.error(f"Unexpected response format from LLM: {type(response)}")
+                    # Get response from LLM
+                    logger.info(f"Making LLM call for linguistic analysis of '{brand_name}'")
+                    response = await self.llm.ainvoke(formatted_prompt)
                     
                     # Parse and validate response with error handling
                     try:
                         analysis = self.output_parser.parse(response.content)
                         
-                        # Create the result dictionary
+                        # Create the result dictionary with standard required fields
+                        # Create without run_id to avoid LangGraph issues
                         result = {
                             "brand_name": brand_name,
                             "task_name": "linguistic_analysis"
                         }
                         
-                        # Add all analysis fields to the result
+                        # Add all analysis fields to the result but exclude run_id
                         for key, value in analysis.items():
-                            result[key] = value
+                            if key != "run_id":  # Skip run_id to avoid LangGraph conflicts
+                                result[key] = value
                             
                         # Ensure rank is a float
                         if "rank" in result:
@@ -244,11 +233,11 @@ class LinguisticsExpert:
                             "semantic_distance_from_competitors": "Unknown",
                             "neologism_appropriateness": "N/A",
                             "overall_readability_score": "Average",
-                            "notes": "Error in analysis process",
+                            "notes": f"Error in analysis process: {str(parse_error)}",
                             "rank": 5.0
                         }
                     
-                    # Store results
+                    # Store results in Supabase (separate from what we return to LangGraph)
                     await self._store_analysis(run_id, brand_name, result)
                     
                 except Exception as e:
@@ -267,7 +256,8 @@ class LinguisticsExpert:
                         "rank": 5.0
                     }
             
-            return result
+            # Make sure result doesn't contain run_id before returning
+            return {key: value for key, value in result.items() if key != "run_id"}
             
         except APIError as e:
             logger.error(
@@ -281,7 +271,7 @@ class LinguisticsExpert:
                     "details": getattr(e, "details", None)
                 }
             )
-            # Return a fallback result instead of raising the error
+            # Return a fallback result without run_id
             return {
                 "brand_name": brand_name,
                 "task_name": "linguistic_analysis",
@@ -303,7 +293,7 @@ class LinguisticsExpert:
                     "trace": "".join(traceback.format_exception(type(e), e, e.__traceback__))
                 }
             )
-            # Return a fallback result instead of raising the error
+            # Return a fallback result without run_id
             return {
                 "brand_name": brand_name,
                 "task_name": "linguistic_analysis",
@@ -336,6 +326,16 @@ class LinguisticsExpert:
             asyncio.set_event_loop(loop)
             
         try:
+            # Define schema fields for the linguistic_analysis table
+            schema_fields = [
+                "pronunciation_ease", "euphony_vs_cacophony", "rhythm_and_meter",
+                "phoneme_frequency_distribution", "sound_symbolism", "word_class",
+                "morphological_transparency", "grammatical_gender", "inflectional_properties",
+                "ease_of_marketing_integration", "naturalness_in_collocations", 
+                "homophones_homographs", "semantic_distance_from_competitors",
+                "neologism_appropriateness", "overall_readability_score", "notes", "rank"
+            ]
+            
             # Log what we're trying to store
             logger.debug(f"Preparing to store linguistic analysis for '{brand_name}'")
             
@@ -343,30 +343,50 @@ class LinguisticsExpert:
             data = {
                 "run_id": run_id,
                 "brand_name": brand_name,
-                "task_name": "linguistic_analysis",
+                "timestamp": datetime.now().isoformat()
             }
             
-            # Add analysis fields, skipping any known problematic fields
-            skip_fields = ["timestamp", "task_name", "run_id"]  # Fields to skip
-            for key, value in analysis.items():
-                if key not in skip_fields and key != "brand_name":  # Skip fields that might cause issues
-                    # Handle potential JSON serialization issues
+            # Process each field according to its expected type in the schema
+            for field in schema_fields:
+                if field in analysis:
+                    value = analysis.get(field)
+                    
+                    # Handle boolean fields
+                    if field == "homophones_homographs":
+                        # Convert string "true"/"false" to boolean if needed
+                        if isinstance(value, str):
+                            value = value.strip().lower() == "true" or value.strip() == "1"
+                    
+                    # Handle numeric fields
+                    if field == "rank":
+                        try:
+                            if value is not None:
+                                value = float(value)
+                        except (ValueError, TypeError):
+                            value = 5.0  # Default rank
+                    
+                    # Handle potential JSON serialization issues for complex types
                     if isinstance(value, (dict, list)):
                         try:
                             # Convert to string to avoid serialization issues
-                            data[key] = json.dumps(value)
+                            data[field] = json.dumps(value)
                         except Exception:
                             # If we can't serialize, store as string
-                            data[key] = str(value)
+                            data[field] = str(value)
                     else:
-                        data[key] = value
+                        data[field] = value
             
             # Log the keys we're storing
             logger.info(f"Storing linguistic analysis with fields: {list(data.keys())}")
             
-            # Perform the insert
-            await self.supabase.table("linguistic_analysis").insert(data).execute()
-            logger.info(f"Successfully stored linguistic analysis for brand name '{brand_name}' with run_id '{run_id}'")
+            try:
+                # Perform the insert
+                await self.supabase.table("linguistic_analysis").insert(data).execute()
+                logger.info(f"Successfully stored linguistic analysis for brand name '{brand_name}' with run_id '{run_id}'")
+            except Exception as e:
+                logger.error(f"Failed to insert record: {str(e)}")
+                # Log the data that failed to insert
+                logger.debug(f"Failed data: {data}")
             
         except Exception as e:
             logger.error(

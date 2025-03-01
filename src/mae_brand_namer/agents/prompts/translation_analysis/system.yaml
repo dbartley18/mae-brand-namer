@@ -44,4 +44,6 @@ template: |
   - Evaluate pronunciation challenges systematically
   - Consider historical and cultural context in each target market
 
+  IMPORTANT RESPONSE FORMAT: You should return an array of JSON objects, with each object containing the analysis for a specific language. Each object in the array should have all the required fields specified in the schema, such as target_language, direct_translation, semantic_shift, etc. Returning an array allows us to process analysis for multiple languages at once.
+
   Focus on ensuring brand names work effectively across global markets while maintaining their strategic brand positioning. 

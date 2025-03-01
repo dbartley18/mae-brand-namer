@@ -9,7 +9,7 @@ template: |
   Brand Context:
   {brand_context}
 
-  Analyze each name across these dimensions:
+  Analyze the brand names across these dimensions:
 
   1. Cultural Connotations & Symbolism
      - Cultural associations and meanings
@@ -38,7 +38,7 @@ template: |
   Format your analysis according to this schema:
   {format_instructions}
 
-  For each name, provide:
+  For each brand name, provide:
   - Cultural connotations analysis
   - Religious sensitivity assessment
   - Social/political risk evaluation

@@ -709,13 +709,13 @@ async def process_brand_names(state: BrandNameGenerationState, agent: BrandNameC
             
             # Call generate_brand_names with exactly the parameters it expects
             try:
-                brand_names = await agent.generate_brand_names(
-                    run_id=state.run_id,
-                    brand_context=brand_context,
-                    brand_values=brand_values,
-                    purpose=purpose,
-                    key_attributes=key_attributes
-                )
+            brand_names = await agent.generate_brand_names(
+                run_id=state.run_id,
+                brand_context=brand_context,
+                brand_values=brand_values,
+                purpose=purpose,
+                key_attributes=key_attributes
+            )
             except Exception as e:
                 logger.error(f"Error generating brand names: {str(e)}")
                 # Create fallback brand names to allow workflow to continue
@@ -859,7 +859,7 @@ async def process_semantic_analysis(state: BrandNameGenerationState, agent: Sema
                     })
             
             # Return dictionary of state updates
-            return {
+                return {
                 "semantic_analysis_results": semantic_results,
                 # Flag to track completion for the coordinator
                 "semantic_analysis_complete": True
@@ -921,7 +921,7 @@ async def process_linguistic_analysis(state: BrandNameGenerationState, agent: Li
                 except Exception as e:
                     logger.error(f"Error analyzing brand name {brand_name_data.get('brand_name', '[unknown]')}: {str(e)}")
                     linguistic_results.append({
-                        "run_id": state.run_id,
+                    "run_id": state.run_id,
                         "brand_name": brand_name_data.get("brand_name", "[unknown]"),
                         "error": str(e),
                         "analysis_complete": False
@@ -936,7 +936,7 @@ async def process_linguistic_analysis(state: BrandNameGenerationState, agent: Li
             
     except Exception as e:
         logger.error(f"Error in process_linguistic_analysis: {str(e)}")
-        return {
+                return {
             "errors": [{
                 "step": "process_linguistic_analysis",
                 "error": str(e),
@@ -987,7 +987,7 @@ async def process_cultural_analysis(state: BrandNameGenerationState, agent: Cult
                         brand_context=brand_context
                     )
                     cultural_results.append(result)
-                except Exception as e:
+    except Exception as e:
                     logger.error(f"Error analyzing brand name {brand_name_data.get('brand_name', '[unknown]')}: {str(e)}")
                     cultural_results.append({
                         "run_id": state.run_id,
@@ -1104,7 +1104,7 @@ async def coordinate_analyses(state: BrandNameGenerationState) -> Dict[str, Any]
         if not all_complete:
             logger.warning(f"Not all analyses complete: semantic={semantic_complete}, linguistic={linguistic_complete}, cultural={cultural_complete}, translation={translation_complete}")
             # Return incomplete status
-            return {
+                return {
                 "analyses_complete": False,
                 "status": "incomplete",
                 "errors": [{
@@ -1127,12 +1127,13 @@ async def coordinate_analyses(state: BrandNameGenerationState) -> Dict[str, Any]
             "cultural_analysis": getattr(state, "cultural_analysis_results", []),
             "translation_analysis": getattr(state, "translation_analysis_results", [])
         }
+        
         # Return consolidated results
-        return {
+                return {
             "analyses_complete": True,
             "analysis_results": combined_results,
             "status": "complete"
-        }
+                }
             
     except Exception as e:
         logger.error(f"Error in coordinate_analyses: {str(e)}")

@@ -21,7 +21,8 @@ from langchain_core.tracers.context import tracing_v2_enabled
 from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..config.dependencies import Dependencies
-
+from ..utils.rate_limiter import google_api_limiter
+from ..utils.supabase_utils import SupabaseManager
 logger = get_logger(__name__)
 
 class TranslationAnalysisExpert:
@@ -40,14 +41,14 @@ class TranslationAnalysisExpert:
         prompt (ChatPromptTemplate): Configured prompt template
     """
     
-    def __init__(self, dependencies: Dependencies) -> None:
-        """Initialize the TranslationAnalysisExpert with dependencies.
-        
-        Args:
-            dependencies: Container for application dependencies
-        """
-        self.supabase = dependencies.supabase
-        self.langsmith = dependencies.langsmith
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
+        """Initialize the TranslationAnalysisExpert with dependencies."""
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase or SupabaseManager()
+            self.langsmith = None
         
         try:
             # Agent identity
@@ -218,15 +219,14 @@ class TranslationAnalysisExpert:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
-            # Initialize result to track if we've successfully generated one
-            result = None
-            
+            result = None  # Initialize result to track if we've successfully generated one
+                
             with tracing_v2_enabled():
                 try:
                     # Log the brand name being analyzed
                     logger.info(f"Analyzing translation for brand name: '{brand_name}'")
                     
-                    # Format prompt with all required variables
+                    # Format prompt with required variables
                     required_vars = {}
                     
                     # Add the variables the template expects
@@ -239,78 +239,231 @@ class TranslationAnalysisExpert:
                     if "format_instructions" in self.prompt.input_variables:
                         required_vars["format_instructions"] = self.output_parser.get_format_instructions()
                     
-                    if "brand_context" in self.prompt.input_variables:
-                        required_vars["brand_context"] = brand_context if brand_context else "A brand name for consideration"
-                    
-                    # Log the variables being passed to the template
-                    logger.info(f"Formatting translation analysis prompt with variables: {list(required_vars.keys())}")
-                    logger.debug(f"Brand name value: '{brand_name}'")
+                    if "brand_context" in self.prompt.input_variables and brand_context:
+                        required_vars["brand_context"] = brand_context
                     
                     # Format the prompt with all required variables
                     formatted_prompt = self.prompt.format_messages(**required_vars)
                     
-                    # Log details about the formatted prompt for debugging
-                    if len(formatted_prompt) > 1:
-                        logger.debug(f"Formatted prompt sample: {formatted_prompt[1].content[:200]}...")
-                        logger.info(f"Brand name in formatted prompt: {brand_name in formatted_prompt[1].content}")
+                    # Create a unique call ID for rate limiting
+                    call_id = f"translation_{brand_name}_{run_id}"
+                    
+                    # Check if we need to wait due to rate limiting
+                    wait_time = await google_api_limiter.wait_if_needed(call_id)
+                    if wait_time > 0:
+                        logger.info(f"Rate limited: Waited {wait_time:.2f}s before making translation analysis call")
                     
                     # Get response from LLM
                     response = await self.llm.ainvoke(formatted_prompt)
                     
                     # Log the raw response for debugging
-                    logger.debug(f"Translation analysis response: {response.content[:200]}...")
+                    logger.info(f"Raw LLM response: {response.content[:200]}...")
                     
-                    # Parse and validate response with error handling
+                    # Parse and process the response
                     try:
-                        analysis = self.output_parser.parse(response.content)
+                        # First, try to parse as a JSON array since that's what our prompt requests
+                        parsed_json = None
+                        is_array = False
                         
-                        # Create a result with brand_name but without run_id (which is handled by LangGraph)
+                        try:
+                            parsed_json = json.loads(response.content)
+                            is_array = isinstance(parsed_json, list)
+                        except json.JSONDecodeError:
+                            logger.warning("Response is not valid JSON, falling back to structured parser")
+                        
+                        # Create a result with the standard required fields
                         result = {
                             "brand_name": brand_name,
                             "task_name": "translation_analysis",
                         }
                         
-                        # Add all analysis results
-                        for key, value in analysis.items():
-                            if key not in result and key != "run_id":  # Avoid duplicating keys or including run_id
-                                result[key] = value
+                        # Process the response based on whether it's an array or not
+                        if is_array and parsed_json:
+                            # Array response - store each language analysis and compute summary metrics
+                            total_languages = len(parsed_json)
+                            total_rank = 0
+                            languages_analyzed = []
+                            problematic_languages = []
+                            adaptation_needed = False
+                            
+                            # Store each language analysis in Supabase
+                            for lang_data in parsed_json:
+                                try:
+                                    # Prepare data for storage
+                                    lang_name = lang_data.get("target_language", "Unknown")
+                                    languages_analyzed.append(lang_name)
+                                    
+                                    # Check if language has issues
+                                    has_issues = False
+                                    
+                                    # Get rank (ensure it's a number)
+                                    rank = lang_data.get("rank", 5)
+                                    if isinstance(rank, str):
+                                        try:
+                                            rank = float(rank)
+                                        except (ValueError, TypeError):
+                                            rank = 5.0
+                                    
+                                    # Low rank or adaptation needed indicates an issue
+                                    if rank < 5 or lang_data.get("adaptation_needed", False):
+                                        has_issues = True
+                                        problematic_languages.append(lang_name)
+                                        adaptation_needed = True
+                                    
+                                    # Add to total for average calculation
+                                    total_rank += rank
+                                    
+                                    # Store in Supabase with proper types
+                                    storage_data = {
+                                        "run_id": run_id,
+                                        "brand_name": brand_name,
+                                        "timestamp": datetime.now().isoformat(),
+                                        **lang_data  # Include all fields from the language analysis
+                                    }
+                                    
+                                    # Sanitize boolean fields
+                                    for field in ["phonetic_similarity_undesirable", "adaptation_needed"]:
+                                        if field in storage_data:
+                                            value = storage_data[field]
+                                            if isinstance(value, str):
+                                                storage_data[field] = value.strip().lower() == "true" or value.strip() == "1"
+                                    
+                                    # Ensure rank is a float
+                                    if "rank" in storage_data:
+                                        try:
+                                            storage_data["rank"] = float(storage_data["rank"])
+                                        except (ValueError, TypeError):
+                                            storage_data["rank"] = 5.0
+                                    
+                                    # Store in Supabase
+                                    logger.info(f"Storing translation analysis for {lang_name}")
+                                    await self.supabase.table("translation_analysis").insert(storage_data).execute()
+                                except Exception as store_error:
+                                    logger.error(f"Error storing {lang_name} analysis: {str(store_error)}")
+                            
+                            # Add summary fields to result
+                            if total_languages > 0:
+                                # Global adaptability as average of ranks
+                                result["target_language"] = "Global"
+                                result["direct_translation"] = "Multiple languages analyzed"
+                                result["overall_global_adaptability"] = round(total_rank / total_languages, 1)
+                                result["global_languages_analyzed"] = ", ".join(languages_analyzed)
+                                result["rank"] = result["overall_global_adaptability"]
                                 
-                    except Exception as parse_error:
-                        logger.error(f"Error parsing translation analysis: {str(parse_error)}")
-                        # Create a minimal valid result
+                                # Problem summary
+                                if problematic_languages:
+                                    result["adaptation_needed"] = True
+                                    result["problematic_translations"] = f"Adaptation needed for: {', '.join(problematic_languages)}"
+                                    result["proposed_adaptation"] = "Consider market-specific adaptations for problematic languages."
+                                else:
+                                    result["adaptation_needed"] = False
+                                    result["problematic_translations"] = "No major translation issues detected"
+                                    result["proposed_adaptation"] = "No adaptation needed, name works globally."
+                                
+                                # Add other required fields from schema with default values
+                                result["semantic_shift"] = "See individual language analyses for details"
+                                result["pronunciation_difficulty"] = "Varies by language, see individual analyses"
+                                result["phonetic_similarity_undesirable"] = False
+                                result["phonetic_retention"] = "See individual language analyses"
+                                result["cultural_acceptability"] = "See individual language analyses"
+                                result["brand_essence_preserved"] = "See individual language analyses"
+                                result["global_consistency_vs_localization"] = "See individual language analyses"
+                                result["notes"] = f"Analyzed {total_languages} languages: {', '.join(languages_analyzed)}"
+                            else:
+                                # No languages analyzed, set defaults
+                                result["target_language"] = "Global"
+                                result["direct_translation"] = "No languages analyzed"
+                                result["rank"] = 5.0
+                                
+                        else:
+                            # Not an array - try using the output parser
+                            try:
+                                # Parse with structured output parser
+                                parsed_result = self.output_parser.parse(response.content)
+                                
+                                # Add fields to result
+                                for key, value in parsed_result.items():
+                                    result[key] = value
+                                
+                                # Ensure target_language is set
+                                if "target_language" not in result or not result["target_language"]:
+                                    result["target_language"] = "Global"
+                                
+                                # Store in Supabase
+                                storage_data = {
+                                    "run_id": run_id,
+                                    "brand_name": brand_name,
+                                    "timestamp": datetime.now().isoformat(),
+                                    **result  # Include all fields
+                                }
+                                
+                                # Remove task_name as it's not in the schema
+                                if "task_name" in storage_data:
+                                    del storage_data["task_name"]
+                                
+                                await self.supabase.table("translation_analysis").insert(storage_data).execute()
+                                logger.info(f"Stored translation analysis for {result.get('target_language', 'Global')}")
+                            except Exception as parse_error:
+                                logger.error(f"Error parsing response: {str(parse_error)}")
+                                # Set default values for required fields
+                                result["target_language"] = "Global"
+                                result["direct_translation"] = "Error analyzing translation"
+                                result["semantic_shift"] = "Error in analysis"
+                                result["pronunciation_difficulty"] = "Unknown due to error"
+                                result["phonetic_similarity_undesirable"] = False
+                                result["phonetic_retention"] = "Unknown due to error"
+                                result["cultural_acceptability"] = "Unknown due to error"
+                                result["adaptation_needed"] = False
+                                result["proposed_adaptation"] = "N/A - Error in analysis"
+                                result["brand_essence_preserved"] = "Unknown due to error"
+                                result["global_consistency_vs_localization"] = "Unknown due to error"
+                                result["notes"] = f"Error in analysis: {str(parse_error)}"
+                                result["rank"] = 5.0
+                    
+                    except Exception as e:
+                        logger.error(f"Error processing translation analysis: {str(e)}")
+                        # Create a minimal valid result with required fields
                         result = {
                             "brand_name": brand_name,
                             "task_name": "translation_analysis",
-                            "english_pronunciation": "Error in analysis",
-                            "spanish_translation": "Error in analysis",
-                            "french_translation": "Error in analysis",
-                            "german_translation": "Error in analysis",
-                            "chinese_translation": "Error in analysis",
-                            "japanese_translation": "Error in analysis",
-                            "translation_consistency": "Error in analysis",
-                            "problematic_translations": "Unknown due to processing error",
-                            "translation_recommendation": "Unable to provide recommendation due to error",
-                            "overall_global_adaptability": 5,
-                            "notes": f"Error in analysis: {str(parse_error)}"
+                            "target_language": "Global",
+                            "direct_translation": "Error processing analysis",
+                            "semantic_shift": "Error in analysis",
+                            "pronunciation_difficulty": "Unknown due to error",
+                            "phonetic_similarity_undesirable": False,
+                            "phonetic_retention": "Unknown due to error",
+                            "cultural_acceptability": "Unknown due to error",
+                            "adaptation_needed": False,
+                            "proposed_adaptation": "N/A - Error in analysis",
+                            "brand_essence_preserved": "Unknown due to error",
+                            "global_consistency_vs_localization": "Unknown due to error",
+                            "notes": f"Error in analysis: {str(e)}",
+                            "rank": 5.0
                         }
-                    
-                    # Store results
-                    await self._store_analysis(run_id, brand_name, result)
-                    
+                
                 except Exception as e:
                     logger.error(f"Error in translation analysis: {str(e)}")
-                    # Create a fallback result
+                    # Create a fallback result with all required fields
                     result = {
                         "brand_name": brand_name,
                         "task_name": "translation_analysis",
-                        "english_pronunciation": "Error in analysis",
-                        "spanish_translation": "Error in analysis",
-                        "translation_recommendation": "Unable to provide recommendation due to error",
-                        "overall_global_adaptability": 5,
-                        "notes": f"Error during analysis: {str(e)}"
+                        "target_language": "Global",
+                        "direct_translation": "Error in analysis",
+                        "semantic_shift": "Error in analysis",
+                        "pronunciation_difficulty": "Unknown due to error",
+                        "phonetic_similarity_undesirable": False,
+                        "phonetic_retention": "Unknown due to error",
+                        "cultural_acceptability": "Unknown due to error",
+                        "adaptation_needed": False,
+                        "proposed_adaptation": "N/A - Error in analysis",
+                        "brand_essence_preserved": "Unknown due to error",
+                        "global_consistency_vs_localization": "Unknown due to error",
+                        "notes": f"Error during analysis: {str(e)}",
+                        "rank": 5.0
                     }
             
-            return result
+            # Return the result (without the run_id to avoid LangGraph issues)
+            return {k: v for k, v in result.items() if k != "run_id"}
                 
         except Exception as e:
             logger.error(
@@ -321,8 +474,94 @@ class TranslationAnalysisExpert:
                     "error": str(e)
                 }
             )
-            raise ValueError(f"Failed to analyze brand name: {str(e)}")
+            # Return a minimal valid result
+            return {
+                "brand_name": brand_name,
+                "task_name": "translation_analysis",
+                "target_language": "Global",
+                "direct_translation": "Fatal error in analysis",
+                "semantic_shift": "Fatal error in analysis",
+                "pronunciation_difficulty": "Unknown due to fatal error",
+                "phonetic_similarity_undesirable": False,
+                "phonetic_retention": "Unknown due to fatal error",
+                "cultural_acceptability": "Unknown due to fatal error",
+                "adaptation_needed": False,
+                "proposed_adaptation": "N/A - Fatal error in analysis",
+                "brand_essence_preserved": "Unknown due to fatal error",
+                "global_consistency_vs_localization": "Unknown due to fatal error",
+                "notes": f"Fatal error in analysis: {str(e)}",
+                "rank": 0.0
+            }
 
+    async def _store_language_analysis(
+        self,
+        run_id: str,
+        brand_name: str,
+        language_data: Dict[str, Any]
+    ) -> None:
+        """Store a single language analysis in Supabase.
+        
+        Args:
+            run_id: Unique identifier for this workflow run
+            brand_name: The analyzed brand name
+            language_data: Language-specific analysis data to store
+        """
+        try:
+            # Define the expected schema fields
+            schema_fields = [
+                "target_language", "direct_translation", "semantic_shift", 
+                "pronunciation_difficulty", "phonetic_similarity_undesirable", 
+                "phonetic_retention", "cultural_acceptability", "adaptation_needed", 
+                "proposed_adaptation", "brand_essence_preserved", 
+                "global_consistency_vs_localization", "notes", "rank"
+            ]
+            
+            # Prepare data for Supabase
+            record = {
+                "run_id": run_id,
+                "brand_name": brand_name,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            # Default target language if missing
+            if "target_language" not in language_data or not language_data["target_language"]:
+                language_data["target_language"] = "English"
+                
+            # Process each field according to its expected type
+            for field in schema_fields:
+                if field in language_data:
+                    value = language_data[field]
+                    
+                    # Handle boolean fields
+                    if field in ["phonetic_similarity_undesirable", "adaptation_needed"]:
+                        if isinstance(value, str):
+                            value = value.strip().lower() == "true" or value.strip() == "1"
+                    
+                    # Handle numeric fields
+                    if field == "rank":
+                        try:
+                            if value is not None:
+                                value = float(value)
+                        except (ValueError, TypeError):
+                            value = 5.0  # Default rank
+                    
+                    record[field] = value
+            
+            # Log what we're storing
+            logger.info(f"Storing analysis for language: {record.get('target_language', 'Unknown')}")
+            
+            # Insert into Supabase
+            try:
+                await self.supabase.table("translation_analysis").insert(record).execute()
+                logger.info(f"Successfully stored translation analysis for {record.get('target_language', 'Unknown')}")
+            except Exception as insert_error:
+                logger.error(f"Failed to insert translation analysis: {str(insert_error)}")
+            
+        except Exception as e:
+            logger.error(f"Error preparing translation analysis data: {str(e)}")
+            # Don't raise - we don't want to stop the workflow due to storage errors
+
+    # Keep the original _store_analysis method for backward compatibility
     async def _store_analysis(
         self,
         run_id: str,
@@ -340,15 +579,122 @@ class TranslationAnalysisExpert:
             Exception: If storage fails
         """
         try:
-            data = {
-                "run_id": run_id,
-                "brand_name": brand_name,
-                "timestamp": datetime.now().isoformat(),
-                **analysis
-            }
+            # Define the schema fields expected by Supabase
+            schema_fields = [
+                "direct_translation", "semantic_shift", "pronunciation_difficulty",
+                "phonetic_similarity_undesirable", "phonetic_retention",
+                "cultural_acceptability", "adaptation_needed", "proposed_adaptation",
+                "brand_essence_preserved", "global_consistency_vs_localization",
+                "notes", "rank"
+            ]
             
-            await self.supabase.table("translation_analysis").insert(data).execute()
-            logger.info(f"Stored translation analysis for brand name '{brand_name}' with run_id '{run_id}'")
+            # Check if we have a list of language analyses
+            if "translation_analysis_summary" in analysis and analysis.get("translation_analysis_summary"):
+                logger.info(f"Storing multiple language analyses for brand name '{brand_name}'")
+                
+                # Extract the language analyses from the summary
+                language_analyses = analysis.get("translation_analysis_summary", {})
+                
+                # Create a batch of records to insert
+                records = []
+                
+                # Generate a record for each language analysis
+                for language, lang_analysis in language_analyses.items():
+                    # Ensure required fields are present with correct types
+                    record = {
+                        "run_id": run_id,
+                        "brand_name": brand_name,
+                        "target_language": language,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    # Process fields according to schema
+                    for field in schema_fields:
+                        if field in lang_analysis:
+                            value = lang_analysis.get(field)
+                            
+                            # Handle boolean fields
+                            if field in ["phonetic_similarity_undesirable", "adaptation_needed"]:
+                                # Convert string "true"/"false" to boolean if needed
+                                if isinstance(value, str):
+                                    value = value.strip().lower() == "true" or value.strip() == "1"
+                            
+                            # Handle numeric fields
+                            if field == "rank":
+                                try:
+                                    if value is not None:
+                                        value = float(value)
+                                except (ValueError, TypeError):
+                                    value = 5.0  # Default rank
+                            
+                            record[field] = value
+                    
+                    # Ensure required fields have default values if missing
+                    if "target_language" not in record or not record["target_language"]:
+                        record["target_language"] = language
+                        
+                    if "direct_translation" not in record:
+                        record["direct_translation"] = "Not provided"
+                        
+                    records.append(record)
+                
+                # Insert the records into Supabase
+                if records:
+                    try:
+                        logger.debug(f"Inserting records: {records}")
+                        await self.supabase.table("translation_analysis").insert(records).execute()
+                        logger.info(f"Stored {len(records)} language analyses for brand name '{brand_name}' with run_id '{run_id}'")
+                    except Exception as e:
+                        logger.error(f"Failed to insert batch records: {str(e)}")
+                        # Try inserting one by one
+                        for record in records:
+                            try:
+                                await self.supabase.table("translation_analysis").insert(record).execute()
+                            except Exception as single_err:
+                                logger.error(f"Failed to insert single record: {str(single_err)}")
+                else:
+                    logger.warning(f"No language analyses to store for brand name '{brand_name}'")
+                    
+            else:
+                # Handle single analysis record
+                data = {
+                    "run_id": run_id,
+                    "brand_name": brand_name,
+                    "target_language": analysis.get("target_language", "English"),  # Default to English if not specified
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                # Process fields according to schema
+                for field in schema_fields:
+                    if field in analysis:
+                        value = analysis.get(field)
+                        
+                        # Handle boolean fields
+                        if field in ["phonetic_similarity_undesirable", "adaptation_needed"]:
+                            # Convert string "true"/"false" to boolean if needed
+                            if isinstance(value, str):
+                                value = value.strip().lower() == "true" or value.strip() == "1"
+                        
+                        # Handle numeric fields
+                        if field == "rank":
+                            try:
+                                if value is not None:
+                                    value = float(value)
+                            except (ValueError, TypeError):
+                                value = 5.0  # Default rank
+                        
+                        data[field] = value
+                
+                # Ensure required fields
+                if not data.get("target_language"):
+                    data["target_language"] = "English"
+                    
+                try:
+                    logger.debug(f"Inserting single record: {data}")
+                    await self.supabase.table("translation_analysis").insert(data).execute()
+                    logger.info(f"Stored translation analysis for brand name '{brand_name}' with run_id '{run_id}'")
+                except Exception as e:
+                    logger.error(f"Failed to insert single record: {str(e)}")
             
         except Exception as e:
             logger.error(

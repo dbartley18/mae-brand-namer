@@ -9,7 +9,7 @@ template: |
   Brand Context:
   {brand_context}
 
-  Analyze each name across these dimensions:
+  Analyze the brand names across these dimensions:
 
   1. Phonetic Structure
      - Pronunciation patterns
@@ -56,7 +56,7 @@ template: |
     ... other fields exactly as named ...
   }
 
-  For each name, provide:
+  For each brand name, provide:
   - Detailed linguistic breakdown
   - Potential strengths/weaknesses
   - Risk assessment

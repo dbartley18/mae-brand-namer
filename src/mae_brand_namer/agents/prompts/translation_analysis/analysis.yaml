@@ -1,12 +1,12 @@
 _type: prompt
 input_variables: ["format_instructions", "brand_names"]
 template: |
-  Conduct a comprehensive translation analysis for the following brand names:
+  Conduct a comprehensive translation analysis for the following brand name:
 
-  Brand Names:
+  Brand Name:
   {brand_names}
 
-  Analyze each name across these dimensions:
+  Analyze the brand name across these dimensions:
 
   1. Direct Translation Impact
      - Literal meaning in target languages (Top 10 Global Languages)

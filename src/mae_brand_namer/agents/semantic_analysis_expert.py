@@ -24,6 +24,7 @@ from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..models.state import SemanticAnalysisResult
 from ..utils.supabase_utils import SupabaseManager
+from ..utils.rate_limiter import google_api_limiter
 
 logger = get_logger(__name__)
 
@@ -331,6 +332,14 @@ class SemanticAnalysisExpert:
                     
                     # Log the final formatted prompt for debugging
                     logger.info(f"DEBUG - Final prompt content: {formatted_prompt[1].content[:100]}...")
+                    
+                    # Create a unique call ID for rate limiting
+                    call_id = f"semantic_{brand_name}_{run_id}"
+                    
+                    # Check if we need to wait due to rate limiting
+                    wait_time = await google_api_limiter.wait_if_needed(call_id)
+                    if wait_time > 0:
+                        logger.info(f"Rate limited: Waited {wait_time:.2f}s before making semantic analysis call")
                     
                     # Get response from LLM
                     response = await self.llm.ainvoke(formatted_prompt)

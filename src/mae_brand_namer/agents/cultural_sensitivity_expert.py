@@ -22,16 +22,22 @@ from langchain_core.tracers.context import tracing_v2_enabled
 from ..config.settings import settings
 from ..utils.logging import get_logger
 from ..config.dependencies import Dependencies
+from ..utils.rate_limiter import google_api_limiter
+from ..utils.supabase_utils import SupabaseManager
 
 logger = get_logger(__name__)
 
 class CulturalSensitivityExpert:
     """Expert in analyzing brand names for cultural sensitivity and appropriateness."""
     
-    def __init__(self, dependencies: Dependencies):
-        """Initialize the CulturalSensitivityExpert."""
-        self.supabase = dependencies.supabase
-        self.langsmith = dependencies.langsmith
+    def __init__(self, dependencies=None, supabase: SupabaseManager = None):
+        """Initialize the CulturalSensitivityExpert with dependencies."""
+        if dependencies:
+            self.supabase = dependencies.supabase
+            self.langsmith = dependencies.langsmith
+        else:
+            self.supabase = supabase or SupabaseManager()
+            self.langsmith = None
         
         try:
             # Load prompts
@@ -146,12 +152,6 @@ class CulturalSensitivityExpert:
                     # Log the brand name being analyzed
                     logger.info(f"Analyzing cultural sensitivity for brand name: '{brand_name}'")
                     
-                    # Format the prompt - simplify by removing brand_context
-                    formatted_prompt = self.prompt.format_messages(
-                        format_instructions=self.output_parser.get_format_instructions(),
-                        brand_name=brand_name
-                    )
-                    
                     # Format the prompt with all required variables
                     required_vars = {}
                     
@@ -171,35 +171,34 @@ class CulturalSensitivityExpert:
                         else:
                             required_vars["brand_context"] = f"A brand name for consideration"
                     
-                    # Log the variables being passed to the template
-                    logger.debug(f"Formatting cultural sensitivity prompt with variables: {list(required_vars.keys())}")
-                    
                     # Format the prompt with all required variables
                     formatted_prompt = self.prompt.format_messages(**required_vars)
                     
-                    # Log a sample of the formatted content
-                    if len(formatted_prompt) > 1:
-                        logger.debug(f"Formatted prompt sample: {formatted_prompt[1].content[:200]}...")
+                    # Wait if needed to respect rate limits before making the LLM call
+                    call_id = f"cultural_analysis_{brand_name}_{run_id[-8:]}"
+                    wait_time = await google_api_limiter.wait_if_needed(call_id)
+                    if wait_time > 0:
+                        logger.info(f"Rate limited: waited {wait_time:.2f}s before LLM call for {brand_name}")
                     
                     # Get response from LLM
+                    logger.info(f"Making LLM call for cultural analysis of '{brand_name}'")
                     response = await self.llm.ainvoke(formatted_prompt)
-                    
-                    # Log the raw response for debugging
-                    logger.debug(f"Cultural sensitivity analysis response: {response.content[:200]}...")
                     
                     # Parse the response with error handling
                     try:
                         analysis = self.output_parser.parse(response.content)
                         
-                        # Create a result dictionary
+                        # Create a result dictionary with standard required fields
+                        # Create without run_id to avoid LangGraph issues
                         result = {
                             "brand_name": brand_name,
                             "task_name": "cultural_sensitivity_analysis",
                         }
                         
-                        # Add all analysis results
+                        # Add all analysis results but exclude run_id
                         for key, value in analysis.items():
-                            result[key] = value
+                            if key != "run_id":  # Don't include run_id in the result
+                                result[key] = value
                             
                         # Ensure rank is a float
                         if "rank" in result:
@@ -227,7 +226,7 @@ class CulturalSensitivityExpert:
                             "rank": 5.0
                         }
                     
-                    # Store results
+                    # Store results in Supabase (this doesn't affect what we return to LangGraph)
                     await self._store_analysis(run_id, brand_name, result)
                     
                 except Exception as e:
@@ -243,7 +242,8 @@ class CulturalSensitivityExpert:
                         "rank": 5.0
                     }
             
-            return result
+            # Make sure result doesn't contain run_id before returning
+            return {key: value for key, value in result.items() if key != "run_id"}
             
         except APIError as e:
             logger.error(
@@ -257,7 +257,7 @@ class CulturalSensitivityExpert:
                     "details": getattr(e, "details", None)
                 }
             )
-            # Return a fallback result instead of raising the error
+            # Return a fallback result without run_id
             return {
                 "brand_name": brand_name,
                 "task_name": "cultural_sensitivity_analysis",
@@ -278,7 +278,7 @@ class CulturalSensitivityExpert:
                     "error_message": str(e)
                 }
             )
-            # Return a fallback result instead of raising the error
+            # Return a fallback result without run_id
             return {
                 "brand_name": brand_name,
                 "task_name": "cultural_sensitivity_analysis",
@@ -311,15 +311,50 @@ class CulturalSensitivityExpert:
             asyncio.set_event_loop(loop)
             
         try:
+            # Define schema fields for the cultural_sensitivity_analysis table
+            schema_fields = [
+                "cultural_connotations", "symbolic_meanings", "alignment_with_cultural_values",
+                "religious_sensitivities", "social_political_taboos", "body_part_bodily_function_connotations",
+                "age_related_connotations", "gender_connotations", "regional_variations",
+                "historical_meaning", "current_event_relevance", "overall_risk_rating", 
+                "notes", "rank"
+            ]
+            
+            # Create the base record
             data = {
                 "run_id": run_id,
                 "brand_name": brand_name,
-                "timestamp": datetime.now().isoformat(),
-                **analysis
+                "timestamp": datetime.now().isoformat()
             }
             
-            await self.supabase.table("cultural_sensitivity_analysis").insert(data).execute()
-            logger.info(f"Stored cultural sensitivity analysis for brand name '{brand_name}' with run_id '{run_id}'")
+            # Process each field according to its expected type in the schema
+            for field in schema_fields:
+                if field in analysis:
+                    value = analysis.get(field)
+                    
+                    # Handle boolean fields
+                    if field == "body_part_bodily_function_connotations":
+                        # Convert string "true"/"false" to boolean if needed
+                        if isinstance(value, str):
+                            value = value.strip().lower() == "true" or value.strip() == "1"
+                    
+                    # Handle numeric fields
+                    if field == "rank":
+                        try:
+                            if value is not None:
+                                value = float(value)
+                        except (ValueError, TypeError):
+                            value = 5.0  # Default rank
+                    
+                    data[field] = value
+            
+            try:
+                logger.debug(f"Inserting record: {data}")
+                await self.supabase.table("cultural_sensitivity_analysis").insert(data).execute()
+                logger.info(f"Stored cultural sensitivity analysis for brand name '{brand_name}' with run_id '{run_id}'")
+            except Exception as e:
+                logger.error(f"Failed to insert record: {str(e)}")
+                raise
             
         except APIError as e:
             logger.error(
@@ -333,7 +368,7 @@ class CulturalSensitivityExpert:
                     "details": getattr(e, "details", None)
                 }
             )
-            raise
+            # Don't raise - allow the process to continue
             
         except Exception as e:
             logger.error(
@@ -345,4 +380,4 @@ class CulturalSensitivityExpert:
                     "error_message": str(e)
                 }
             )
-            raise 
+            # Don't raise - allow the process to continue 

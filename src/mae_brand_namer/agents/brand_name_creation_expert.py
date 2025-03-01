@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from ..utils.logging import get_logger
 from ..utils.supabase_utils import SupabaseManager
 from ..config.settings import settings
+from ..utils.rate_limiter import google_api_limiter
 
 logger = get_logger(__name__)
 
@@ -229,6 +230,14 @@ class BrandNameCreationExpert:
                             
                             while retry_count < max_retries:
                                 try:
+                                    # Create a unique call ID for rate limiting
+                                    call_id = f"brand_name_{category}_{i}_{run_id}_{retry_count}"
+                                    
+                                    # Check if we need to wait due to rate limiting
+                                    wait_time = await google_api_limiter.wait_if_needed(call_id)
+                                    if wait_time > 0:
+                                        logger.info(f"Rate limited: Waited {wait_time:.2f}s before making brand name generation call")
+                                    
                                     # Get response from LLM
                                     response = await self.llm.ainvoke([system_message, human_message])
                                     

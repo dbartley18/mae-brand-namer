@@ -1,10 +1,10 @@
 _type: prompt
-input_variables: ["brand_name", "format_instructions"]
+input_variables: ["brand_names", "format_instructions"]
 template: |
-  Analyze the following brand name:
+  Analyze the following brand names:
   
   Brand Context:
-  Brand Name: {brand_name}
+  Brand Name: {"brand_names"}
   
   Your task is to provide a comprehensive semantic analysis of this brand name, focusing specifically on:
   
