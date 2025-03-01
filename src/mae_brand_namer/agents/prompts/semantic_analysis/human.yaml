@@ -3,6 +3,7 @@ input_variables: ["brand_name", "format_instructions"]
 template: |
   Analyze the following brand name:
   
+  Brand Context:
   Brand Name: {brand_name}
   
   Your task is to provide a comprehensive semantic analysis of this brand name, focusing specifically on:

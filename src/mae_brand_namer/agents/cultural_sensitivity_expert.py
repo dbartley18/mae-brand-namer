@@ -14,6 +14,10 @@ from langchain.callbacks import tracing_enabled
 from langchain_core.tracers import LangChainTracer
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from postgrest import APIError
+from langchain.output_parsers import ResponseSchema, StructuredOutputParser
+from langchain.callbacks import tracing_enabled
+from langchain_core.tracers import LangChainTracer
+from langchain_core.tracers.context import tracing_v2_enabled
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
@@ -33,6 +37,11 @@ class CulturalSensitivityExpert:
             # Load prompts
             prompt_dir = Path(__file__).parent / "prompts" / "cultural_sensitivity"
             self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
+            self.analysis_prompt = load_prompt(str(prompt_dir / "analysis.yaml"))
+            
+            # Log the loaded prompts for debugging
+            logger.debug(f"Loaded cultural sensitivity system prompt")
+            logger.debug(f"Loaded cultural sensitivity analysis prompt with variables: {self.analysis_prompt.input_variables}")
             
             # Define output schemas for structured parsing
             self.output_schemas = [
@@ -54,8 +63,8 @@ class CulturalSensitivityExpert:
             
             self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
             
-            # Create prompt template
-            system_message = SystemMessage(content=self.system_prompt.format() + 
+            # Create prompt template using the loaded YAML files
+            system_content = (self.system_prompt.format() + 
                 "\n\nIMPORTANT: You must respond with a valid JSON object that matches EXACTLY the schema provided." +
                 "\nThe JSON MUST contain all the fields specified below at the TOP LEVEL of the object." +
                 "\nDo NOT nest fields under additional keys or create your own object structure." +
@@ -67,21 +76,25 @@ class CulturalSensitivityExpert:
                 '\n  "cultural_connotations": "text here",' +
                 '\n  "symbolic_meanings": "text here",' +
                 "\n  ... other fields exactly as named ..." +
-                "\n}")
-            human_template = (
-                "Analyze the cultural sensitivity of the following brand name:\n"
-                "Brand Name: {brand_name}\n"
-                "Brand Context: {brand_context}\n\n"
-                "Format your analysis according to this schema:\n"
-                "{format_instructions}\n\n"
-                "Remember to respond with ONLY a valid JSON object exactly matching the required schema.\n"
-                "Use the EXACT field names from the schema at the top level of your JSON response.\n"
-                "Do NOT create nested structures or use different field names."
+                "\n}"
             )
+            
+            # Extract and update analysis template if needed
+            analysis_template = self.analysis_prompt.template
+            
+            # Update template to use singular brand_name instead of brand_names if needed
+            if "{brand_names}" in analysis_template:
+                analysis_template = analysis_template.replace("{brand_names}", "{brand_name}")
+                logger.info("Updated cultural sensitivity template to use singular brand_name")
+            
+            # Create the prompt template
             self.prompt = ChatPromptTemplate.from_messages([
-                system_message,
-                HumanMessage(content=human_template)
+                ("system", system_content),
+                ("human", analysis_template)
             ])
+            
+            # Log the input variables for debugging
+            logger.info(f"Cultural sensitivity prompt expects these variables: {self.prompt.input_variables}")
             
             # Initialize LLM
             self.llm = ChatGoogleGenerativeAI(
@@ -117,48 +130,121 @@ class CulturalSensitivityExpert:
             Dictionary with cultural sensitivity analysis results
         """
         try:
-            with tracing_enabled(
-                tags={
-                    "agent": "CulturalSensitivityExpert",
-                    "run_id": run_id
-                }
-            ):
-                # Format the prompt
-                formatted_prompt = self.prompt.format_messages(
-                    format_instructions=self.output_parser.get_format_instructions(),
-                    brand_name=brand_name,
-                    brand_context=str(brand_context) if isinstance(brand_context, dict) else brand_context
-                )
+            # Setup event loop if not available
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                # No event loop, create one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
                 
-                # Get response from LLM
-                response = await self.llm.ainvoke(formatted_prompt)
-                
-                # Parse the response
-                analysis = self.output_parser.parse(response.content)
-                
-                # Store results
-                await self._store_analysis(run_id, brand_name, analysis)
-                
-                # Return the analysis
-                return {
-                    "brand_name": brand_name,
-                    "task_name": "cultural_sensitivity_analysis",
-                    "cultural_connotations": analysis["cultural_connotations"],
-                    "symbolic_meanings": analysis["symbolic_meanings"],
-                    "alignment_with_cultural_values": analysis["alignment_with_cultural_values"],
-                    "religious_sensitivities": analysis["religious_sensitivities"],
-                    "social_political_taboos": analysis["social_political_taboos"],
-                    "body_part_bodily_function_connotations": analysis["body_part_bodily_function_connotations"],
-                    "age_related_connotations": analysis["age_related_connotations"],
-                    "gender_connotations": analysis["gender_connotations"],
-                    "regional_variations": analysis["regional_variations"],
-                    "historical_meaning": analysis["historical_meaning"],
-                    "current_event_relevance": analysis["current_event_relevance"],
-                    "overall_risk_rating": analysis["overall_risk_rating"],
-                    "notes": analysis["notes"],
-                    "rank": float(analysis["rank"])
-                }
-                
+            # Initialize result to track if we've successfully generated one
+            result = None
+            
+            with tracing_v2_enabled():
+                try:
+                    # Log the brand name being analyzed
+                    logger.info(f"Analyzing cultural sensitivity for brand name: '{brand_name}'")
+                    
+                    # Format the prompt - simplify by removing brand_context
+                    formatted_prompt = self.prompt.format_messages(
+                        format_instructions=self.output_parser.get_format_instructions(),
+                        brand_name=brand_name
+                    )
+                    
+                    # Format the prompt with all required variables
+                    required_vars = {}
+                    
+                    # Add the variables the template expects
+                    if "brand_name" in self.prompt.input_variables:
+                        required_vars["brand_name"] = brand_name
+                    
+                    if "brand_names" in self.prompt.input_variables:
+                        required_vars["brand_names"] = brand_name  # Use singular name even if template expects plural
+                    
+                    if "format_instructions" in self.prompt.input_variables:
+                        required_vars["format_instructions"] = self.output_parser.get_format_instructions()
+                    
+                    if "brand_context" in self.prompt.input_variables:
+                        if brand_context:
+                            required_vars["brand_context"] = brand_context
+                        else:
+                            required_vars["brand_context"] = f"A brand name for consideration"
+                    
+                    # Log the variables being passed to the template
+                    logger.debug(f"Formatting cultural sensitivity prompt with variables: {list(required_vars.keys())}")
+                    
+                    # Format the prompt with all required variables
+                    formatted_prompt = self.prompt.format_messages(**required_vars)
+                    
+                    # Log a sample of the formatted content
+                    if len(formatted_prompt) > 1:
+                        logger.debug(f"Formatted prompt sample: {formatted_prompt[1].content[:200]}...")
+                    
+                    # Get response from LLM
+                    response = await self.llm.ainvoke(formatted_prompt)
+                    
+                    # Log the raw response for debugging
+                    logger.debug(f"Cultural sensitivity analysis response: {response.content[:200]}...")
+                    
+                    # Parse the response with error handling
+                    try:
+                        analysis = self.output_parser.parse(response.content)
+                        
+                        # Create a result dictionary
+                        result = {
+                            "brand_name": brand_name,
+                            "task_name": "cultural_sensitivity_analysis",
+                        }
+                        
+                        # Add all analysis results
+                        for key, value in analysis.items():
+                            result[key] = value
+                            
+                        # Ensure rank is a float
+                        if "rank" in result:
+                            result["rank"] = float(result["rank"])
+                            
+                    except Exception as parse_error:
+                        logger.error(f"Error parsing cultural sensitivity analysis: {str(parse_error)}")
+                        # Create a minimal valid result
+                        result = {
+                            "brand_name": brand_name,
+                            "task_name": "cultural_sensitivity_analysis",
+                            "cultural_connotations": "Error in analysis",
+                            "symbolic_meanings": "Error in analysis",
+                            "alignment_with_cultural_values": "Unknown",
+                            "religious_sensitivities": "Unknown",
+                            "social_political_taboos": "Unknown",
+                            "body_part_bodily_function_connotations": False,
+                            "age_related_connotations": "Unknown",
+                            "gender_connotations": "Unknown",
+                            "regional_variations": "Unknown",
+                            "historical_meaning": "Unknown",
+                            "current_event_relevance": "Unknown",
+                            "overall_risk_rating": "High risk due to processing error",
+                            "notes": f"Error in analysis: {str(parse_error)}",
+                            "rank": 5.0
+                        }
+                    
+                    # Store results
+                    await self._store_analysis(run_id, brand_name, result)
+                    
+                except Exception as e:
+                    logger.error(f"Error in cultural sensitivity analysis: {str(e)}")
+                    # Create a fallback result
+                    result = {
+                        "brand_name": brand_name,
+                        "task_name": "cultural_sensitivity_analysis",
+                        "cultural_connotations": "Error in analysis",
+                        "symbolic_meanings": "Error in analysis",
+                        "overall_risk_rating": "High risk due to processing error",
+                        "notes": f"Error during analysis: {str(e)}",
+                        "rank": 5.0
+                    }
+            
+            return result
+            
         except APIError as e:
             logger.error(
                 "Supabase API error in cultural sensitivity analysis",
@@ -171,7 +257,16 @@ class CulturalSensitivityExpert:
                     "details": getattr(e, "details", None)
                 }
             )
-            raise
+            # Return a fallback result instead of raising the error
+            return {
+                "brand_name": brand_name,
+                "task_name": "cultural_sensitivity_analysis",
+                "cultural_connotations": "Database error",
+                "symbolic_meanings": "Database error",
+                "overall_risk_rating": "Unknown due to database error",
+                "notes": f"Database error: {str(e)}",
+                "rank": 5.0
+            }
             
         except Exception as e:
             logger.error(
@@ -183,7 +278,16 @@ class CulturalSensitivityExpert:
                     "error_message": str(e)
                 }
             )
-            raise
+            # Return a fallback result instead of raising the error
+            return {
+                "brand_name": brand_name,
+                "task_name": "cultural_sensitivity_analysis",
+                "cultural_connotations": "Error in analysis",
+                "symbolic_meanings": "Error in analysis",
+                "overall_risk_rating": "High risk due to processing error",
+                "notes": f"Error during analysis: {str(e)}",
+                "rank": 5.0
+            }
     
     async def _store_analysis(
         self,

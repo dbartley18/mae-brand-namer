@@ -5,12 +5,15 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
 import asyncio
+import traceback
+import json
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate, load_prompt
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 from langchain.callbacks import tracing_enabled
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.tracers.context import tracing_v2_enabled
 from postgrest import APIError
 
 from ..config.settings import settings
@@ -58,6 +61,11 @@ class LinguisticsExpert:
             # Load prompts from YAML files
             prompt_dir = Path(__file__).parent / "prompts" / "linguistics"
             self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
+            self.analysis_prompt = load_prompt(str(prompt_dir / "analysis.yaml"))
+            
+            # Log the loaded prompts for debugging
+            logger.debug(f"Loaded linguistics system prompt")
+            logger.debug(f"Loaded linguistics analysis prompt with variables: {self.analysis_prompt.input_variables}")
             
             # Define output schemas for structured parsing
             self.output_schemas = [
@@ -81,9 +89,23 @@ class LinguisticsExpert:
             ]
             self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
             
-            # Set up the prompt template
-            self.analysis_prompt = load_prompt(str(prompt_dir / "analysis.yaml"))
-            self.prompt = ChatPromptTemplate.from_template(self.analysis_prompt.template)
+            # Set up the prompt template with both prompts
+            system_content = self.system_prompt.format()
+            analysis_template = self.analysis_prompt.template
+            
+            # Update template to use singular brand_name instead of brand_names if needed
+            if "{brand_names}" in analysis_template:
+                analysis_template = analysis_template.replace("{brand_names}", "{brand_name}")
+                logger.info("Updated linguistics analysis template to use singular brand_name")
+            
+            # Create proper prompt template using both prompts
+            self.prompt = ChatPromptTemplate.from_messages([
+                ("system", system_content),
+                ("human", analysis_template)
+            ])
+            
+            # Log the input variables for debugging
+            logger.info(f"Linguistics prompt expects these variables: {self.prompt.input_variables}")
             
             # Initialize LLM
             self.llm = ChatGoogleGenerativeAI(
@@ -123,50 +145,130 @@ class LinguisticsExpert:
             Dictionary containing the linguistic analysis results
         """
         try:
-            with tracing_enabled(
-                tags={
-                    "agent": "LinguisticsExpert",
-                    "run_id": run_id
-                }
-            ):
-                # Format prompt with parser instructions
-                formatted_prompt = self.prompt.format_messages(
-                    format_instructions=self.output_parser.get_format_instructions(),
-                    brand_name=brand_name,
-                    brand_context=str(brand_context) if isinstance(brand_context, dict) else brand_context
-                )
+            # Setup event loop if not available
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                # No event loop, create one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
                 
-                # Get response from LLM
-                response = await self.llm.ainvoke(formatted_prompt)
-                
-                # Parse and validate response
-                analysis = self.output_parser.parse(response.content)
-                
-                # Store results
-                await self._store_analysis(run_id, brand_name, analysis)
-                
-                return {
-                    "brand_name": brand_name,
-                    "task_name": "linguistic_analysis",
-                    "pronunciation_ease": analysis["pronunciation_ease"],
-                    "euphony_vs_cacophony": analysis["euphony_vs_cacophony"],
-                    "rhythm_and_meter": analysis["rhythm_and_meter"],
-                    "phoneme_frequency_distribution": analysis["phoneme_frequency_distribution"],
-                    "sound_symbolism": analysis["sound_symbolism"],
-                    "word_class": analysis["word_class"],
-                    "morphological_transparency": analysis["morphological_transparency"],
-                    "grammatical_gender": analysis["grammatical_gender"],
-                    "inflectional_properties": analysis["inflectional_properties"],
-                    "ease_of_marketing_integration": analysis["ease_of_marketing_integration"],
-                    "naturalness_in_collocations": analysis["naturalness_in_collocations"],
-                    "homophones_homographs": analysis["homophones_homographs"],
-                    "semantic_distance_from_competitors": analysis["semantic_distance_from_competitors"],
-                    "neologism_appropriateness": analysis["neologism_appropriateness"],
-                    "overall_readability_score": analysis["overall_readability_score"],
-                    "notes": analysis["notes"],
-                    "rank": float(analysis["rank"])
-                }
-                
+            # Initialize result to track if we've successfully generated one
+            result = None
+            
+            with tracing_v2_enabled():
+                try:
+                    # Log the brand name being analyzed
+                    logger.info(f"Analyzing linguistics for brand name: '{brand_name}'")
+                    
+                    # Format prompt with all required variables
+                    required_vars = {}
+                    
+                    # Add the variables the template expects
+                    if "brand_name" in self.prompt.input_variables:
+                        required_vars["brand_name"] = brand_name
+                    
+                    if "brand_names" in self.prompt.input_variables:
+                        required_vars["brand_names"] = brand_name  # Use singular name even if template expects plural
+                    
+                    if "format_instructions" in self.prompt.input_variables:
+                        required_vars["format_instructions"] = self.output_parser.get_format_instructions()
+                    
+                    if "brand_context" in self.prompt.input_variables:
+                        required_vars["brand_context"] = brand_context if brand_context else "A brand name for consideration"
+                    
+                    # Log the variables being passed to the template
+                    logger.info(f"Formatting linguistics prompt with variables: {list(required_vars.keys())}")
+                    logger.debug(f"Brand name value: '{brand_name}'")
+                    
+                    # Format the prompt with all required variables
+                    formatted_prompt = self.prompt.format_messages(**required_vars)
+                    
+                    # Log details about the formatted prompt for debugging
+                    if len(formatted_prompt) > 1:
+                        logger.debug(f"Formatted prompt sample: {formatted_prompt[1].content[:200]}...")
+                        logger.info(f"Brand name in formatted prompt: {brand_name in formatted_prompt[1].content}")
+                    
+                    # Get response from LLM - with detailed logging
+                    logger.info(f"Invoking LLM for linguistics analysis on '{brand_name}'")
+                    try:
+                        response = await self.llm.ainvoke(formatted_prompt)
+                        logger.info(f"LLM invocation successful for linguistics analysis")
+                    except Exception as llm_error:
+                        logger.error(f"Error invoking LLM: {str(llm_error)}")
+                        raise
+                    
+                    # Log the raw response for debugging
+                    if hasattr(response, 'content'):
+                        logger.debug(f"LLM response: {response.content[:200]}...")
+                        logger.info(f"LLM response length: {len(response.content)}")
+                    else:
+                        logger.error(f"Unexpected response format from LLM: {type(response)}")
+                    
+                    # Parse and validate response with error handling
+                    try:
+                        analysis = self.output_parser.parse(response.content)
+                        
+                        # Create the result dictionary
+                        result = {
+                            "brand_name": brand_name,
+                            "task_name": "linguistic_analysis"
+                        }
+                        
+                        # Add all analysis fields to the result
+                        for key, value in analysis.items():
+                            result[key] = value
+                            
+                        # Ensure rank is a float
+                        if "rank" in result:
+                            result["rank"] = float(result["rank"])
+                            
+                    except Exception as parse_error:
+                        logger.error(f"Error parsing linguistic analysis: {str(parse_error)}")
+                        # Create a minimal valid result
+                        result = {
+                            "brand_name": brand_name,
+                            "task_name": "linguistic_analysis",
+                            "pronunciation_ease": "Average",
+                            "euphony_vs_cacophony": "Neutral",
+                            "rhythm_and_meter": "Standard",
+                            "phoneme_frequency_distribution": "Typical",
+                            "sound_symbolism": "Minimal",
+                            "word_class": "Noun",
+                            "morphological_transparency": "Clear",
+                            "grammatical_gender": "Neutral",
+                            "inflectional_properties": "Standard",
+                            "ease_of_marketing_integration": "Moderate",
+                            "naturalness_in_collocations": "Neutral",
+                            "homophones_homographs": False,
+                            "semantic_distance_from_competitors": "Unknown",
+                            "neologism_appropriateness": "N/A",
+                            "overall_readability_score": "Average",
+                            "notes": "Error in analysis process",
+                            "rank": 5.0
+                        }
+                    
+                    # Store results
+                    await self._store_analysis(run_id, brand_name, result)
+                    
+                except Exception as e:
+                    logger.error(f"Error in linguistic analysis: {str(e)}")
+                    # Create a fallback result
+                    result = {
+                        "brand_name": brand_name,
+                        "task_name": "linguistic_analysis",
+                        "pronunciation_ease": "Error in analysis",
+                        "euphony_vs_cacophony": "Error in analysis",
+                        "rhythm_and_meter": "Error in analysis",
+                        "sound_symbolism": "Error in analysis",
+                        "word_class": "Unknown",
+                        "overall_readability_score": "Unknown",
+                        "notes": f"Error during analysis: {str(e)}",
+                        "rank": 5.0
+                    }
+            
+            return result
+            
         except APIError as e:
             logger.error(
                 "Supabase API error in linguistic analysis",
@@ -179,7 +281,16 @@ class LinguisticsExpert:
                     "details": getattr(e, "details", None)
                 }
             )
-            raise
+            # Return a fallback result instead of raising the error
+            return {
+                "brand_name": brand_name,
+                "task_name": "linguistic_analysis",
+                "pronunciation_ease": "Database error",
+                "euphony_vs_cacophony": "Database error",
+                "word_class": "Unknown",
+                "notes": f"Database error: {str(e)}",
+                "rank": 5.0
+            }
             
         except Exception as e:
             logger.error(
@@ -188,10 +299,20 @@ class LinguisticsExpert:
                     "run_id": run_id,
                     "brand_name": brand_name,
                     "error_type": type(e).__name__,
-                    "error_message": str(e)
+                    "error_message": str(e),
+                    "trace": "".join(traceback.format_exception(type(e), e, e.__traceback__))
                 }
             )
-            raise
+            # Return a fallback result instead of raising the error
+            return {
+                "brand_name": brand_name,
+                "task_name": "linguistic_analysis",
+                "pronunciation_ease": "Error in analysis",
+                "euphony_vs_cacophony": "Error in analysis",
+                "word_class": "Unknown",
+                "notes": f"Error in analysis: {str(e)}",
+                "rank": 5.0
+            }
     
     async def _store_analysis(
         self,
@@ -215,33 +336,41 @@ class LinguisticsExpert:
             asyncio.set_event_loop(loop)
             
         try:
+            # Log what we're trying to store
+            logger.debug(f"Preparing to store linguistic analysis for '{brand_name}'")
+            
+            # Create data structure for Supabase
             data = {
                 "run_id": run_id,
                 "brand_name": brand_name,
-                "timestamp": datetime.now().isoformat(),
-                **analysis
+                "task_name": "linguistic_analysis",
             }
             
-            await self.supabase.table("linguistic_analysis").insert(data).execute()
-            logger.info(f"Stored linguistic analysis for brand name '{brand_name}' with run_id '{run_id}'")
+            # Add analysis fields, skipping any known problematic fields
+            skip_fields = ["timestamp", "task_name", "run_id"]  # Fields to skip
+            for key, value in analysis.items():
+                if key not in skip_fields and key != "brand_name":  # Skip fields that might cause issues
+                    # Handle potential JSON serialization issues
+                    if isinstance(value, (dict, list)):
+                        try:
+                            # Convert to string to avoid serialization issues
+                            data[key] = json.dumps(value)
+                        except Exception:
+                            # If we can't serialize, store as string
+                            data[key] = str(value)
+                    else:
+                        data[key] = value
             
-        except APIError as e:
-            logger.error(
-                "Supabase API error storing linguistic analysis",
-                extra={
-                    "run_id": run_id,
-                    "brand_name": brand_name,
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
-                    "status_code": getattr(e, "code", None),
-                    "details": getattr(e, "details", None)
-                }
-            )
-            raise
+            # Log the keys we're storing
+            logger.info(f"Storing linguistic analysis with fields: {list(data.keys())}")
+            
+            # Perform the insert
+            await self.supabase.table("linguistic_analysis").insert(data).execute()
+            logger.info(f"Successfully stored linguistic analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
         except Exception as e:
             logger.error(
-                "Unexpected error storing linguistic analysis",
+                "Error storing linguistic analysis in Supabase",
                 extra={
                     "run_id": run_id,
                     "brand_name": brand_name,
@@ -249,4 +378,4 @@ class LinguisticsExpert:
                     "error_message": str(e)
                 }
             )
-            raise 
+            # Don't raise here - we don't want database errors to prevent the analysis from being returned 

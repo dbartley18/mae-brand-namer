@@ -202,14 +202,21 @@ class SemanticAnalysisExpert:
         logger.debug(f"Human template content: {self.human_prompt.template[:200]}...")
         logger.debug(f"Human template has brand_name placeholder: {'{{brand_name}}' in self.human_prompt.template}")
         
-        # Create the prompt template properly with variable substitution
+        # Create the prompt template using the loaded YAML files
+        system_message = SystemMessage(content=self.system_prompt.template)
+        human_template = self.human_prompt.template
+        
+        # Create proper prompt template from the loaded templates
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", self.system_prompt.template),
-            ("human", self.human_prompt.template)
+            ("system", system_message.content),
+            ("human", human_template)
         ])
         
-        # Validate the input variables are correct
+        # Verify the input variables are correct and log them
         logger.info(f"Prompt expects these variables: {self.prompt.input_variables}")
+        logger.debug(f"Checking if human template contains expected placeholders:")
+        logger.debug(f"- brand_name: {'{{brand_name}}' in human_template}")
+        logger.debug(f"- format_instructions: {'{{format_instructions}}' in human_template}")
         
         # Log the final prompt configuration
         logger.info("Semantic Analysis Expert initialized with prompt template")
@@ -283,11 +290,17 @@ class SemanticAnalysisExpert:
                     logger.info(f"DEBUG - Brand name being passed: '{brand_name}'")
                     
                     try:
-                        # Format the prompt with brand_name and format_instructions
-                        formatted_prompt = self.prompt.format_messages(
-                            brand_name=brand_name,
-                            format_instructions=self.format_instructions
-                        )
+                        # Format the prompt with the required variables from the YAML template
+                        if "format_instructions" in self.prompt.input_variables:
+                            formatted_prompt = self.prompt.format_messages(
+                                brand_name=brand_name,
+                                format_instructions=self.format_instructions
+                            )
+                        else:
+                            # If template doesn't expect format_instructions, just use brand_name
+                            formatted_prompt = self.prompt.format_messages(
+                                brand_name=brand_name
+                            )
                         
                         # Check if the brand name appears in the formatted messages
                         second_message_content = formatted_prompt[1].content
