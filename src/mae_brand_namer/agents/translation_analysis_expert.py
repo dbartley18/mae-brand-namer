@@ -181,17 +181,14 @@ class TranslationAnalysisExpert:
         self,
         run_id: str,
         brand_name: str,
-        brand_context: Dict[str, Any]
+        brand_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Analyze the translation implications of a brand name.
-        
-        Evaluates how the brand name translates across different languages and
-        cultures, identifying potential issues and adaptation needs.
+        """Analyze a brand name for translation considerations in major world languages.
         
         Args:
             run_id: Unique identifier for this workflow run
             brand_name: The brand name to analyze
-            brand_context: Additional brand context information
+            brand_context: Optional additional brand context information
             
         Returns:
             Dictionary containing the translation analysis results

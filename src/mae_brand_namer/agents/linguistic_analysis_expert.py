@@ -106,7 +106,7 @@ class LinguisticsExpert:
         self,
         run_id: str,
         brand_name: str,
-        brand_context: Dict[str, Any]
+        brand_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Analyze the linguistic characteristics of a brand name.
         
@@ -117,7 +117,7 @@ class LinguisticsExpert:
         Args:
             run_id: Unique identifier for this workflow run
             brand_name: The brand name to analyze
-            brand_context: Additional brand context information
+            brand_context: Optional additional brand context information
             
         Returns:
             Dictionary containing the linguistic analysis results

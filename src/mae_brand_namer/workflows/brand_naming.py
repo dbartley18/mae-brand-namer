@@ -804,21 +804,57 @@ async def process_semantic_analysis(state: BrandNameGenerationState, agent: Sema
             # Prepare results container
             semantic_results = []
             
+            # Create a comprehensive brand_context dictionary for the analysis
+            # We'll still create and pass this context even though the expert doesn't use it directly
+            # This maintains backwards compatibility and keeps it available for the evaluator
+            brand_context = {
+                "brand_promise": getattr(state, "brand_promise", ""),
+                "brand_personality": getattr(state, "brand_personality", []),
+                "brand_tone_of_voice": getattr(state, "brand_tone_of_voice", ""),
+                "brand_purpose": getattr(state, "brand_purpose", ""),
+                "brand_mission": getattr(state, "brand_mission", ""),
+                "target_audience": getattr(state, "target_audience", ""),
+                "customer_needs": getattr(state, "customer_needs", []),
+                "market_positioning": getattr(state, "market_positioning", ""),
+                "competitive_landscape": getattr(state, "competitive_landscape", ""),
+                "industry_focus": getattr(state, "industry_focus", ""),
+                "industry_trends": getattr(state, "industry_trends", []),
+                "brand_identity_brief": getattr(state, "brand_identity_brief", {})
+            }
+            
+            logger.info(f"Starting semantic analysis for {len(state.generated_names)} brand names")
+            
             # Process each brand name in sequence
             for brand_name_data in state.generated_names:
                 try:
-                    # Run analysis 
+                    brand_name = brand_name_data.get("brand_name", "")
+                    if not brand_name:
+                        logger.warning("Empty brand name encountered in generated_names")
+                        continue
+                        
+                    logger.info(f"Analyzing brand name: {brand_name}")
+                    
+                    # Still pass brand_context even though it's now optional
+                    # This maintains backwards compatibility
                     result = await agent.analyze_brand_name(
                         run_id=state.run_id,
-                        brand_name=brand_name_data["brand_name"],
-                        brand_context=getattr(state, "brand_context", {})
+                        brand_name=brand_name,
+                        brand_context=brand_context
                     )
                     semantic_results.append(result)
                 except Exception as e:
-                    logger.error(f"Error analyzing brand name {brand_name_data['brand_name']}: {str(e)}")
+                    logger.error(f"Error analyzing brand name {brand_name_data.get('brand_name', '[unknown]')}: {str(e)}")
+                    # Create a fallback result for this name
                     semantic_results.append({
-                        "run_id": state.run_id,
-                        "brand_name": brand_name_data["brand_name"],
+                        "brand_name": brand_name_data.get("brand_name", "[unknown]"),
+                        "task_name": "semantic_analysis",
+                        "denotative_meaning": f"Error analyzing '{brand_name_data.get('brand_name', '[unknown]')}'",
+                        "etymology": "Unknown due to analysis error",
+                        "descriptiveness": 5,
+                        "brand_personality": "Error during analysis",
+                        "memorability_score": 5,
+                        "pronunciation_ease": 5,
+                        "brand_fit_relevance": 5,
                         "error": str(e)
                     })
             
@@ -849,22 +885,46 @@ async def process_linguistic_analysis(state: BrandNameGenerationState, agent: Li
             # Prepare results container
             linguistic_results = []
             
+            # Create comprehensive brand context
+            brand_context = {
+                "brand_promise": getattr(state, "brand_promise", ""),
+                "brand_personality": getattr(state, "brand_personality", ""),
+                "target_audience": getattr(state, "target_audience", ""),
+                "brand_values": getattr(state, "brand_values", []),
+                "competitors": getattr(state, "competitors", []),
+                "industry": getattr(state, "industry", ""),
+                "brand_identity_brief": getattr(state, "brand_identity_brief", ""),
+                "geographic_focus": getattr(state, "geographic_focus", ""),
+                "product_service_description": getattr(state, "product_service_description", ""),
+                "company_description": getattr(state, "company_description", "")
+            }
+            
+            # Log the start of analysis
+            num_names = len(state.generated_names) if state.generated_names else 0
+            logger.info(f"Starting linguistic analysis for {num_names} brand names")
+            
             # Process each brand name in sequence
             for brand_name_data in state.generated_names:
                 try:
+                    # Skip empty names
+                    if not brand_name_data.get("brand_name"):
+                        logger.warning("Skipping empty brand name in linguistic analysis")
+                        continue
+                        
                     # Run analysis 
                     result = await agent.analyze_brand_name(
                         run_id=state.run_id,
                         brand_name=brand_name_data["brand_name"],
-                        brand_context=getattr(state, "brand_context", {})
+                        brand_context=brand_context
                     )
                     linguistic_results.append(result)
                 except Exception as e:
-                    logger.error(f"Error analyzing brand name {brand_name_data['brand_name']}: {str(e)}")
+                    logger.error(f"Error analyzing brand name {brand_name_data.get('brand_name', '[unknown]')}: {str(e)}")
                     linguistic_results.append({
                         "run_id": state.run_id,
-                        "brand_name": brand_name_data["brand_name"],
-                        "error": str(e)
+                        "brand_name": brand_name_data.get("brand_name", "[unknown]"),
+                        "error": str(e),
+                        "analysis_complete": False
                     })
             
             # Return dictionary of state updates
@@ -894,22 +954,46 @@ async def process_cultural_analysis(state: BrandNameGenerationState, agent: Cult
             # Prepare results container
             cultural_results = []
             
+            # Create comprehensive brand context
+            brand_context = {
+                "brand_promise": getattr(state, "brand_promise", ""),
+                "brand_personality": getattr(state, "brand_personality", ""),
+                "target_audience": getattr(state, "target_audience", ""),
+                "brand_values": getattr(state, "brand_values", []),
+                "competitors": getattr(state, "competitors", []),
+                "industry": getattr(state, "industry", ""),
+                "brand_identity_brief": getattr(state, "brand_identity_brief", ""),
+                "geographic_focus": getattr(state, "geographic_focus", ""),
+                "product_service_description": getattr(state, "product_service_description", ""),
+                "company_description": getattr(state, "company_description", "")
+            }
+            
+            # Log the start of analysis
+            num_names = len(state.generated_names) if state.generated_names else 0
+            logger.info(f"Starting cultural analysis for {num_names} brand names")
+            
             # Process each brand name in sequence
             for brand_name_data in state.generated_names:
                 try:
+                    # Skip empty names
+                    if not brand_name_data.get("brand_name"):
+                        logger.warning("Skipping empty brand name in cultural analysis")
+                        continue
+                        
                     # Run analysis 
                     result = await agent.analyze_brand_name(
                         run_id=state.run_id,
                         brand_name=brand_name_data["brand_name"],
-                        brand_context=getattr(state, "brand_context", {})
+                        brand_context=brand_context
                     )
                     cultural_results.append(result)
                 except Exception as e:
-                    logger.error(f"Error analyzing brand name {brand_name_data['brand_name']}: {str(e)}")
+                    logger.error(f"Error analyzing brand name {brand_name_data.get('brand_name', '[unknown]')}: {str(e)}")
                     cultural_results.append({
                         "run_id": state.run_id,
-                        "brand_name": brand_name_data["brand_name"],
-                        "error": str(e)
+                        "brand_name": brand_name_data.get("brand_name", "[unknown]"),
+                        "error": str(e),
+                        "analysis_complete": False
                     })
             
             # Return dictionary of state updates
@@ -939,22 +1023,46 @@ async def process_translation_analysis(state: BrandNameGenerationState, agent: T
             # Prepare results container
             translation_results = []
             
+            # Create comprehensive brand context
+            brand_context = {
+                "brand_promise": getattr(state, "brand_promise", ""),
+                "brand_personality": getattr(state, "brand_personality", ""),
+                "target_audience": getattr(state, "target_audience", ""),
+                "brand_values": getattr(state, "brand_values", []),
+                "competitors": getattr(state, "competitors", []),
+                "industry": getattr(state, "industry", ""),
+                "brand_identity_brief": getattr(state, "brand_identity_brief", ""),
+                "geographic_focus": getattr(state, "geographic_focus", ""),
+                "product_service_description": getattr(state, "product_service_description", ""),
+                "company_description": getattr(state, "company_description", "")
+            }
+            
+            # Log the start of analysis
+            num_names = len(state.generated_names) if state.generated_names else 0
+            logger.info(f"Starting translation analysis for {num_names} brand names")
+            
             # Process each brand name in sequence
             for brand_name_data in state.generated_names:
                 try:
+                    # Skip empty names
+                    if not brand_name_data.get("brand_name"):
+                        logger.warning("Skipping empty brand name in translation analysis")
+                        continue
+                        
                     # Run analysis 
                     result = await agent.analyze_brand_name(
                         run_id=state.run_id,
                         brand_name=brand_name_data["brand_name"],
-                        brand_context=getattr(state, "brand_context", {})
+                        brand_context=brand_context
                     )
                     translation_results.append(result)
                 except Exception as e:
-                    logger.error(f"Error analyzing brand name {brand_name_data['brand_name']}: {str(e)}")
+                    logger.error(f"Error analyzing brand name {brand_name_data.get('brand_name', '[unknown]')}: {str(e)}")
                     translation_results.append({
                         "run_id": state.run_id,
-                        "brand_name": brand_name_data["brand_name"],
-                        "error": str(e)
+                        "brand_name": brand_name_data.get("brand_name", "[unknown]"),
+                        "error": str(e),
+                        "analysis_complete": False
                     })
             
             # Return dictionary of state updates

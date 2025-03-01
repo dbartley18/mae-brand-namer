@@ -104,14 +104,14 @@ class CulturalSensitivityExpert:
         self,
         run_id: str,
         brand_name: str,
-        brand_context: Dict[str, Any]
+        brand_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Analyze a brand name for cultural sensitivity concerns.
+        """Analyze a brand name for cultural sensitivity across major global regions.
         
         Args:
             run_id: Unique identifier for this workflow run
             brand_name: The brand name to analyze
-            brand_context: Brand context information
+            brand_context: Optional additional brand context information
             
         Returns:
             Dictionary with cultural sensitivity analysis results
