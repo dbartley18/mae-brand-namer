@@ -26,7 +26,7 @@ class SemanticAnalysisResult(TypedDict, total=False):
     compounding_derivation: str
     brand_name_type: str
     memorability_score: float
-    pronunciation_ease: float
+    original_pronunciation_ease: float
     clarity_understandability: float
     uniqueness_differentiation: float
     brand_fit_relevance: float
@@ -182,7 +182,7 @@ class CulturalAnalysisResult(BaseModel):
         ..., 
         description="Potential sociopolitical sensitivities"
     )
-    body_part_bodily_function_connotations: str = Field(
+    body_part_bodily_function_connotations: bool = Field(
         ..., 
         description="Unintended anatomical/physiological meanings"
     )

@@ -806,24 +806,6 @@ async def process_semantic_analysis(state: BrandNameGenerationState, agent: Sema
             # Prepare results container
             semantic_results = []
             
-            # Create a comprehensive brand_context dictionary for the analysis
-            # We'll still create and pass this context even though the expert doesn't use it directly
-            # This maintains backwards compatibility and keeps it available for the evaluator
-            brand_context = {
-                "brand_promise": getattr(state, "brand_promise", ""),
-                "brand_personality": getattr(state, "brand_personality", []),
-                "brand_tone_of_voice": getattr(state, "brand_tone_of_voice", ""),
-                "brand_purpose": getattr(state, "brand_purpose", ""),
-                "brand_mission": getattr(state, "brand_mission", ""),
-                "target_audience": getattr(state, "target_audience", ""),
-                "customer_needs": getattr(state, "customer_needs", []),
-                "market_positioning": getattr(state, "market_positioning", ""),
-                "competitive_landscape": getattr(state, "competitive_landscape", ""),
-                "industry_focus": getattr(state, "industry_focus", ""),
-                "industry_trends": getattr(state, "industry_trends", []),
-                "brand_identity_brief": getattr(state, "brand_identity_brief", {})
-            }
-            
             logger.info(f"Starting semantic analysis for {len(state.generated_names)} brand names")
             
             # Process each brand name in sequence
@@ -836,12 +818,9 @@ async def process_semantic_analysis(state: BrandNameGenerationState, agent: Sema
                         
                     logger.info(f"Analyzing brand name: {brand_name}")
                     
-                    # Still pass brand_context even though it's now optional
-                    # This maintains backwards compatibility
                     result = await agent.analyze_brand_name(
                         run_id=state.run_id,
-                        brand_name=brand_name,
-                        brand_context=brand_context
+                        brand_name=brand_name
                     )
                     semantic_results.append(result)
                 except Exception as e:
@@ -887,20 +866,6 @@ async def process_linguistic_analysis(state: BrandNameGenerationState, agent: Li
             # Prepare results container
             linguistic_results = []
             
-            # Create comprehensive brand context
-            brand_context = {
-                "brand_promise": getattr(state, "brand_promise", ""),
-                "brand_personality": getattr(state, "brand_personality", ""),
-                "target_audience": getattr(state, "target_audience", ""),
-                "brand_values": getattr(state, "brand_values", []),
-                "competitors": getattr(state, "competitors", []),
-                "industry": getattr(state, "industry", ""),
-                "brand_identity_brief": getattr(state, "brand_identity_brief", ""),
-                "geographic_focus": getattr(state, "geographic_focus", ""),
-                "product_service_description": getattr(state, "product_service_description", ""),
-                "company_description": getattr(state, "company_description", "")
-            }
-            
             # Log the start of analysis
             num_names = len(state.generated_names) if state.generated_names else 0
             logger.info(f"Starting linguistic analysis for {num_names} brand names")
@@ -916,8 +881,7 @@ async def process_linguistic_analysis(state: BrandNameGenerationState, agent: Li
                     # Run analysis 
                     result = await agent.analyze_brand_name(
                         run_id=state.run_id,
-                        brand_name=brand_name_data["brand_name"],
-                        brand_context=brand_context
+                        brand_name=brand_name_data["brand_name"]
                     )
                     linguistic_results.append(result)
                 except Exception as e:
@@ -956,20 +920,6 @@ async def process_cultural_analysis(state: BrandNameGenerationState, agent: Cult
             # Prepare results container
             cultural_results = []
             
-            # Create comprehensive brand context
-            brand_context = {
-                "brand_promise": getattr(state, "brand_promise", ""),
-                "brand_personality": getattr(state, "brand_personality", ""),
-                "target_audience": getattr(state, "target_audience", ""),
-                "brand_values": getattr(state, "brand_values", []),
-                "competitors": getattr(state, "competitors", []),
-                "industry": getattr(state, "industry", ""),
-                "brand_identity_brief": getattr(state, "brand_identity_brief", ""),
-                "geographic_focus": getattr(state, "geographic_focus", ""),
-                "product_service_description": getattr(state, "product_service_description", ""),
-                "company_description": getattr(state, "company_description", "")
-            }
-            
             # Log the start of analysis
             num_names = len(state.generated_names) if state.generated_names else 0
             logger.info(f"Starting cultural analysis for {num_names} brand names")
@@ -985,8 +935,7 @@ async def process_cultural_analysis(state: BrandNameGenerationState, agent: Cult
                     # Run analysis 
                     result = await agent.analyze_brand_name(
                         run_id=state.run_id,
-                        brand_name=brand_name_data["brand_name"],
-                        brand_context=brand_context
+                        brand_name=brand_name_data["brand_name"]
                     )
                     cultural_results.append(result)
                 except Exception as e:
@@ -1041,20 +990,6 @@ async def process_multi_language_translation(
             # Prepare results container
             all_translation_results = []
             
-            # Create comprehensive brand context
-            brand_context = {
-                "brand_promise": getattr(state, "brand_promise", ""),
-                "brand_personality": getattr(state, "brand_personality", ""),
-                "target_audience": getattr(state, "target_audience", ""),
-                "brand_values": getattr(state, "brand_values", []),
-                "competitors": getattr(state, "competitors", []),
-                "industry": getattr(state, "industry", ""),
-                "brand_identity_brief": getattr(state, "brand_identity_brief", ""),
-                "geographic_focus": getattr(state, "geographic_focus", ""),
-                "product_service_description": getattr(state, "product_service_description", ""),
-                "company_description": getattr(state, "company_description", "")
-            }
-            
             # Log the start of analysis
             num_names = len(state.generated_names) if state.generated_names else 0
             num_languages = len(language_codes)
@@ -1098,8 +1033,7 @@ async def process_multi_language_translation(
                         # Run analysis
                         result = await language_expert.analyze_brand_name(
                             run_id=state.run_id,
-                            brand_name=brand_name,
-                            brand_context=brand_context
+                            brand_name=brand_name
                         )
                         
                         # Add to results
@@ -1227,13 +1161,32 @@ async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEv
             linguistic_analyses = [name.get("linguistic_analysis") for name in brand_names]
             cultural_analyses = [name.get("cultural_analysis") for name in brand_names]
             
+            # Create brand context from state for the evaluator
+            # Even though analyzers don't use brand_context anymore, the evaluator still needs it
+            brand_context = {
+                "brand_identity_brief": getattr(state, "brand_identity_brief", ""),
+                "brand_promise": getattr(state, "brand_promise", ""),
+                "brand_values": getattr(state, "brand_values", []),
+                "brand_personality": getattr(state, "brand_personality", []),
+                "brand_tone_of_voice": getattr(state, "brand_tone_of_voice", ""),
+                "brand_purpose": getattr(state, "brand_purpose", ""),
+                "brand_mission": getattr(state, "brand_mission", ""),
+                "target_audience": getattr(state, "target_audience", ""),
+                "customer_needs": getattr(state, "customer_needs", []),
+                "market_positioning": getattr(state, "market_positioning", ""),
+                "competitive_landscape": getattr(state, "competitive_landscape", ""),
+                "industry_focus": getattr(state, "industry_focus", ""),
+                "industry_trends": getattr(state, "industry_trends", [])
+            }
+            
             # Evaluate brand names
             evaluation_results = await agent.evaluate_brand_names(
                 brand_names=[name["brand_name"] for name in brand_names],
                 semantic_analyses=semantic_analyses,
                 linguistic_analyses=linguistic_analyses, 
                 cultural_analyses=cultural_analyses,
-                run_id=state.run_id
+                run_id=state.run_id,
+                brand_context=brand_context
             )
             
             # Shortlist top brand names

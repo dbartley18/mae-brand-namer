@@ -76,13 +76,8 @@ class CulturalSensitivityExpert:
                 "\nDo NOT nest fields under additional keys or create your own object structure." +
                 "\nUse EXACTLY the field names provided in the schema - do not modify, merge, or rename any fields." +
                 "\nDo not include any preamble or explanation outside the JSON structure." +
-                "\nDo not use markdown formatting for the JSON." +
-                "\n\nExample of correct structure:" +
-                "\n{" +
-                '\n  "cultural_connotations": "text here",' +
-                '\n  "symbolic_meanings": "text here",' +
-                "\n  ... other fields exactly as named ..." +
-                "\n}"
+                "\nDo not use markdown formatting for the JSON."
+                
             )
             
             # Extract and update analysis template if needed
@@ -122,15 +117,13 @@ class CulturalSensitivityExpert:
     async def analyze_brand_name(
         self,
         run_id: str,
-        brand_name: str,
-        brand_context: Optional[Dict[str, Any]] = None
+        brand_name: str
     ) -> Dict[str, Any]:
         """Analyze a brand name for cultural sensitivity across major global regions.
         
         Args:
             run_id: Unique identifier for this workflow run
             brand_name: The brand name to analyze
-            brand_context: Optional additional brand context information
             
         Returns:
             Dictionary with cultural sensitivity analysis results
@@ -164,12 +157,6 @@ class CulturalSensitivityExpert:
                     
                     if "format_instructions" in self.prompt.input_variables:
                         required_vars["format_instructions"] = self.output_parser.get_format_instructions()
-                    
-                    if "brand_context" in self.prompt.input_variables:
-                        if brand_context:
-                            required_vars["brand_context"] = brand_context
-                        else:
-                            required_vars["brand_context"] = f"A brand name for consideration"
                     
                     # Format the prompt with all required variables
                     formatted_prompt = self.prompt.format_messages(**required_vars)
@@ -323,13 +310,12 @@ class CulturalSensitivityExpert:
             # Create the base record
             data = {
                 "run_id": run_id,
-                "brand_name": brand_name,
-                "timestamp": datetime.now().isoformat()
+                "brand_name": brand_name
             }
             
             # Process each field according to its expected type in the schema
             for field in schema_fields:
-                if field in analysis:
+                if field in analysis and field != "task_name":  # Skip task_name
                     value = analysis.get(field)
                     
                     # Handle boolean fields
@@ -349,12 +335,18 @@ class CulturalSensitivityExpert:
                     data[field] = value
             
             try:
-                logger.debug(f"Inserting record: {data}")
-                await self.supabase.table("cultural_sensitivity_analysis").insert(data).execute()
-                logger.info(f"Stored cultural sensitivity analysis for brand name '{brand_name}' with run_id '{run_id}'")
+                # Log detailed info about what we're storing
+                logger.debug(f"Attempting to insert into 'cultural_sensitivity_analysis' table with data keys: {list(data.keys())}")
+                logger.debug(f"Type of body_part_bodily_function_connotations: {type(data.get('body_part_bodily_function_connotations'))}")
+                
+                # Perform the insert with better error reporting
+                result = await self.supabase.table("cultural_sensitivity_analysis").insert(data).execute()
+                logger.info(f"Successfully stored cultural sensitivity analysis for brand name '{brand_name}' with run_id '{run_id}'")
+                
             except Exception as e:
                 logger.error(f"Failed to insert record: {str(e)}")
-                raise
+                logger.error(f"Data that failed: {data}")
+                # Don't raise the exception - we'll continue with the process
             
         except APIError as e:
             logger.error(

@@ -1,46 +1,49 @@
 _type: prompt
-input_variables: ["format_instructions", "brand_names", "brand_context"]
+input_variables: ["format_instructions", "brand_name"]
 template: |
-  Conduct a comprehensive linguistic analysis of the following brand names:
+  Conduct a comprehensive linguistic analysis for the following brand name:
 
-  Brand Names:
-  {brand_names}
+  Brand Name:
+  {brand_name}
 
-  Brand Context:
-  {brand_context}
+  Analyze this brand name across these linguistic dimensions:
 
-  Analyze the brand names across these dimensions:
+  1. Phonetics & Pronunciation
+     - Sound patterns and IPA representation
+     - Ease of pronunciation for native and non-native speakers
+     - Phonaesthetic qualities (how pleasing the sounds are)
+     - Spoken memorability factors
 
-  1. Phonetic Structure
-     - Pronunciation patterns
-     - Syllable structure
-     - Stress patterns
-     - Sound symbolism
-     - Euphony vs. cacophony
-
-  2. Morphological Features
-     - Word formation process
+  2. Morphology & Word Structure
+     - Word formation and construction
+     - Root words, prefixes, suffixes
      - Morpheme analysis
-     - Structural transparency
-     - Derivational potential
-     - Inflectional properties
+     - Word class/part of speech
 
-  3. Semantic Properties
-     - Core meaning
-     - Semantic associations
-     - Metaphorical mappings
-     - Semantic transparency
-     - Meaning retention
+  3. Semantic & Etymology
+     - Linguistic origins and etymology
+     - Root language(s) and derivation
+     - Historical language development
+     - Cross-linguistic relationships
 
-  4. Pragmatic Aspects
-     - Register appropriateness
-     - Stylistic fit
-     - Marketing potential
-     - Collocation patterns
-     - Usage flexibility
+  4. Syllabic Pattern & Rhythm
+     - Syllable count and structure
+     - Stress patterns
+     - Speech rhythm characteristics
+     - Tempo and flow considerations
 
   Format your analysis according to this schema:
   {format_instructions}
+
+  For the brand name, provide:
+  - Phonetic analysis
+  - Pronunciation guidance
+  - Morphological breakdown
+  - Etymological insights
+  - Syllabic pattern description
+  - Cross-linguistic considerations
+
+  Ensure your analysis is thorough and informed by contemporary linguistic principles.
 
   IMPORTANT: You must respond with a valid JSON object that matches EXACTLY the schema provided.
   The JSON MUST contain all the fields specified below at the TOP LEVEL of the object.
@@ -48,17 +51,3 @@ template: |
   Use EXACTLY the field names provided in the schema - do not modify, merge, or rename any fields.
   Do not include any preamble or explanation outside the JSON structure.
   Do not use markdown formatting for the JSON.
-
-  Example of correct structure:
-  {
-    "pronunciation_ease": "text here",
-    "euphony_vs_cacophony": "text here",
-    ... other fields exactly as named ...
-  }
-
-  For each brand name, provide:
-  - Detailed linguistic breakdown
-  - Potential strengths/weaknesses
-  - Risk assessment
-  - Improvement suggestions
-  - Overall linguistic score 

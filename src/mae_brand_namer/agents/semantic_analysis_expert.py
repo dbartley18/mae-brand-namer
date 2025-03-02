@@ -164,7 +164,7 @@ class SemanticAnalysisExpert:
                 type="number"
             ),
             ResponseSchema(
-                name="pronunciation_ease",
+                name="original_pronunciation_ease",
                 description="How easy the name is to pronounce (1-10)",
                 type="number"
             ),
@@ -228,8 +228,7 @@ class SemanticAnalysisExpert:
     async def analyze_brand_name(
         self,
         run_id: str,
-        brand_name: str,
-        brand_context: Optional[Dict[str, Any]] = None
+        brand_name: str
     ) -> Dict[str, Any]:
         """
         Analyze a brand name's semantic meaning and store results.
@@ -249,8 +248,6 @@ class SemanticAnalysisExpert:
         Args:
             run_id (str): Unique identifier for this workflow run
             brand_name (str): The brand name to analyze
-            brand_context (Optional[Dict[str, Any]]): Brand context information - not used in analysis
-                                                      but passed along to evaluator
             
         Returns:
             Dict[str, Any]: Semantic analysis results
@@ -380,7 +377,7 @@ class SemanticAnalysisExpert:
                             "compounding_derivation": "Simple word",
                             "brand_name_type": "Generic",
                             "memorability_score": 5,
-                            "pronunciation_ease": 5,
+                            "original_pronunciation_ease": 5,
                             "clarity_understandability": 5,
                             "uniqueness_differentiation": 5,
                             "brand_fit_relevance": 5,
@@ -430,7 +427,7 @@ class SemanticAnalysisExpert:
                         "emotional_valence": "Neutral",
                         "brand_personality": "Error in analysis",
                         "memorability_score": 5,
-                        "pronunciation_ease": 5,
+                        "original_pronunciation_ease": 5,
                         "brand_fit_relevance": 5,
                         "semantic_trademark_risk": "Unknown - error in analysis"
                     }
@@ -472,7 +469,7 @@ class SemanticAnalysisExpert:
                 "emotional_valence": "Neutral",
                 "brand_personality": "Error in analysis",
                 "memorability_score": 5,
-                "pronunciation_ease": 5,
+                "original_pronunciation_ease": 5,
                 "brand_fit_relevance": 5,
                 "semantic_trademark_risk": "Unknown - error in analysis"
             }

@@ -129,22 +129,17 @@ class LinguisticsExpert:
     async def analyze_brand_name(
         self,
         run_id: str,
-        brand_name: str,
-        brand_context: Optional[Dict[str, Any]] = None
+        brand_name: str
     ) -> Dict[str, Any]:
-        """Analyze the linguistic characteristics of a brand name.
-        
-        Performs a comprehensive linguistic analysis including phonetics,
-        morphology, semantics, and pragmatics. Evaluates pronunciation,
-        memorability, and overall effectiveness.
+        """
+        Analyze a brand name's linguistic properties and store results.
         
         Args:
-            run_id: Unique identifier for this workflow run
-            brand_name: The brand name to analyze
-            brand_context: Optional additional brand context information
+            run_id (str): Unique identifier for this workflow run
+            brand_name (str): The brand name to analyze
             
         Returns:
-            Dictionary containing the linguistic analysis results
+            Dict[str, Any]: Linguistic analysis results
         """
         try:
             # Setup event loop if not available
@@ -175,9 +170,6 @@ class LinguisticsExpert:
                     
                     if "format_instructions" in self.prompt.input_variables:
                         required_vars["format_instructions"] = self.output_parser.get_format_instructions()
-                    
-                    if "brand_context" in self.prompt.input_variables:
-                        required_vars["brand_context"] = brand_context if brand_context else "A brand name for consideration"
                     
                     # Format the prompt with all required variables
                     formatted_prompt = self.prompt.format_messages(**required_vars)
@@ -342,13 +334,12 @@ class LinguisticsExpert:
             # Create data structure for Supabase
             data = {
                 "run_id": run_id,
-                "brand_name": brand_name,
-                "timestamp": datetime.now().isoformat()
+                "brand_name": brand_name
             }
             
             # Process each field according to its expected type in the schema
             for field in schema_fields:
-                if field in analysis:
+                if field in analysis and field != "task_name":  # Skip task_name
                     value = analysis.get(field)
                     
                     # Handle boolean fields
@@ -380,9 +371,15 @@ class LinguisticsExpert:
             logger.info(f"Storing linguistic analysis with fields: {list(data.keys())}")
             
             try:
+                # Log more diagnostic info
+                logger.debug(f"Attempting to insert into 'linguistic_analysis' table with run_id '{run_id}'")
+                logger.debug(f"Data types: pronunciation_ease: {type(data.get('pronunciation_ease'))}, homophones_homographs: {type(data.get('homophones_homographs'))}")
+                
                 # Perform the insert
-                await self.supabase.table("linguistic_analysis").insert(data).execute()
+                result = await self.supabase.table("linguistic_analysis").insert(data).execute()
                 logger.info(f"Successfully stored linguistic analysis for brand name '{brand_name}' with run_id '{run_id}'")
+                logger.debug(f"Insert response: {result}")
+                
             except Exception as e:
                 logger.error(f"Failed to insert record: {str(e)}")
                 # Log the data that failed to insert

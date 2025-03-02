@@ -1,15 +1,12 @@
 _type: prompt
-input_variables: ["format_instructions", "brand_names", "brand_context"]
+input_variables: ["format_instructions", "brand_names"]
 template: |
-  Conduct a comprehensive cultural sensitivity analysis for the following brand names:
+  Conduct a comprehensive cultural sensitivity analysis for the following brand name:
 
-  Brand Names:
+  Brand Name:
   {brand_names}
 
-  Brand Context:
-  {brand_context}
-
-  Analyze the brand names across these dimensions:
+  Analyze the brand name across these dimensions:
 
   1. Cultural Connotations & Symbolism
      - Cultural associations and meanings
@@ -38,7 +35,7 @@ template: |
   Format your analysis according to this schema:
   {format_instructions}
 
-  For each brand name, provide:
+  For the brand name, provide:
   - Cultural connotations analysis
   - Religious sensitivity assessment
   - Social/political risk evaluation

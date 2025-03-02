@@ -125,30 +125,71 @@ class BrandNameEvaluator:
 
     async def evaluate_brand_names(
         self,
-        brand_names_with_analysis: List[Dict[str, Any]],
+        brand_names: List[str],
+        semantic_analyses: List[Dict[str, Any]],
+        linguistic_analyses: List[Dict[str, Any]],
+        cultural_analyses: List[Dict[str, Any]],
+        run_id: str,
         brand_context: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        evaluation_results = {}
+    ) -> List[Dict[str, Any]]:
+        """
+        Evaluate multiple brand names based on their analyses.
         
-        for brand_name_data in brand_names_with_analysis:
-            brand_name = brand_name_data["brand_name"]
-            semantic_analysis = brand_name_data.get("semantic_analysis", {})
-            linguistic_analysis = brand_name_data.get("linguistic_analysis", {})
-            cultural_analysis = brand_name_data.get("cultural_analysis", {})
-            translation_analysis = brand_name_data.get("translation_analysis", {})
+        Args:
+            brand_names: List of brand names to evaluate
+            semantic_analyses: List of semantic analysis results
+            linguistic_analyses: List of linguistic analysis results  
+            cultural_analyses: List of cultural analysis results
+            run_id: Unique identifier for this workflow run
+            brand_context: Brand context information
             
-            prompt = self.prompt.format_messages(
-                format_instructions=self.output_parser.get_format_instructions(),
-                brand_name=brand_name,
-                brand_context=json.dumps(brand_context, indent=2),
-                semantic_analysis=json.dumps(semantic_analysis, indent=2),
-                linguistic_analysis=json.dumps(linguistic_analysis, indent=2),
-                cultural_analysis=json.dumps(cultural_analysis, indent=2),
-                translation_analysis=json.dumps(translation_analysis, indent=2)
-            )
-            
-            evaluation = await self._evaluate_name(prompt)
-            evaluation_results[brand_name] = evaluation
+        Returns:
+            List of evaluation results for each brand name
+        """
+        evaluation_results = []
+        
+        # Process each brand name
+        for i, brand_name in enumerate(brand_names):
+            try:
+                # Get corresponding analyses (if available)
+                semantic_analysis = semantic_analyses[i] if i < len(semantic_analyses) else {}
+                linguistic_analysis = linguistic_analyses[i] if i < len(linguistic_analyses) else {}
+                cultural_analysis = cultural_analyses[i] if i < len(cultural_analyses) else {}
+                
+                # Format prompt with all available information
+                prompt = self.prompt.format_messages(
+                    format_instructions=self.output_parser.get_format_instructions(),
+                    brand_name=brand_name,
+                    brand_context=json.dumps(brand_context, indent=2),
+                    semantic_analysis=json.dumps(semantic_analysis, indent=2),
+                    linguistic_analysis=json.dumps(linguistic_analysis, indent=2),
+                    cultural_analysis=json.dumps(cultural_analysis, indent=2),
+                    translation_analysis=json.dumps({})  # Empty for now as we're not passing translation analysis
+                )
+                
+                # Get evaluation for this name
+                evaluation = await self._evaluate_name(prompt)
+                
+                # Add brand name and run_id to the result
+                evaluation["brand_name"] = brand_name
+                evaluation["run_id"] = run_id
+                
+                # Store evaluation in results list
+                evaluation_results.append(evaluation)
+                
+                # Also store in Supabase for persistence
+                await self._store_in_supabase(run_id, evaluation)
+                
+            except Exception as e:
+                logger.error(f"Error evaluating brand name '{brand_name}': {str(e)}")
+                # Add minimal error result
+                evaluation_results.append({
+                    "brand_name": brand_name,
+                    "run_id": run_id,
+                    "error": str(e),
+                    "overall_score": 0.0,
+                    "shortlist_status": False
+                })
         
         return evaluation_results
 

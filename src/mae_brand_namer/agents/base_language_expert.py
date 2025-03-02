@@ -229,14 +229,12 @@ class BaseLanguageTranslationExpert:
         self,
         run_id: str,
         brand_name: str,
-        brand_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Analyze a brand name for translation implications in this specific language.
         
         Args:
             run_id: Unique identifier for this workflow run
             brand_name: The brand name to analyze
-            brand_context: Optional additional brand context information
             
         Returns:
             Dict[str, Any]: Analysis results for this language
@@ -270,9 +268,6 @@ class BaseLanguageTranslationExpert:
                     
                     if "format_instructions" in self.prompt.input_variables:
                         required_vars["format_instructions"] = self.output_parser.get_format_instructions()
-                    
-                    if "brand_context" in self.prompt.input_variables:
-                        required_vars["brand_context"] = brand_context if brand_context else f"A brand name for consideration"
                     
                     # Format the prompt with all required variables
                     formatted_prompt = self.prompt.format_messages(**required_vars)

@@ -1,13 +1,10 @@
 _type: prompt
-input_variables: ["format_instructions", "brand_name", "brand_context"]
+input_variables: ["format_instructions", "brand_name"]
 template: |
   Conduct a comprehensive Chinese language translation analysis for the following brand name:
 
   Brand Name:
   {brand_name}
-
-  Brand Context:
-  {brand_context}
 
   Analyze this brand name specifically for Chinese language markets, focusing on these dimensions:
 
