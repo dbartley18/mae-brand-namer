@@ -1129,31 +1129,10 @@ async def process_multi_language_translation(
                             "rank": 5.0
                         })
             
-            # Calculate metrics for translation results
-            avg_rank = 0.0
-            problematic_translations = []
-            
-            if all_translation_results:
-                valid_results = [r for r in all_translation_results if "rank" in r and r["rank"] is not None]
-                if valid_results:
-                    avg_rank = sum(r["rank"] for r in valid_results) / len(valid_results)
-                
-                problematic_translations = [
-                    f"{r['brand_name']} ({r['target_language']}): {r.get('notes', 'No specific issue noted')}"
-                    for r in all_translation_results
-                    if r.get("phonetic_similarity_undesirable", False) or r.get("rank", 0) < 4.0
-                ]
-            
             # Return dictionary of state updates
             return {
                 "translation_analysis_results": all_translation_results,
-                "translation_analysis_complete": True,
-                "translation_metrics": {
-                    "average_translation_rank": round(avg_rank, 1),
-                    "problematic_translations": problematic_translations,
-                    "languages_analyzed": language_codes,
-                    "num_translations_completed": len(all_translation_results)
-                }
+                "translation_analysis_complete": True
             }
             
     except Exception as e:
