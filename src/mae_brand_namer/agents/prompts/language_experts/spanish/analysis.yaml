@@ -1,0 +1,64 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_name", "brand_context"]
+template: |
+  Conduct a comprehensive Spanish language translation analysis for the following brand name:
+
+  Brand Name:
+  {brand_name}
+
+  Brand Context:
+  {brand_context}
+
+  Analyze this brand name specifically for Spanish language markets, focusing on these dimensions:
+
+  1. Direct Translation Impact
+     - Literal meaning in Spanish
+     - Spanish semantic connotations and associations
+     - Meaning preservation in Spanish (1-10)
+     - Spanish slang or regional meanings to consider
+     - Spanish homonyms or similar-sounding words
+     - Meaning equivalence assessment for Spanish markets
+
+  2. Spanish Phonetic Considerations
+     - Spanish pronunciation challenges
+     - Spanish sound adaptation needs
+     - Phonetic similarity to existing Spanish words (positive or negative)
+     - Regional accent/dialect impact across Spanish-speaking countries
+     - Spanish syllable stress and rhythm
+     - Spanish phonetic retention score (1-10)
+
+  3. Spanish Cultural Adaptation
+     - Acceptability in Spanish-speaking markets
+     - Spanish cultural fit assessment
+     - Regional Spanish modifications needed
+     - Brand essence retention in Spanish context
+     - Spanish market-specific adaptations
+     - Spanish cultural sensitivity score (1-10)
+
+  4. Spanish Market Strategy
+     - Consistency vs. localization balance for Spanish
+     - Spanish market-specific recommendations
+     - Spanish adaptation guidelines
+     - Implementation approach for Spanish markets
+     - Spanish market brand consistency 
+     - Potential in diverse Spanish-speaking regions
+
+  Your output MUST be a valid JSON object following this format:
+  {format_instructions}
+
+  Ensure your analysis aligns perfectly with the fields defined in the translation_analysis table in Supabase:
+  - target_language: "es" (Spanish)
+  - direct_translation: literal translation into Spanish
+  - semantic_shift: how meaning changes in Spanish
+  - pronunciation_difficulty: challenges in Spanish pronunciation
+  - phonetic_similarity_undesirable: boolean (true/false) if sounds like problematic Spanish words
+  - phonetic_retention: how well original sounds are preserved in Spanish
+  - cultural_acceptability: cultural appropriateness in Spanish contexts
+  - adaptation_needed: boolean (true/false) if adaptation is required
+  - proposed_adaptation: suggested Spanish adaptation if needed
+  - brand_essence_preserved: assessment of brand essence preservation
+  - global_consistency_vs_localization: balance between global brand and Spanish localization
+  - notes: additional Spanish-specific observations
+  - rank: numeric score from 1-10 (10 being excellent) for overall Spanish adaptability
+
+  Provide clear, actionable insights specifically for Spanish language markets. 

@@ -1,0 +1,66 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_name", "brand_context"]
+template: |
+  Conduct a comprehensive Arabic language translation analysis for the following brand name:
+
+  Brand Name:
+  {brand_name}
+
+  Brand Context:
+  {brand_context}
+
+  Analyze this brand name specifically for Arabic language markets, focusing on these dimensions:
+
+  1. Direct Translation Impact
+     - Literal meaning in Arabic
+     - Arabic semantic connotations and associations
+     - Meaning preservation in Arabic (1-10)
+     - Arabic slang or regional meanings to consider
+     - Arabic homonyms or similar-sounding words
+     - Arabic script considerations (including vocalization/tashkeel)
+     - Meaning equivalence assessment for Arabic markets
+
+  2. Arabic Phonetic Considerations
+     - Arabic pronunciation challenges (pharyngeal and emphatic consonants)
+     - Arabic sound adaptation needs
+     - Phonetic similarity to existing Arabic words (positive or negative)
+     - Regional accent/dialect impact across Arabic-speaking countries
+     - Arabic syllable stress and rhythm
+     - Arabic phonetic retention score (1-10)
+
+  3. Arabic Cultural Adaptation
+     - Acceptability in Arabic-speaking markets
+     - Arabic cultural fit assessment
+     - Regional Arabic modifications needed
+     - Brand essence retention in Arabic context
+     - Arabic market-specific adaptations
+     - Arabic cultural sensitivity score (1-10)
+     - Religious and cultural considerations
+
+  4. Arabic Market Strategy
+     - Consistency vs. localization balance for Arabic
+     - Arabic market-specific recommendations
+     - Arabic adaptation guidelines
+     - Implementation approach for Arabic markets
+     - Arabic market brand consistency 
+     - Potential in diverse Arabic-speaking regions (Gulf, Levant, North Africa)
+
+  Your output MUST be a valid JSON object following this format:
+  {format_instructions}
+
+  Ensure your analysis aligns perfectly with the fields defined in the translation_analysis table in Supabase:
+  - target_language: "ar" (Arabic)
+  - direct_translation: literal translation into Arabic (preferably in both transliteration and Arabic script)
+  - semantic_shift: how meaning changes in Arabic
+  - pronunciation_difficulty: challenges in Arabic pronunciation
+  - phonetic_similarity_undesirable: boolean (true/false) if sounds like problematic Arabic words
+  - phonetic_retention: how well original sounds are preserved in Arabic
+  - cultural_acceptability: cultural appropriateness in Arabic contexts
+  - adaptation_needed: boolean (true/false) if adaptation is required
+  - proposed_adaptation: suggested Arabic adaptation if needed (in Arabic script and transliteration)
+  - brand_essence_preserved: assessment of brand essence preservation
+  - global_consistency_vs_localization: balance between global brand and Arabic localization
+  - notes: additional Arabic-specific observations
+  - rank: numeric score from 1-10 (10 being excellent) for overall Arabic adaptability
+
+  Provide clear, actionable insights specifically for Arabic language markets. 

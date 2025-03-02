@@ -1,0 +1,66 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_name", "brand_context"]
+template: |
+  Conduct a comprehensive Japanese language translation analysis for the following brand name:
+
+  Brand Name:
+  {brand_name}
+
+  Brand Context:
+  {brand_context}
+
+  Analyze this brand name specifically for the Japanese market, focusing on these dimensions:
+
+  1. Direct Translation Impact
+     - Literal meaning in Japanese (using appropriate writing systems)
+     - Japanese semantic connotations and associations
+     - Meaning preservation in Japanese (1-10)
+     - Japanese slang or cultural meanings to consider
+     - Japanese homonyms or similar-sounding words
+     - Character selection considerations (Kanji, Katakana, Hiragana)
+     - Meaning equivalence assessment for Japanese market
+
+  2. Japanese Phonetic Considerations
+     - Japanese pronunciation challenges (limited phonetic inventory, consonant-vowel structure)
+     - Japanese transliteration options (typically using Katakana for foreign words)
+     - Phonetic similarity to existing Japanese words (positive or negative)
+     - Japanese phonotactic constraints
+     - Mora/syllable length and rhythm
+     - Japanese phonetic retention score (1-10)
+
+  3. Japanese Cultural Adaptation
+     - Acceptability in Japanese market
+     - Japanese cultural fit assessment
+     - Japanese modifications needed
+     - Brand essence retention in Japanese context
+     - Japanese market-specific adaptations
+     - Japanese cultural sensitivity score (1-10)
+     - Number symbolism and superstitions in Japanese culture
+
+  4. Japanese Market Strategy
+     - Consistency vs. localization balance for Japanese
+     - Japanese market-specific recommendations
+     - Japanese adaptation guidelines
+     - Implementation approach for Japanese market
+     - Japanese market brand consistency 
+     - Potential challenges and opportunities specific to Japan
+
+  Your output MUST be a valid JSON object following this format:
+  {format_instructions}
+
+  Ensure your analysis aligns perfectly with the fields defined in the translation_analysis table in Supabase:
+  - target_language: "ja" (Japanese)
+  - direct_translation: literal translation into Japanese (preferably in both romaji and Japanese script)
+  - semantic_shift: how meaning changes in Japanese
+  - pronunciation_difficulty: challenges in Japanese pronunciation
+  - phonetic_similarity_undesirable: boolean (true/false) if sounds like problematic Japanese words
+  - phonetic_retention: how well original sounds are preserved in Japanese
+  - cultural_acceptability: cultural appropriateness in Japanese context
+  - adaptation_needed: boolean (true/false) if adaptation is required
+  - proposed_adaptation: suggested Japanese adaptation if needed (in Japanese script and romaji)
+  - brand_essence_preserved: assessment of brand essence preservation
+  - global_consistency_vs_localization: balance between global brand and Japanese localization
+  - notes: additional Japanese-specific observations
+  - rank: numeric score from 1-10 (10 being excellent) for overall Japanese adaptability
+
+  Provide clear, actionable insights specifically for the Japanese market. 

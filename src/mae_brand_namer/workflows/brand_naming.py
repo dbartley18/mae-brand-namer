@@ -29,7 +29,6 @@ from mae_brand_namer.agents import (
     LinguisticsExpert,
     SemanticAnalysisExpert,
     CulturalSensitivityExpert,
-    TranslationAnalysisExpert,
     DomainAnalysisExpert,
     SEOOnlineDiscoveryExpert,
     CompetitorAnalysisExpert,
@@ -42,7 +41,8 @@ from mae_brand_namer.agents import (
 )
 from mae_brand_namer.utils.supabase_utils import SupabaseManager
 from mae_brand_namer.config.settings import settings
-from mae_brand_namer.config.dependencies import Dependencies, create_dependencies
+from mae_brand_namer.config.dependencies import Dependencies
+from mae_brand_namer.agents.language_expert_factory import get_language_expert, get_language_display_name
 from mae_brand_namer.models.state import BrandNameGenerationState
 
 # Initialize logger
@@ -56,7 +56,7 @@ NODE_AGENT_TASK_MAPPING = {
     "process_semantic_analysis": ("SemanticAnalysisExpert", "Analyze_Semantics"),
     "process_linguistic_analysis": ("LinguisticsExpert", "Analyze_Linguistics"),
     "process_cultural_analysis": ("CulturalSensitivityExpert", "Analyze_Cultural_Sensitivity"),
-    "process_translation_analysis": ("TranslationAnalysisExpert", "Analyze_Translation"),
+    "process_translation_analysis": ("LanguageTranslationExperts", "Analyze_Translations"),
     "analyses_coordinator": ("AnalysisCoordinator", "Coordinate_Analyses"),
     "process_evaluation": ("BrandNameEvaluator", "Evaluate_Names"),
     "process_market_research": ("MarketResearchExpert", "Research_Market"),
@@ -508,9 +508,11 @@ def create_workflow(config: dict) -> StateGraph:
     )
     
     workflow.add_node("process_translation_analysis", 
-        wrap_async_node(lambda state: process_translation_analysis(state, TranslationAnalysisExpert(
+        wrap_async_node(lambda state: process_multi_language_translation(
+            state, 
+            language_codes=["es", "fr", "de", "zh", "ja", "ar"],
             dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
-        )), "process_translation_analysis")
+        ), "process_translation_analysis")
     )
     
     # Add analysis coordinator that waits for all analyses to complete
@@ -921,7 +923,7 @@ async def process_linguistic_analysis(state: BrandNameGenerationState, agent: Li
                 except Exception as e:
                     logger.error(f"Error analyzing brand name {brand_name_data.get('brand_name', '[unknown]')}: {str(e)}")
                     linguistic_results.append({
-                        "run_id": state.run_id,
+                    "run_id": state.run_id,
                         "brand_name": brand_name_data.get("brand_name", "[unknown]"),
                         "error": str(e),
                         "analysis_complete": False
@@ -1016,12 +1018,28 @@ async def process_cultural_analysis(state: BrandNameGenerationState, agent: Cult
             "status": "error"
         }
 
-async def process_translation_analysis(state: BrandNameGenerationState, agent: TranslationAnalysisExpert) -> Dict[str, Any]:
-    """Run translation analysis on each brand name."""
+async def process_multi_language_translation(
+    state: BrandNameGenerationState, 
+    language_codes: List[str], 
+    dependencies: Dependencies
+) -> Dict[str, Any]:
+    """Run translation analysis for multiple languages on each brand name.
+    
+    Args:
+        state: Current workflow state
+        language_codes: List of language codes to analyze (e.g., ["es", "fr", "de", "zh", "ja", "ar"])
+        dependencies: Container for dependencies like Supabase
+        
+    Returns:
+        Dictionary of state updates with translation results
+    """
     try:
+        # Import the language expert factory functions
+        from mae_brand_namer.agents.language_expert_factory import get_language_expert, get_language_display_name
+        
         with tracing_v2_enabled():
             # Prepare results container
-            translation_results = []
+            all_translation_results = []
             
             # Create comprehensive brand context
             brand_context = {
@@ -1039,50 +1057,112 @@ async def process_translation_analysis(state: BrandNameGenerationState, agent: T
             
             # Log the start of analysis
             num_names = len(state.generated_names) if state.generated_names else 0
-            logger.info(f"Starting translation analysis for {num_names} brand names")
+            num_languages = len(language_codes)
+            logger.info(f"Starting multi-language translation analysis for {num_names} brand names across {num_languages} languages")
             
             # Process each brand name in sequence
             for brand_name_data in state.generated_names:
-                try:
-                    # Skip empty names
-                    if not brand_name_data.get("brand_name"):
-                        logger.warning("Skipping empty brand name in translation analysis")
-                        continue
+                brand_name = brand_name_data.get("brand_name", "")
+                # Skip empty names
+                if not brand_name:
+                    logger.warning("Skipping empty brand name in translation analysis")
+                    continue
+                
+                # Analyze each language for this brand name
+                for language_code in language_codes:
+                    try:
+                        # Get the language expert for this language
+                        language_expert = get_language_expert(language_code, dependencies=dependencies)
                         
-                    # Run analysis 
-                    result = await agent.analyze_brand_name(
-                        run_id=state.run_id,
-                        brand_name=brand_name_data["brand_name"],
-                        brand_context=brand_context
-                    )
-                    translation_results.append(result)
-                except Exception as e:
-                    logger.error(f"Error analyzing brand name {brand_name_data.get('brand_name', '[unknown]')}: {str(e)}")
-                    translation_results.append({
-                        "run_id": state.run_id,
-                        "brand_name": brand_name_data.get("brand_name", "[unknown]"),
-                        "error": str(e),
-                        "analysis_complete": False
-                    })
+                        if not language_expert:
+                            logger.error(f"Could not create language expert for {language_code}")
+                            all_translation_results.append({
+                                "run_id": state.run_id,  # REQUIRED - NOT NULL in database
+                                "brand_name": brand_name,  # REQUIRED - NOT NULL in database
+                                "target_language": get_language_display_name(language_code),  # REQUIRED - NOT NULL in database
+                                "task_name": "translation_analysis",
+                                "direct_translation": f"Error: No language expert available for {language_code}",
+                                "semantic_shift": "Error in analysis",
+                                "pronunciation_difficulty": "Unknown due to error",
+                                "phonetic_retention": "Unknown due to error",
+                                "global_consistency_vs_localization": "Unknown due to error",
+                                "notes": f"Error: Could not create language expert for {language_code}",
+                                "rank": 0.0
+                            })
+                            continue
+                        
+                        # Log the analysis start
+                        language_name = get_language_display_name(language_code)
+                        logger.info(f"Analyzing {language_name} translation for brand name: '{brand_name}'")
+                        
+                        # Run analysis
+                        result = await language_expert.analyze_brand_name(
+                            run_id=state.run_id,
+                            brand_name=brand_name,
+                            brand_context=brand_context
+                        )
+                        
+                        # Add to results
+                        all_translation_results.append(result)
+                        
+                    except Exception as e:
+                        language_name = get_language_display_name(language_code)
+                        logger.error(f"Error analyzing {language_name} translation for brand name '{brand_name}': {str(e)}")
+                        
+                        # Create a fallback result
+                        all_translation_results.append({
+                            "run_id": state.run_id,  # REQUIRED - NOT NULL in database
+                            "brand_name": brand_name,  # REQUIRED - NOT NULL in database
+                            "target_language": language_name,  # REQUIRED - NOT NULL in database
+                            "task_name": "translation_analysis",
+                            "direct_translation": "Error in analysis",
+                            "semantic_shift": "Error in analysis",
+                            "pronunciation_difficulty": "Unknown due to error",
+                            "phonetic_similarity_undesirable": False,
+                            "phonetic_retention": "Unknown due to error",
+                            "cultural_acceptability": "Unknown due to error",
+                            "adaptation_needed": False,
+                            "proposed_adaptation": "N/A - Error in analysis",
+                            "brand_essence_preserved": "Unknown due to error",
+                            "global_consistency_vs_localization": "Unknown due to error",
+                            "notes": f"Error in analysis: {str(e)}",
+                            "rank": 5.0
+                        })
+            
+            # Calculate metrics for translation results
+            avg_rank = 0.0
+            problematic_translations = []
+            
+            if all_translation_results:
+                valid_results = [r for r in all_translation_results if "rank" in r and r["rank"] is not None]
+                if valid_results:
+                    avg_rank = sum(r["rank"] for r in valid_results) / len(valid_results)
+                
+                problematic_translations = [
+                    f"{r['brand_name']} ({r['target_language']}): {r.get('notes', 'No specific issue noted')}"
+                    for r in all_translation_results
+                    if r.get("phonetic_similarity_undesirable", False) or r.get("rank", 0) < 4.0
+                ]
             
             # Return dictionary of state updates
             return {
-                "translation_analysis_results": translation_results,
-                # Flag to track completion for the coordinator
-                "translation_analysis_complete": True
+                "translation_analysis_results": all_translation_results,
+                "translation_analysis_complete": True,
+                "translation_metrics": {
+                    "average_translation_rank": round(avg_rank, 1),
+                    "problematic_translations": problematic_translations,
+                    "languages_analyzed": language_codes,
+                    "num_translations_completed": len(all_translation_results)
+                }
             }
             
     except Exception as e:
-        logger.error(f"Error in process_translation_analysis: {str(e)}")
+        logger.error(f"Error in process_multi_language_translation: {str(e)}")
         return {
             "errors": [{
                 "step": "process_translation_analysis",
-                "error": str(e),
-                "traceback": traceback.format_exc(),
-                "timestamp": datetime.now().isoformat()
-            }],
-            "translation_analysis_complete": False,
-            "status": "error"
+                "error": str(e)
+            }]
         }
 
 async def coordinate_analyses(state: BrandNameGenerationState) -> Dict[str, Any]:

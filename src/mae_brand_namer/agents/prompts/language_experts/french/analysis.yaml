@@ -1,0 +1,64 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_name", "brand_context"]
+template: |
+  Conduct a comprehensive French language translation analysis for the following brand name:
+
+  Brand Name:
+  {brand_name}
+
+  Brand Context:
+  {brand_context}
+
+  Analyze this brand name specifically for French language markets, focusing on these dimensions:
+
+  1. Direct Translation Impact
+     - Literal meaning in French
+     - French semantic connotations and associations
+     - Meaning preservation in French (1-10)
+     - French slang or regional meanings to consider
+     - French homonyms or similar-sounding words
+     - Meaning equivalence assessment for French markets
+
+  2. French Phonetic Considerations
+     - French pronunciation challenges (accent marks, nasal sounds, silent letters)
+     - French sound adaptation needs
+     - Phonetic similarity to existing French words (positive or negative)
+     - Regional accent/dialect impact across Francophone countries
+     - French syllable stress and rhythm
+     - French phonetic retention score (1-10)
+
+  3. French Cultural Adaptation
+     - Acceptability in French-speaking markets
+     - French cultural fit assessment
+     - Regional French modifications needed
+     - Brand essence retention in French context
+     - French market-specific adaptations
+     - French cultural sensitivity score (1-10)
+
+  4. French Market Strategy
+     - Consistency vs. localization balance for French
+     - French market-specific recommendations
+     - French adaptation guidelines
+     - Implementation approach for French markets
+     - French market brand consistency 
+     - Potential in diverse Francophone regions (France, Canada, Belgium, Switzerland, Africa)
+
+  Your output MUST be a valid JSON object following this format:
+  {format_instructions}
+
+  Ensure your analysis aligns perfectly with the fields defined in the translation_analysis table in Supabase:
+  - target_language: "fr" (French)
+  - direct_translation: literal translation into French
+  - semantic_shift: how meaning changes in French
+  - pronunciation_difficulty: challenges in French pronunciation
+  - phonetic_similarity_undesirable: boolean (true/false) if sounds like problematic French words
+  - phonetic_retention: how well original sounds are preserved in French
+  - cultural_acceptability: cultural appropriateness in French contexts
+  - adaptation_needed: boolean (true/false) if adaptation is required
+  - proposed_adaptation: suggested French adaptation if needed
+  - brand_essence_preserved: assessment of brand essence preservation
+  - global_consistency_vs_localization: balance between global brand and French localization
+  - notes: additional French-specific observations
+  - rank: numeric score from 1-10 (10 being excellent) for overall French adaptability
+
+  Provide clear, actionable insights specifically for French language markets. 

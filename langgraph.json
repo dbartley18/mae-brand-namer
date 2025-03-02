@@ -54,7 +54,6 @@
     "linguistics_expert": "./src/mae_brand_namer/agents/linguistic_analysis_expert.py:LinguisticsExpert",
     "semantic_expert": "./src/mae_brand_namer/agents/semantic_analysis_expert.py:SemanticAnalysisExpert",
     "cultural_expert": "./src/mae_brand_namer/agents/cultural_sensitivity_expert.py:CulturalSensitivityExpert",
-    "translation_expert": "./src/mae_brand_namer/agents/translation_analysis_expert.py:TranslationAnalysisExpert",
     "domain_expert": "./src/mae_brand_namer/agents/domain_analysis_expert.py:DomainAnalysisExpert",
     "seo_expert": "./src/mae_brand_namer/agents/seo_online_discovery_expert.py:SEOOnlineDiscoveryExpert",
     "competitor_expert": "./src/mae_brand_namer/agents/competitor_analysis_expert.py:CompetitorAnalysisExpert",
@@ -63,7 +62,16 @@
     "brand_name_evaluator": "./src/mae_brand_namer/agents/brand_name_evaluator.py:BrandNameEvaluator",
     "report_compiler": "./src/mae_brand_namer/agents/report_compiler.py:ReportCompiler",
     "report_storer": "./src/mae_brand_namer/agents/report_storer.py:ReportStorer",
-    "process_supervisor": "./src/mae_brand_namer/agents/process_supervisor.py:ProcessSupervisor"
+    "process_supervisor": "./src/mae_brand_namer/agents/process_supervisor.py:ProcessSupervisor",
+    
+    "language_expert_factory": "./src/mae_brand_namer/agents/language_expert_factory.py:get_language_expert",
+    "spanish_translation_expert": "./src/mae_brand_namer/agents/spanish_translation_expert.py:SpanishTranslationExpert",
+    "french_translation_expert": "./src/mae_brand_namer/agents/french_translation_expert.py:FrenchTranslationExpert",
+    "german_translation_expert": "./src/mae_brand_namer/agents/german_translation_expert.py:GermanTranslationExpert",
+    "chinese_translation_expert": "./src/mae_brand_namer/agents/chinese_translation_expert.py:ChineseTranslationExpert",
+    "japanese_translation_expert": "./src/mae_brand_namer/agents/japanese_translation_expert.py:JapaneseTranslationExpert",
+    "arabic_translation_expert": "./src/mae_brand_namer/agents/arabic_translation_expert.py:ArabicTranslationExpert",
+    "base_language_expert": "./src/mae_brand_namer/agents/base_language_expert.py:BaseLanguageTranslationExpert"
   },
   "studio": {
     "url": "${LANGGRAPH_STUDIO_URL}",

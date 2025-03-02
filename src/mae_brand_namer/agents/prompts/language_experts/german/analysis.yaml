@@ -1,0 +1,65 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_name", "brand_context"]
+template: |
+  Conduct a comprehensive German language translation analysis for the following brand name:
+
+  Brand Name:
+  {brand_name}
+
+  Brand Context:
+  {brand_context}
+
+  Analyze this brand name specifically for German language markets, focusing on these dimensions:
+
+  1. Direct Translation Impact
+     - Literal meaning in German
+     - German semantic connotations and associations
+     - Meaning preservation in German (1-10)
+     - German slang or regional meanings to consider
+     - German homonyms or similar-sounding words
+     - Compound word potential in German
+     - Meaning equivalence assessment for German markets
+
+  2. German Phonetic Considerations
+     - German pronunciation challenges (umlauts, consonant clusters)
+     - German sound adaptation needs
+     - Phonetic similarity to existing German words (positive or negative)
+     - Regional accent/dialect impact across German-speaking countries
+     - German syllable stress and rhythm
+     - German phonetic retention score (1-10)
+
+  3. German Cultural Adaptation
+     - Acceptability in German-speaking markets
+     - German cultural fit assessment
+     - Regional German modifications needed
+     - Brand essence retention in German context
+     - German market-specific adaptations
+     - German cultural sensitivity score (1-10)
+
+  4. German Market Strategy
+     - Consistency vs. localization balance for German
+     - German market-specific recommendations
+     - German adaptation guidelines
+     - Implementation approach for German markets
+     - German market brand consistency 
+     - Potential in diverse German-speaking regions (Germany, Austria, Switzerland)
+
+  Your output MUST be a valid JSON object following this format:
+  {format_instructions}
+
+  Ensure your analysis aligns perfectly with the fields defined in the translation_analysis table in Supabase:
+  - target_language: "de" (German)
+  - direct_translation: literal translation into German
+  - semantic_shift: how meaning changes in German
+  - pronunciation_difficulty: challenges in German pronunciation
+  - phonetic_similarity_undesirable: boolean (true/false) if sounds like problematic German words
+  - phonetic_retention: how well original sounds are preserved in German
+  - cultural_acceptability: cultural appropriateness in German contexts
+  - adaptation_needed: boolean (true/false) if adaptation is required
+  - proposed_adaptation: suggested German adaptation if needed
+  - brand_essence_preserved: assessment of brand essence preservation
+  - global_consistency_vs_localization: balance between global brand and German localization
+  - notes: additional German-specific observations
+  - rank: numeric score from 1-10 (10 being excellent) for overall German adaptability
+
+  Provide clear, actionable insights specifically for German language markets. 

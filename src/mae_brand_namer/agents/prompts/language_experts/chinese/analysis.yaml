@@ -1,0 +1,66 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_name", "brand_context"]
+template: |
+  Conduct a comprehensive Chinese language translation analysis for the following brand name:
+
+  Brand Name:
+  {brand_name}
+
+  Brand Context:
+  {brand_context}
+
+  Analyze this brand name specifically for Chinese language markets, focusing on these dimensions:
+
+  1. Direct Translation Impact
+     - Literal meaning in Chinese (both character-by-character and conceptual)
+     - Chinese semantic connotations and associations
+     - Meaning preservation in Chinese (1-10)
+     - Chinese slang or regional meanings to consider
+     - Chinese homonyms or similar-sounding words
+     - Character selection considerations (simplified vs. traditional)
+     - Meaning equivalence assessment for Chinese markets
+
+  2. Chinese Phonetic Considerations
+     - Chinese pronunciation challenges (tones, difficult sounds for Chinese speakers)
+     - Chinese transliteration options (音译)
+     - Phonetic similarity to existing Chinese words (positive or negative)
+     - Regional dialect impact across Chinese-speaking areas
+     - Homophones and tone considerations
+     - Chinese phonetic retention score (1-10)
+
+  3. Chinese Cultural Adaptation
+     - Acceptability in Chinese-speaking markets
+     - Chinese cultural fit assessment
+     - Regional Chinese modifications needed
+     - Brand essence retention in Chinese context
+     - Chinese market-specific adaptations
+     - Chinese cultural sensitivity score (1-10)
+     - Number symbolism and superstitions
+
+  4. Chinese Market Strategy
+     - Consistency vs. localization balance for Chinese
+     - Chinese market-specific recommendations
+     - Chinese adaptation guidelines
+     - Implementation approach for Chinese markets
+     - Chinese market brand consistency 
+     - Potential in diverse Chinese-speaking regions (Mainland, Taiwan, Hong Kong, Singapore)
+
+  Your output MUST be a valid JSON object following this format:
+  {format_instructions}
+
+  Ensure your analysis aligns perfectly with the fields defined in the translation_analysis table in Supabase:
+  - target_language: "zh" (Chinese)
+  - direct_translation: literal translation into Chinese (preferably in both pinyin and characters)
+  - semantic_shift: how meaning changes in Chinese
+  - pronunciation_difficulty: challenges in Chinese pronunciation
+  - phonetic_similarity_undesirable: boolean (true/false) if sounds like problematic Chinese words
+  - phonetic_retention: how well original sounds are preserved in Chinese
+  - cultural_acceptability: cultural appropriateness in Chinese contexts
+  - adaptation_needed: boolean (true/false) if adaptation is required
+  - proposed_adaptation: suggested Chinese adaptation if needed (in characters and pinyin)
+  - brand_essence_preserved: assessment of brand essence preservation
+  - global_consistency_vs_localization: balance between global brand and Chinese localization
+  - notes: additional Chinese-specific observations
+  - rank: numeric score from 1-10 (10 being excellent) for overall Chinese adaptability
+
+  Provide clear, actionable insights specifically for Chinese language markets. 
