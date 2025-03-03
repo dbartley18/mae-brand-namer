@@ -349,28 +349,6 @@ class BrandNameGenerationState(Serializable, BaseModel):
         description="Translation analysis results for each brand name"
     )
     
-    # Analysis completion flags
-    semantic_analysis_complete: bool = Field(
-        default=False, 
-        description="Flag indicating if semantic analysis is complete"
-    )
-    linguistic_analysis_complete: bool = Field(
-        default=False, 
-        description="Flag indicating if linguistic analysis is complete"
-    )
-    cultural_analysis_complete: bool = Field(
-        default=False, 
-        description="Flag indicating if cultural analysis is complete"
-    )
-    translation_analysis_complete: bool = Field(
-        default=False, 
-        description="Flag indicating if translation analysis is complete"
-    )
-    analyses_complete: bool = Field(
-        default=False, 
-        description="Flag indicating if all analyses are complete"
-    )
-    
     # Consolidated analysis results
     analysis_results: Dict[str, List[Dict[str, Any]]] = Field(
         default_factory=dict,
