@@ -57,7 +57,6 @@ NODE_AGENT_TASK_MAPPING = {
     "process_linguistic_analysis": ("LinguisticsExpert", "Analyze_Linguistics"),
     "process_cultural_analysis": ("CulturalSensitivityExpert", "Analyze_Cultural_Sensitivity"),
     "process_translation_analysis": ("LanguageTranslationExperts", "Analyze_Translations"),
-    "analyses_coordinator": ("AnalysisCoordinator", "Coordinate_Analyses"),
     "process_evaluation": ("BrandNameEvaluator", "Evaluate_Names"),
     "process_market_research": ("MarketResearchExpert", "Research_Market"),
     "compile_report": ("ReportCompiler", "Compile_Report"),
@@ -220,18 +219,8 @@ class ProcessSupervisorCallbackHandler(BaseCallbackHandler):
             # Try to get the node name from kwargs, fallback to the current_node
             node_name = kwargs.get("tags", {}).get("node_name") or self.current_node
             
-            # Try to get run_id from outputs, fallback to the current_run_id
-            run_id = None
-            if outputs and isinstance(outputs, dict):
-                run_id = outputs.get("run_id")
-                
-                # Check if run_id is in a nested state
-                if not run_id and "state" in outputs and isinstance(outputs["state"], dict):
-                    run_id = outputs["state"].get("run_id")
-            
-            # Fallback to current_run_id if not found
-            if not run_id:
-                run_id = self.current_run_id
+            # Only use the current_run_id, don't extract from outputs to avoid LangGraph conflicts
+            run_id = self.current_run_id
             
             if not node_name or not run_id:
                 logger.debug("Missing node_name or run_id in on_chain_end")
@@ -515,11 +504,6 @@ def create_workflow(config: dict) -> StateGraph:
         ), "process_translation_analysis")
     )
     
-    # Add analysis coordinator that waits for all analyses to complete
-    workflow.add_node("analyses_coordinator", 
-        wrap_async_node(lambda state: coordinate_analyses(state), "analyses_coordinator")
-    )
-    
     workflow.add_node("process_evaluation", 
         wrap_async_node(lambda state: process_evaluation(state, BrandNameEvaluator(
             dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
@@ -552,14 +536,13 @@ def create_workflow(config: dict) -> StateGraph:
     workflow.add_edge("generate_brand_names", "process_cultural_analysis")
     workflow.add_edge("generate_brand_names", "process_translation_analysis")
     
-    # Fan in from analyses to coordinator
-    workflow.add_edge("process_semantic_analysis", "analyses_coordinator")
-    workflow.add_edge("process_linguistic_analysis", "analyses_coordinator")
-    workflow.add_edge("process_cultural_analysis", "analyses_coordinator")
-    workflow.add_edge("process_translation_analysis", "analyses_coordinator")
+    # Connect all analyses directly to evaluation (removing coordinator)
+    workflow.add_edge("process_semantic_analysis", "process_evaluation")
+    workflow.add_edge("process_linguistic_analysis", "process_evaluation")
+    workflow.add_edge("process_cultural_analysis", "process_evaluation")
+    workflow.add_edge("process_translation_analysis", "process_evaluation")
     
-    # Continue workflow from coordinator to evaluation
-    workflow.add_edge("analyses_coordinator", "process_evaluation")
+    # Continue workflow from evaluation
     workflow.add_edge("process_evaluation", "process_market_research")
     workflow.add_edge("process_market_research", "compile_report")
     workflow.add_edge("compile_report", "store_report")
@@ -806,21 +789,22 @@ async def process_semantic_analysis(state: BrandNameGenerationState, agent: Sema
             # Prepare results container
             semantic_results = []
             
-            logger.info(f"Starting semantic analysis for {len(state.generated_names)} brand names")
+            # Log the start of analysis
+            num_names = len(state.generated_names) if state.generated_names else 0
+            logger.info(f"Starting semantic analysis for {num_names} brand names")
             
             # Process each brand name in sequence
             for brand_name_data in state.generated_names:
                 try:
-                    brand_name = brand_name_data.get("brand_name", "")
-                    if not brand_name:
-                        logger.warning("Empty brand name encountered in generated_names")
+                    # Skip empty names
+                    if not brand_name_data.get("brand_name"):
+                        logger.warning("Skipping empty brand name in semantic analysis")
                         continue
                         
-                    logger.info(f"Analyzing brand name: {brand_name}")
-                    
+                    # Run analysis
                     result = await agent.analyze_brand_name(
                         run_id=state.run_id,
-                        brand_name=brand_name
+                        brand_name=brand_name_data["brand_name"]
                     )
                     semantic_results.append(result)
                 except Exception as e:
@@ -887,7 +871,6 @@ async def process_linguistic_analysis(state: BrandNameGenerationState, agent: Li
                 except Exception as e:
                     logger.error(f"Error analyzing brand name {brand_name_data.get('brand_name', '[unknown]')}: {str(e)}")
                     linguistic_results.append({
-                    "run_id": state.run_id,
                         "brand_name": brand_name_data.get("brand_name", "[unknown]"),
                         "error": str(e),
                         "analysis_complete": False
@@ -941,7 +924,6 @@ async def process_cultural_analysis(state: BrandNameGenerationState, agent: Cult
                 except Exception as e:
                     logger.error(f"Error analyzing brand name {brand_name_data.get('brand_name', '[unknown]')}: {str(e)}")
                     cultural_results.append({
-                        "run_id": state.run_id,
                         "brand_name": brand_name_data.get("brand_name", "[unknown]"),
                         "error": str(e),
                         "analysis_complete": False
@@ -1012,7 +994,6 @@ async def process_multi_language_translation(
                         if not language_expert:
                             logger.error(f"Could not create language expert for {language_code}")
                             all_translation_results.append({
-                                "run_id": state.run_id,  # REQUIRED - NOT NULL in database
                                 "brand_name": brand_name,  # REQUIRED - NOT NULL in database
                                 "target_language": get_language_display_name(language_code),  # REQUIRED - NOT NULL in database
                                 "task_name": "translation_analysis",
@@ -1045,7 +1026,6 @@ async def process_multi_language_translation(
                         
                         # Create a fallback result
                         all_translation_results.append({
-                            "run_id": state.run_id,  # REQUIRED - NOT NULL in database
                             "brand_name": brand_name,  # REQUIRED - NOT NULL in database
                             "target_language": language_name,  # REQUIRED - NOT NULL in database
                             "task_name": "translation_analysis",
@@ -1078,68 +1058,6 @@ async def process_multi_language_translation(
             }]
         }
 
-async def coordinate_analyses(state: BrandNameGenerationState) -> Dict[str, Any]:
-    """Coordinate and consolidate all analysis results."""
-    try:
-        # Check if all analyses are complete
-        semantic_complete = getattr(state, "semantic_analysis_complete", False)
-        linguistic_complete = getattr(state, "linguistic_analysis_complete", False)
-        cultural_complete = getattr(state, "cultural_analysis_complete", False)
-        translation_complete = getattr(state, "translation_analysis_complete", False)
-        
-        all_complete = (
-            semantic_complete and 
-            linguistic_complete and 
-            cultural_complete and 
-            translation_complete
-        )
-        
-        if not all_complete:
-            logger.warning(f"Not all analyses complete: semantic={semantic_complete}, linguistic={linguistic_complete}, cultural={cultural_complete}, translation={translation_complete}")
-            # Return incomplete status
-            return {
-                "analyses_complete": False,
-                "status": "incomplete",
-                "errors": [{
-                    "step": "analyses_coordinator",
-                    "error": "Not all analyses complete",
-                    "incomplete_analyses": {
-                        "semantic": not semantic_complete,
-                        "linguistic": not linguistic_complete,
-                        "cultural": not cultural_complete,
-                        "translation": not translation_complete
-                    },
-                    "timestamp": datetime.now().isoformat()
-                }]
-            }
-        
-        # Combine all analysis results
-        combined_results = {
-            "semantic_analysis": getattr(state, "semantic_analysis_results", []),
-            "linguistic_analysis": getattr(state, "linguistic_analysis_results", []),
-            "cultural_analysis": getattr(state, "cultural_analysis_results", []),
-            "translation_analysis": getattr(state, "translation_analysis_results", [])
-        }
-        # Return consolidated results
-        return {
-            "analyses_complete": True,
-            "analysis_results": combined_results,
-            "status": "complete"
-        }
-            
-    except Exception as e:
-        logger.error(f"Error in coordinate_analyses: {str(e)}")
-        return {
-            "errors": [{
-                "step": "analyses_coordinator",
-                "error": str(e),
-                "traceback": traceback.format_exc(),
-                "timestamp": datetime.now().isoformat()
-            }],
-            "analyses_complete": False,
-            "status": "error"
-        }
-
 async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEvaluator) -> Dict[str, Any]:
     """
     Evaluate brand names based on analyses and select top candidates.
@@ -1153,13 +1071,45 @@ async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEv
     """
     try:
         with tracing_v2_enabled():
+            # Check if all analyses are complete
+            semantic_complete = getattr(state, "semantic_analysis_complete", False)
+            linguistic_complete = getattr(state, "linguistic_analysis_complete", False)
+            cultural_complete = getattr(state, "cultural_analysis_complete", False)
+            translation_complete = getattr(state, "translation_analysis_complete", False)
+            
+            all_complete = (
+                semantic_complete and 
+                linguistic_complete and 
+                cultural_complete and 
+                translation_complete
+            )
+            
+            if not all_complete:
+                logger.warning(f"Not all analyses complete: semantic={semantic_complete}, linguistic={linguistic_complete}, cultural={cultural_complete}, translation={translation_complete}")
+                # Return incomplete status
+                return {
+                    "analyses_complete": False,
+                    "status": "incomplete",
+                    "errors": [{
+                        "step": "process_evaluation",
+                        "error": "Not all analyses complete",
+                        "incomplete_analyses": {
+                            "semantic": not semantic_complete,
+                            "linguistic": not linguistic_complete,
+                            "cultural": not cultural_complete,
+                            "translation": not translation_complete
+                        },
+                        "timestamp": datetime.now().isoformat()
+                    }]
+                }
+            
             # Get input data
             brand_names = state.generated_names
             
-            # Extract relevant analyses from the state
-            semantic_analyses = [name.get("semantic_analysis") for name in brand_names]
-            linguistic_analyses = [name.get("linguistic_analysis") for name in brand_names]
-            cultural_analyses = [name.get("cultural_analysis") for name in brand_names]
+            # Extract results from all analyses
+            semantic_analyses = state.semantic_analysis_results if hasattr(state, "semantic_analysis_results") else []
+            linguistic_analyses = state.linguistic_analysis_results if hasattr(state, "linguistic_analysis_results") else []
+            cultural_analyses = state.cultural_analysis_results if hasattr(state, "cultural_analysis_results") else []
             
             # Create brand context from state for the evaluator
             # Even though analyzers don't use brand_context anymore, the evaluator still needs it
@@ -1201,7 +1151,6 @@ async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEv
                 return {
                     "evaluation_results": evaluation_results,
                     "shortlisted_names": shortlisted_names,
-                    "run_id": state.run_id,
                     "brand_name": first_result.get("brand_name", ""),
                     "strategic_alignment_score": first_result.get("strategic_alignment_score", 0),
                     "distinctiveness_score": first_result.get("distinctiveness_score", 0),

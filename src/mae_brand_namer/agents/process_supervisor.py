@@ -63,7 +63,19 @@ class ProcessSupervisor:
             task_name (str): Name of the task being executed
         """
         try:
+            # Skip if run_id is null or empty
+            if not run_id:
+                logger.warning(
+                    "Skipping task logging - missing run_id",
+                    agent_type=agent_type,
+                    task_name=task_name
+                )
+                return
+                
             start_time = datetime.now()
+            
+            # Ensure the run_id exists in workflow_runs table first
+            await self._ensure_workflow_run_exists(run_id)
             
             # Create/update record in process_logs table
             await self.supabase.table("process_logs").upsert({
@@ -71,9 +83,9 @@ class ProcessSupervisor:
                 "agent_type": agent_type,
                 "task_name": task_name,
                 "status": "in_progress",
-                "start_time": start_time.isoformat(),
+                "start_time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
                 "retry_count": self._get_retry_count(run_id, agent_type, task_name),
-                "last_updated": datetime.now().isoformat()
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }).execute()
             
             logger.info(
@@ -93,32 +105,78 @@ class ProcessSupervisor:
             )
             # Don't raise exception - monitoring should not block workflow
     
+    async def _ensure_workflow_run_exists(self, run_id: str) -> None:
+        """
+        Ensure that a workflow run record exists in the workflow_runs table.
+        If it doesn't exist, create it.
+        
+        Args:
+            run_id (str): The run ID to check/create
+        """
+        if not run_id:
+            return
+            
+        try:
+            # Check if run exists
+            response = await self.supabase.table("workflow_runs").select("run_id") \
+                .eq("run_id", run_id).execute()
+                
+            # If run doesn't exist, create it
+            if not response.data or len(response.data) == 0:
+                logger.info(f"Creating workflow_runs record for run_id: {run_id}")
+                await self.supabase.table("workflow_runs").insert({
+                    "run_id": run_id,
+                    "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "status": "in_progress"
+                }).execute()
+        except Exception as e:
+            logger.error(f"Error ensuring workflow run exists: {str(e)}")
+    
     async def log_task_completion(self, run_id: str, agent_type: str, task_name: str) -> None:
         """
         Log the successful completion of a task.
         
         Args:
             run_id (str): Unique identifier for the workflow run
-            agent_type (str): Type of agent that executed the task
-            task_name (str): Name of the completed task
+            agent_type (str): Type of agent executing the task
+            task_name (str): Name of the task being executed
         """
         try:
+            # Skip if run_id is null or empty
+            if not run_id:
+                logger.warning(
+                    "Skipping task completion logging - missing run_id",
+                    agent_type=agent_type,
+                    task_name=task_name
+                )
+                return
+                
             end_time = datetime.now()
             
-            # Get the existing record to calculate duration
-            process_logs = await self.supabase.table("process_logs") \
-                .select("*") \
+            # Ensure the run_id exists in workflow_runs table first
+            await self._ensure_workflow_run_exists(run_id)
+            
+            # Get existing record to calculate duration
+            response = await self.supabase.table("process_logs") \
+                .select("start_time") \
                 .eq("run_id", run_id) \
+                .eq("agent_type", agent_type) \
                 .eq("task_name", task_name) \
                 .execute()
-                
-            start_time = None
-            if process_logs.data and len(process_logs.data) > 0:
-                start_time_str = process_logs.data[0].get("start_time")
-                if start_time_str:
-                    start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
             
             duration_sec = None
+            if response.data and len(response.data) > 0:
+                start_time_str = response.data[0].get("start_time")
+                if start_time_str:
+                    try:
+                        # Handle different formats that might come from the database
+                        if "T" in start_time_str:
+                            start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+                        else:
+                            start_time = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        logger.warning(f"Could not parse start_time: {start_time_str}")
+            
             if start_time:
                 duration_sec = int((end_time - start_time).total_seconds())
             
@@ -128,9 +186,9 @@ class ProcessSupervisor:
                 "agent_type": agent_type,
                 "task_name": task_name,
                 "status": "completed",
-                "end_time": end_time.isoformat(),
+                "end_time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
                 "duration_sec": duration_sec,
-                "last_updated": datetime.now().isoformat()
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }).execute()
             
             logger.info(
@@ -163,16 +221,30 @@ class ProcessSupervisor:
         
         Args:
             run_id (str): Unique identifier for the workflow run
-            agent_type (str): Type of agent that encountered the error
-            task_name (str): Name of the task that failed
+            agent_type (str): Type of agent executing the task
+            task_name (str): Name of the task being executed
             error (Exception): The error that occurred
             
         Returns:
             bool: True if the task should be retried, False otherwise
         """
         try:
+            # Skip if run_id is null or empty
+            if not run_id:
+                logger.warning(
+                    "Skipping task error logging - missing run_id",
+                    agent_type=agent_type,
+                    task_name=task_name,
+                    error=str(error)
+                )
+                return False
+                
             retry_count = self._increment_retry_count(run_id, agent_type, task_name)
             should_retry = retry_count < self.max_retries
+            current_time = datetime.now()
+            
+            # Ensure the run_id exists in workflow_runs table first
+            await self._ensure_workflow_run_exists(run_id)
             
             # Update the process_logs record
             await self.supabase.table("process_logs").upsert({
@@ -182,9 +254,9 @@ class ProcessSupervisor:
                 "status": "error",
                 "error_message": str(error),
                 "retry_count": retry_count,
-                "last_retry_at": datetime.now().isoformat() if should_retry else None,
+                "last_retry_at": current_time.strftime("%Y-%m-%d %H:%M:%S") if should_retry else None,
                 "retry_status": "pending" if should_retry else "exhausted",
-                "last_updated": datetime.now().isoformat()
+                "last_updated": current_time.strftime("%Y-%m-%d %H:%M:%S")
             }).execute()
             
             log_level = logger.warning if should_retry else logger.error
