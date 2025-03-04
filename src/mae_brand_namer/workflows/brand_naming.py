@@ -59,6 +59,8 @@ NODE_AGENT_TASK_MAPPING = {
     "process_translation_analysis": ("LanguageTranslationExperts", "Analyze_Translations"),
     "process_evaluation": ("BrandNameEvaluator", "Evaluate_Names"),
     "process_market_research": ("MarketResearchExpert", "Research_Market"),
+    "process_domain_analysis": ("DomainAnalysisExpert", "Analyze_Domain"),
+    "process_seo_analysis": ("SEOOnlineDiscoveryExpert", "Analyze_SEO"),
     "compile_report": ("ReportCompiler", "Compile_Report"),
     "store_report": ("ReportStorer", "Store_Report")
 }
@@ -517,6 +519,18 @@ def create_workflow(config: dict) -> StateGraph:
         )), "process_market_research")
     )
     
+    workflow.add_node("process_domain_analysis", 
+        wrap_async_node(lambda state: process_domain_analysis(state, DomainAnalysisExpert(
+            dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
+        )), "process_domain_analysis")
+    )
+    
+    workflow.add_node("process_seo_analysis", 
+        wrap_async_node(lambda state: process_seo_analysis(state, SEOOnlineDiscoveryExpert(
+            dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
+        )), "process_seo_analysis")
+    )
+    
     workflow.add_node("compile_report", 
         wrap_async_node(lambda state: process_report(state, ReportCompiler(
             dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
@@ -539,7 +553,9 @@ def create_workflow(config: dict) -> StateGraph:
     workflow.add_edge("process_translation_analysis", "process_evaluation")
     
     workflow.add_edge("process_evaluation", "process_market_research")
-    workflow.add_edge("process_market_research", "compile_report")
+    workflow.add_edge("process_market_research", "process_domain_analysis")
+    workflow.add_edge("process_domain_analysis", "process_seo_analysis")
+    workflow.add_edge("process_seo_analysis", "compile_report")
     workflow.add_edge("compile_report", "store_report")
     
     # Define entry point
@@ -1476,6 +1492,170 @@ async def process_market_research(state: BrandNameGenerationState, agent: Market
         results["status"] = "error"
         
         return results
+
+async def process_domain_analysis(state: BrandNameGenerationState, agent: DomainAnalysisExpert) -> Dict[str, Any]:
+    """Process domain analysis with error handling and tracing."""
+    try:
+        with tracing_v2_enabled():
+            # Extract only the shortlisted names from the state
+            shortlisted_names = []
+            
+            # Check if we have shortlisted_names in the state
+            if hasattr(state, "shortlisted_names") and state.shortlisted_names:
+                shortlisted_names = state.shortlisted_names
+            else:
+                logger.warning("No shortlisted names found for domain analysis")
+                return {
+                    "domain_analysis_results": [],
+                    "run_id": state.run_id,
+                    "errors": [{
+                        "step": "process_domain_analysis",
+                        "error": "No shortlisted brand names available for analysis",
+                        "timestamp": datetime.now().isoformat()
+                    }],
+                    "status": "error"
+                }
+            
+            # Extract brand context for domain analysis
+            brand_context = {}
+            if hasattr(state, "brand_identity_brief"):
+                brand_context["brand_identity_brief"] = state.brand_identity_brief
+            if hasattr(state, "brand_values"):
+                brand_context["brand_values"] = state.brand_values
+            if hasattr(state, "brand_personality"):
+                brand_context["brand_personality"] = state.brand_personality
+            if hasattr(state, "target_audience"):
+                brand_context["target_audience"] = state.target_audience
+            if hasattr(state, "industry_focus"):
+                brand_context["industry_focus"] = state.industry_focus
+            
+            # Process each shortlisted name for domain analysis
+            domain_analyses = []
+            for brand_name in shortlisted_names:
+                logger.info(f"Analyzing domain for shortlisted name: {brand_name}")
+                try:
+                    analysis = await agent.analyze_domain(
+                        run_id=state.run_id,
+                        brand_name=brand_name,
+                        brand_context=brand_context
+                    )
+                    domain_analyses.append({
+                        "brand_name": brand_name,
+                        **analysis
+                    })
+                except Exception as e:
+                    logger.error(f"Error analyzing domain for {brand_name}: {str(e)}")
+                    domain_analyses.append({
+                        "brand_name": brand_name,
+                        "error": str(e),
+                        "status": "error"
+                    })
+            
+            # Create a new dictionary with only the fields defined in the state model
+            results = {}
+            results["run_id"] = state.run_id
+            results["domain_analysis_results"] = domain_analyses
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error in process_domain_analysis: {str(e)}")
+        return {
+            "domain_analysis_results": [],
+            "run_id": state.run_id if hasattr(state, "run_id") else "unknown",
+            "errors": [{
+                "step": "process_domain_analysis",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
+
+async def process_seo_analysis(state: BrandNameGenerationState, agent: SEOOnlineDiscoveryExpert) -> Dict[str, Any]:
+    """Process SEO and online discovery analysis with error handling and tracing."""
+    try:
+        with tracing_v2_enabled():
+            # Extract only the shortlisted names from the state
+            shortlisted_names = []
+            
+            # Check if we have shortlisted_names in the state
+            if hasattr(state, "shortlisted_names") and state.shortlisted_names:
+                shortlisted_names = state.shortlisted_names
+            else:
+                logger.warning("No shortlisted names found for SEO analysis")
+                return {
+                    "seo_analysis_results": [],
+                    "run_id": state.run_id,
+                    "errors": [{
+                        "step": "process_seo_analysis",
+                        "error": "No shortlisted brand names available for analysis",
+                        "timestamp": datetime.now().isoformat()
+                    }],
+                    "status": "error"
+                }
+            
+            # Extract brand context for SEO analysis
+            brand_context = {}
+            if hasattr(state, "brand_identity_brief"):
+                brand_context["brand_identity_brief"] = state.brand_identity_brief
+            if hasattr(state, "brand_values"):
+                brand_context["brand_values"] = state.brand_values
+            if hasattr(state, "brand_personality"):
+                brand_context["brand_personality"] = state.brand_personality
+            if hasattr(state, "target_audience"):
+                brand_context["target_audience"] = state.target_audience
+            if hasattr(state, "industry_focus"):
+                brand_context["industry_focus"] = state.industry_focus
+            
+            # Include domain analysis results in brand context if available
+            if hasattr(state, "domain_analysis_results") and state.domain_analysis_results:
+                brand_context["domain_analysis"] = {
+                    item["brand_name"]: item for item in state.domain_analysis_results
+                }
+            
+            # Process each shortlisted name for SEO analysis
+            seo_analyses = []
+            for brand_name in shortlisted_names:
+                logger.info(f"Analyzing SEO and online discoverability for shortlisted name: {brand_name}")
+                try:
+                    analysis = await agent.analyze_brand_name(
+                        run_id=state.run_id,
+                        brand_name=brand_name,
+                        brand_context=brand_context
+                    )
+                    seo_analyses.append({
+                        "brand_name": brand_name,
+                        **analysis
+                    })
+                except Exception as e:
+                    logger.error(f"Error analyzing SEO for {brand_name}: {str(e)}")
+                    seo_analyses.append({
+                        "brand_name": brand_name,
+                        "error": str(e),
+                        "status": "error"
+                    })
+            
+            # Create a new dictionary with only the fields defined in the state model
+            results = {}
+            results["run_id"] = state.run_id
+            results["seo_analysis_results"] = seo_analyses
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error in process_seo_analysis: {str(e)}")
+        return {
+            "seo_analysis_results": [],
+            "run_id": state.run_id if hasattr(state, "run_id") else "unknown",
+            "errors": [{
+                "step": "process_seo_analysis",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
 
 async def process_report(state: BrandNameGenerationState, agent: ReportCompiler) -> Dict[str, Any]:
     """Process report compilation with error handling and tracing."""

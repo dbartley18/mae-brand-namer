@@ -126,9 +126,10 @@ class AppState(TypedDict, total=False):
     market_research_results: List[Dict[str, Any]]
     
     # Domain Analysis Fields
+    domain_analysis_results: List[Dict[str, Any]]
     
     # Competitor analysis
-    competitor_analysis_results: Dict[str, Dict[str, Any]]
+    competitor_analysis_results: Dict[str, "CompetitorAnalysisResult"]
 
 class TaskStatus(BaseModel):
     """Status information for a workflow task."""
@@ -410,9 +411,13 @@ class BrandNameGenerationState(Serializable, BaseModel):
     )
     
     # Domain Analysis Fields
+    domain_analysis_results: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Domain analysis results for shortlisted brand names"
+    )
     
     # Competitor analysis
-    competitor_analysis_results: Dict[str, CompetitorAnalysisResult] = Field(
+    competitor_analysis_results: Dict[str, "CompetitorAnalysisResult"] = Field(
         default_factory=dict,
         description="Competitor analysis results for each brand name"
     )
