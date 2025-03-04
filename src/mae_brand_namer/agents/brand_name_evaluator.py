@@ -220,20 +220,26 @@ class BrandNameEvaluator:
             Dict[str, Any]: Structured evaluation results
         """
         try:
-            # Generate completion
-            response = await self.llm.invoke(prompt)
-            
-            # Extract content from AIMessage if needed
-            content = response.content if hasattr(response, "content") else str(response)
+            # Generate completion - ensure we're using the correct invoke pattern
+            # prompt may already be a list of message objects
+            response = await self.llm.ainvoke(prompt)
             
             # Parse the response according to the defined schema
+            # Ensure response.content is accessed properly (response might be AIMessage)
+            content = response.content if hasattr(response, 'content') else str(response)
             evaluation_result = self.output_parser.parse(content)
             
             # Ensure numeric values are properly typed and constrained
             numeric_fields = [
-                "strategic_alignment_score", "distinctiveness_score", "brand_fit_score",
-                "memorability_score", "pronounceability_score", "meaningfulness_score",
-                "domain_viability_score", "overall_score", "rank"
+                "strategic_alignment_score",
+                "distinctiveness_score",
+                "brand_fit_score",
+                "memorability_score",
+                "pronounceability_score",
+                "meaningfulness_score", 
+                "domain_viability_score",
+                "overall_score",
+                "rank"
             ]
             
             for field in numeric_fields:
@@ -245,9 +251,6 @@ class BrandNameEvaluator:
                     except (ValueError, TypeError):
                         # Default to middle score if conversion fails
                         evaluation_result[field] = 5
-                else:
-                    # Add missing numeric fields with default value
-                    evaluation_result[field] = 5
             
             # Ensure shortlist_status is a boolean
             if "shortlist_status" in evaluation_result:
@@ -260,38 +263,27 @@ class BrandNameEvaluator:
                 # Default to False if missing
                 evaluation_result["shortlist_status"] = False
             
-            # Ensure required string fields are present
-            string_fields = [
-                "competitive_advantage", "positioning_strength", "phonetic_harmony",
-                "visual_branding_potential", "storytelling_potential", "evaluation_comments"
-            ]
-            
-            for field in string_fields:
-                if field not in evaluation_result or not evaluation_result[field]:
-                    evaluation_result[field] = "Not evaluated"
-            
             return evaluation_result
             
         except Exception as e:
             logger.error(f"Error evaluating brand name: {str(e)}")
             # Return minimal default evaluation in case of error
             return {
-                "strategic_alignment_score": 5,
-                "distinctiveness_score": 5,
+                "strategic_alignment_score": 5.0,
+                "distinctiveness_score": 5.0,
+                "brand_fit_score": 5.0,
+                "memorability_score": 5.0,
+                "pronounceability_score": 5.0,
+                "meaningfulness_score": 5.0,
+                "phonetic_harmony": "Not evaluated due to error",
+                "visual_branding_potential": "Not evaluated due to error",
+                "storytelling_potential": "Not evaluated due to error",
                 "competitive_advantage": "Error in evaluation",
-                "brand_fit_score": 5,
-                "positioning_strength": "Not evaluated",
-                "memorability_score": 5,
-                "pronounceability_score": 5,
-                "meaningfulness_score": 5,
-                "phonetic_harmony": "Not evaluated",
-                "visual_branding_potential": "Not evaluated",
-                "storytelling_potential": "Not evaluated",
+                "positioning_strength": "Error in evaluation",
                 "domain_viability_score": 5,
                 "overall_score": 5,
                 "shortlist_status": False,
                 "evaluation_comments": f"Error during evaluation: {str(e)}",
-                "rank": 5
             }
 
     async def _store_in_supabase(self, run_id: str, evaluation: Dict[str, Any]) -> None:
@@ -304,22 +296,20 @@ class BrandNameEvaluator:
         """
         try:
             # Ensure required fields are present
-            if "brand_name" not in evaluation:
+            if "brand_name" not in evaluation or not evaluation["brand_name"]:
                 logger.error("Cannot store evaluation: missing brand_name field")
                 return
                 
             # Ensure run_id is set
             evaluation["run_id"] = run_id
             
-            # Create a copy of the evaluation to modify for Supabase
-            supabase_data = evaluation.copy()
-            
-            # Convert shortlist_status from string to boolean for Supabase
-            if "shortlist_status" in supabase_data:
-                if isinstance(supabase_data["shortlist_status"], str):
-                    supabase_data["shortlist_status"] = supabase_data["shortlist_status"].lower() in ["yes", "true", "1", "t", "y"]
+            # Ensure shortlist_status is a boolean (not nullable)
+            if "shortlist_status" not in evaluation or evaluation["shortlist_status"] is None:
+                evaluation["shortlist_status"] = False
+            elif isinstance(evaluation["shortlist_status"], str):
+                evaluation["shortlist_status"] = evaluation["shortlist_status"].lower() in ["true", "yes", "1", "t", "y"]
             else:
-                supabase_data["shortlist_status"] = False
+                evaluation["shortlist_status"] = bool(evaluation["shortlist_status"])
             
             # Convert numeric scores to integers and ensure they're within range 1-10
             integer_score_fields = [
@@ -329,47 +319,44 @@ class BrandNameEvaluator:
             ]
             
             for field in integer_score_fields:
-                if field in supabase_data:
+                if field in evaluation and evaluation[field] is not None:
                     try:
                         # Convert to integer
-                        value = int(float(supabase_data[field]))
+                        value = int(float(evaluation[field]))
                         # Constrain to range 1-10
-                        supabase_data[field] = max(1, min(10, value))
+                        evaluation[field] = max(1, min(10, value))
                     except (ValueError, TypeError):
                         # Default to middle value if conversion fails
-                        supabase_data[field] = 5
+                        evaluation[field] = 5
                 else:
                     # Set default value if missing
-                    supabase_data[field] = 5
+                    evaluation[field] = 5
             
             # Ensure rank is numeric but doesn't need to be an integer
-            if "rank" in supabase_data and not isinstance(supabase_data["rank"], (int, float)):
-                try:
-                    supabase_data["rank"] = float(supabase_data["rank"])
-                except (ValueError, TypeError):
-                    supabase_data["rank"] = 5.0
-            elif "rank" not in supabase_data:
-                supabase_data["rank"] = 5.0
+            if "rank" in evaluation and evaluation["rank"] is not None:
+                if not isinstance(evaluation["rank"], (int, float)):
+                    try:
+                        evaluation["rank"] = float(evaluation["rank"])
+                    except (ValueError, TypeError):
+                        evaluation["rank"] = 0.0
             
-            # Ensure required string fields are present
-            string_fields = [
-                "competitive_advantage", "positioning_strength", "phonetic_harmony",
-                "visual_branding_potential", "storytelling_potential", "evaluation_comments"
+            # Filter evaluation data to include only fields present in the Supabase schema
+            # This prevents errors when trying to insert fields that don't exist in the table
+            allowed_fields = [
+                "brand_name", "run_id", "strategic_alignment_score", "distinctiveness_score", 
+                "brand_fit_score", "memorability_score", "pronounceability_score", 
+                "meaningfulness_score", "domain_viability_score", "overall_score", 
+                "shortlist_status", "evaluation_comments", "rank"
             ]
             
-            for field in string_fields:
-                if field not in supabase_data or not supabase_data[field]:
-                    supabase_data[field] = "Not evaluated"
-            
-            # Add created_at timestamp if not present
-            if "created_at" not in supabase_data:
-                supabase_data["created_at"] = datetime.now().isoformat()
+            filtered_evaluation = {k: v for k, v in evaluation.items() if k in allowed_fields}
             
             # Log the data being inserted
-            logger.info(f"Storing evaluation for brand name '{supabase_data['brand_name']}' with run_id '{run_id}'")
+            logger.info(f"Storing evaluation for brand name '{filtered_evaluation['brand_name']}' with run_id '{run_id}'")
+            logger.debug(f"Evaluation data: {json.dumps(filtered_evaluation, default=str)}")
             
             # Insert into Supabase
-            result = await self.supabase.table("brand_name_evaluation").insert(supabase_data).execute()
+            result = await self.supabase.table("brand_name_evaluation").insert(filtered_evaluation).execute()
             logger.info(f"Successfully stored evaluation in Supabase")
             
         except Exception as e:

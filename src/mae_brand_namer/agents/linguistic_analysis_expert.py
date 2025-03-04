@@ -186,7 +186,9 @@ class LinguisticsExpert:
                     
                     # Parse and validate response with error handling
                     try:
-                        analysis = self.output_parser.parse(response.content)
+                        # Parse the response according to the defined schema
+                        content = response.content if hasattr(response, 'content') else str(response)
+                        analysis = self.output_parser.parse(content)
                         
                         # Create the result dictionary with standard required fields
                         # Create without run_id to avoid LangGraph issues

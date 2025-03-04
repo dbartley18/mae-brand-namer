@@ -119,8 +119,9 @@ class DomainAnalysisExpert:
                 # Get response from LLM
                 response = await self.llm.ainvoke(formatted_prompt)
                 
-                # Parse structured response
-                analysis = self.output_parser.parse(response.content)
+                # Parse the response according to the defined schema
+                content = response.content if hasattr(response, 'content') else str(response)
+                analysis = self.output_parser.parse(content)
                 
                 # Store results in Supabase
                 await self._store_analysis(run_id, brand_name, analysis)

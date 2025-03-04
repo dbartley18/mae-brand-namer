@@ -346,7 +346,9 @@ class SemanticAnalysisExpert:
                     
                     # Parse structured response with careful error handling
                     try:
-                        analysis_result = self.output_parser.parse(response.content)
+                        # Parse the response into structured data
+                        content = response.content if hasattr(response, 'content') else str(response)
+                        analysis_result = self.output_parser.parse(content)
                         
                         # Validate that the required fields are present
                         if "denotative_meaning" not in analysis_result:

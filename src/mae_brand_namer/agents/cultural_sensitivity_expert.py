@@ -171,51 +171,26 @@ class CulturalSensitivityExpert:
                     logger.info(f"Making LLM call for cultural analysis of '{brand_name}'")
                     response = await self.llm.ainvoke(formatted_prompt)
                     
-                    # Parse the response with error handling
-                    try:
-                        analysis = self.output_parser.parse(response.content)
-                        
-                        # Create a result dictionary with standard required fields
-                        # Create without run_id to avoid LangGraph issues
-                        result = {
-                            "brand_name": brand_name,
-                            "task_name": "cultural_sensitivity_analysis",
-                        }
-                        
-                        # Add all analysis results but exclude run_id
-                        for key, value in analysis.items():
-                            if key != "run_id":  # Don't include run_id in the result
-                                result[key] = value
-                            
-                        # Ensure rank is a float
-                        if "rank" in result:
-                            result["rank"] = float(result["rank"])
-                            
-                    except Exception as parse_error:
-                        logger.error(f"Error parsing cultural sensitivity analysis: {str(parse_error)}")
-                        # Create a minimal valid result
-                        result = {
-                            "brand_name": brand_name,
-                            "task_name": "cultural_sensitivity_analysis",
-                            "cultural_connotations": "Error in analysis",
-                            "symbolic_meanings": "Error in analysis",
-                            "alignment_with_cultural_values": "Unknown",
-                            "religious_sensitivities": "Unknown",
-                            "social_political_taboos": "Unknown",
-                            "body_part_bodily_function_connotations": False,
-                            "age_related_connotations": "Unknown",
-                            "gender_connotations": "Unknown",
-                            "regional_variations": "Unknown",
-                            "historical_meaning": "Unknown",
-                            "current_event_relevance": "Unknown",
-                            "overall_risk_rating": "High risk due to processing error",
-                            "notes": f"Error in analysis: {str(parse_error)}",
-                            "rank": 5.0
-                        }
+                    # Parse the response according to the defined schema
+                    content = response.content if hasattr(response, 'content') else str(response)
+                    analysis = self.output_parser.parse(content)
                     
-                    # Store results in Supabase (this doesn't affect what we return to LangGraph)
-                    await self._store_analysis(run_id, brand_name, result)
+                    # Create a result dictionary with standard required fields
+                    # Create without run_id to avoid LangGraph issues
+                    result = {
+                        "brand_name": brand_name,
+                        "task_name": "cultural_sensitivity_analysis",
+                    }
                     
+                    # Add all analysis results but exclude run_id
+                    for key, value in analysis.items():
+                        if key != "run_id":  # Don't include run_id in the result
+                            result[key] = value
+                        
+                    # Ensure rank is a float
+                    if "rank" in result:
+                        result["rank"] = float(result["rank"])
+                        
                 except Exception as e:
                     logger.error(f"Error in cultural sensitivity analysis: {str(e)}")
                     # Create a fallback result
@@ -224,10 +199,22 @@ class CulturalSensitivityExpert:
                         "task_name": "cultural_sensitivity_analysis",
                         "cultural_connotations": "Error in analysis",
                         "symbolic_meanings": "Error in analysis",
+                        "alignment_with_cultural_values": "Unknown",
+                        "religious_sensitivities": "Unknown",
+                        "social_political_taboos": "Unknown",
+                        "body_part_bodily_function_connotations": False,
+                        "age_related_connotations": "Unknown",
+                        "gender_connotations": "Unknown",
+                        "regional_variations": "Unknown",
+                        "historical_meaning": "Unknown",
+                        "current_event_relevance": "Unknown",
                         "overall_risk_rating": "High risk due to processing error",
                         "notes": f"Error during analysis: {str(e)}",
                         "rank": 5.0
                     }
+            
+            # Store results in Supabase (this doesn't affect what we return to LangGraph)
+            await self._store_analysis(run_id, brand_name, result)
             
             # Make sure result doesn't contain run_id before returning
             return {key: value for key, value in result.items() if key != "run_id"}

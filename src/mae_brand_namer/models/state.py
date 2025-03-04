@@ -292,7 +292,7 @@ class BrandNameGenerationState(Serializable, BaseModel):
     brand_promise_alignment: Optional[str] = Field(default=None, description="Alignment with brand promise")
     target_audience_relevance: Optional[float] = Field(default=None, description="Relevance to target audience (1-10)")
     market_differentiation: Optional[float] = Field(default=None, description="Market differentiation score (1-10)")
-    visual_branding_potential: Optional[float] = Field(default=None, description="Visual branding potential score (1-10)")
+    visual_branding_potential: Optional[Any] = Field(default=None, description="Visual branding potential (string or score)")
     memorability_score: Optional[float] = Field(default=None, description="Memorability score (1-10)")
     pronounceability_score: Optional[float] = Field(default=None, description="Pronounceability score (1-10)")
     
