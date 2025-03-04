@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 import asyncio
 from pathlib import Path
+import re
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -196,15 +197,29 @@ class BrandNameEvaluator:
                 evaluation["brand_name"] = brand_name
                 evaluation["run_id"] = run_id
                 
-                # Store in Supabase for persistence
-                await self._store_in_supabase(run_id, evaluation)
-                
-                # Add to results list
+                # Add to results list without storing in Supabase yet
                 evaluations.append(evaluation)
                 
             except Exception as e:
                 logger.error(f"Error evaluating {brand_name}: {str(e)}")
                 # Continue with other names if one fails
+        
+        if evaluations:
+            # Determine shortlist status based on comparative analysis and full brand context
+            evaluations = await self._determine_shortlist_status(
+                evaluations,
+                semantic_analyses,
+                linguistic_analyses,
+                cultural_analyses,
+                brand_context  # Pass the full brand context for in-depth analysis
+            )
+            
+            # Now store the updated evaluations in Supabase
+            for evaluation in evaluations:
+                try:
+                    await self._store_in_supabase(run_id, evaluation)
+                except Exception as e:
+                    logger.error(f"Error storing evaluation for {evaluation.get('brand_name', 'unknown')} in Supabase: {str(e)}")
         
         logger.info(f"Completed evaluation of {len(evaluations)} brand names")
         return evaluations
@@ -362,3 +377,308 @@ class BrandNameEvaluator:
         except Exception as e:
             logger.error(f"Error storing evaluation in Supabase: {str(e)}")
             # Continue execution even if storage fails 
+
+    async def _determine_shortlist_status(self, 
+                                        evaluations: List[Dict[str, Any]], 
+                                        semantic_analyses: Dict[str, Dict[str, Any]], 
+                                        linguistic_analyses: Dict[str, Dict[str, Any]],
+                                        cultural_analyses: Dict[str, Dict[str, Any]],
+                                        brand_context: str = None) -> List[Dict[str, Any]]:
+        """
+        Determine which brand names should be shortlisted based on comprehensive analysis
+        and relative comparison. Only shortlists the top 3 names.
+        
+        Args:
+            evaluations: List of evaluation results for each brand name
+            semantic_analyses: Dictionary of semantic analysis results for each brand name
+            linguistic_analyses: Dictionary of linguistic analysis results for each brand name
+            cultural_analyses: Dictionary of cultural analysis results for each brand name
+            brand_context: The full brand context information used to make more informed decisions
+            
+        Returns:
+            Updated list of evaluations with revised shortlist status
+        """
+        if not evaluations or len(evaluations) <= 3:
+            # If there are 3 or fewer names, all are shortlisted by default
+            for eval_data in evaluations:
+                eval_data['shortlist_status'] = True
+            return evaluations
+        
+        # If we have the brand context, use LLM-based approach for deeper contextual analysis
+        if brand_context:
+            logger.info(f"Using full brand context to determine shortlist status for {len(evaluations)} brand names")
+            return await self._context_based_shortlisting(evaluations, brand_context)
+        else:
+            logger.warning("Brand context not provided for shortlisting. Using score-based approach.")
+            return await self._score_based_shortlisting(evaluations, semantic_analyses, linguistic_analyses, cultural_analyses)
+            
+    async def _context_based_shortlisting(self, evaluations: List[Dict[str, Any]], brand_context: str) -> List[Dict[str, Any]]:
+        """
+        Uses the full brand context with LLM to make a more informed decision about which names to shortlist.
+        This goes beyond simple score-based metrics and considers how well each name aligns with the brand context.
+        
+        Args:
+            evaluations: List of evaluation results for each brand name
+            brand_context: The full brand context information
+            
+        Returns:
+            Updated list of evaluations with shortlist status determined via brand context analysis
+        """
+        # Extract the most relevant information for each brand name
+        brand_summaries = []
+        for eval_data in evaluations:
+            brand_name = eval_data.get('brand_name')
+            if not brand_name:
+                continue
+                
+            summary = {
+                'brand_name': brand_name,
+                'evaluation_summary': eval_data.get('evaluation_comments', ''),
+                'strategic_alignment_score': eval_data.get('strategic_alignment_score', 5),
+                'brand_fit_score': eval_data.get('brand_fit_score', 5),
+                'distinctiveness_score': eval_data.get('distinctiveness_score', 5),
+                'memorability_score': eval_data.get('memorability_score', 5),
+                'overall_score': eval_data.get('overall_score', 5)
+            }
+            brand_summaries.append(summary)
+        
+        # Prepare the prompt for contextual shortlisting
+        shortlist_system = """You are a Strategic Brand Naming Expert responsible for selecting the final shortlist of brand names.
+Your task is to evaluate a set of brand names against the provided brand context and select ONLY the top 3 
+that best align with the brand's identity, values, target audience, and strategic objectives.
+
+Your analysis must consider:
+1. How well each name embodies the brand's core values and personality
+2. Alignment with target audience expectations and preferences
+3. Support for the brand's strategic positioning and differentiation
+4. Overall brand name quality, memorability, and distinctiveness
+
+Be extremely selective and critical in your assessment, focusing on substantive strategic fit 
+rather than just numeric scores. Your shortlist should represent truly exceptional options that 
+deeply connect with the brand's essence and market position."""
+
+        # Create a concise version of the brand context if it's too long
+        brand_context_summary = brand_context
+        if len(brand_context) > 2000:
+            brand_context_summary = brand_context[:2000] + "... [truncated for length]"
+        
+        shortlist_human = f"""BRAND CONTEXT:
+{brand_context_summary}
+
+BRAND NAME EVALUATIONS:
+{json.dumps(brand_summaries, indent=2)}
+
+Based on the above BRAND CONTEXT and evaluations, determine which 3 brand names should be shortlisted.
+Your response must be in JSON format with the following structure:
+{{
+  "shortlisted_names": ["Name1", "Name2", "Name3"],
+  "rationale": "Your detailed explanation of why these 3 names were selected based on the brand context",
+  "individual_assessments": {{
+    "Name1": "Specific reasons this name aligns with the brand context",
+    "Name2": "Specific reasons this name aligns with the brand context",
+    "Name3": "Specific reasons this name aligns with the brand context"
+  }}
+}}
+
+Focus specifically on how each name aligns with the BRAND CONTEXT, not just general branding principles.
+Ensure your rationale references specific elements from the brand context document.
+"""
+
+        messages = [
+            SystemMessage(content=shortlist_system),
+            HumanMessage(content=shortlist_human)
+        ]
+        
+        try:
+            # Get the shortlist decision from the LLM
+            shortlist_response = await self.llm.ainvoke(messages)
+            content = shortlist_response.content if hasattr(shortlist_response, 'content') else str(shortlist_response)
+            
+            # Parse the JSON response
+            try:
+                # Extract JSON from the response (in case there's other text)
+                json_match = re.search(r'\{[\s\S]*\}', content)
+                if json_match:
+                    content = json_match.group(0)
+                
+                shortlist_data = json.loads(content)
+                shortlisted_names = shortlist_data.get('shortlisted_names', [])
+                rationale = shortlist_data.get('rationale', '')
+                individual_assessments = shortlist_data.get('individual_assessments', {})
+                
+                if not shortlisted_names:
+                    logger.warning("LLM did not return any shortlisted names. Falling back to score-based shortlisting.")
+                    return await self._score_based_shortlisting(evaluations, {}, {}, {})
+                
+                logger.info(f"Context-based shortlisting selected names: {', '.join(shortlisted_names)}")
+                
+                # Update evaluations with shortlist status and contextual rationale
+                for eval_data in evaluations:
+                    brand_name = eval_data.get('brand_name')
+                    if not brand_name:
+                        continue
+                        
+                    is_shortlisted = brand_name in shortlisted_names
+                    eval_data['shortlist_status'] = is_shortlisted
+                    
+                    # Add detailed contextual reasoning to the evaluation comments
+                    if 'evaluation_comments' in eval_data:
+                        if is_shortlisted:
+                            assessment = individual_assessments.get(brand_name, "Selected based on strong alignment with brand context.")
+                            eval_data['evaluation_comments'] += f"\n\nSHORTLISTED (CONTEXT ANALYSIS): {assessment}"
+                        else:
+                            eval_data['evaluation_comments'] += f"\n\nNOT SHORTLISTED (CONTEXT ANALYSIS): This name was not selected when evaluated against the full brand context."
+                
+                # Add the overall rationale to the first shortlisted name's comments
+                shortlist_found = False
+                for eval_data in evaluations:
+                    if eval_data.get('shortlist_status', False) and 'evaluation_comments' in eval_data:
+                        eval_data['evaluation_comments'] += f"\n\nOVERALL SHORTLISTING RATIONALE: {rationale}"
+                        shortlist_found = True
+                        break
+                
+                # If no shortlisted names were found in our evaluations (unlikely but possible),
+                # add the rationale to the first evaluation
+                if not shortlist_found and evaluations and 'evaluation_comments' in evaluations[0]:
+                    evaluations[0]['evaluation_comments'] += f"\n\nNOTE: LLM SHORTLISTING RATIONALE: {rationale}"
+                
+                return evaluations
+                
+            except Exception as e:
+                logger.error(f"Error parsing LLM shortlist response: {str(e)}. Response: {content[:200]}...")
+                logger.warning("Falling back to score-based shortlisting.")
+                return await self._score_based_shortlisting(evaluations, {}, {}, {})
+                
+        except Exception as e:
+            logger.error(f"Error in context-based shortlisting: {str(e)}")
+            logger.warning("Falling back to score-based shortlisting.")
+            return await self._score_based_shortlisting(evaluations, {}, {}, {})
+
+    async def _score_based_shortlisting(self, 
+                                     evaluations: List[Dict[str, Any]], 
+                                     semantic_analyses: Dict[str, Dict[str, Any]], 
+                                     linguistic_analyses: Dict[str, Dict[str, Any]],
+                                     cultural_analyses: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Fallback method that determines shortlist status based on scores.
+        """
+        logger.info(f"Using score-based approach to shortlist from {len(evaluations)} brand names")
+            
+        # Calculate composite scores that consider all analyses
+        for eval_data in evaluations:
+            brand_name = eval_data.get('brand_name')
+            if not brand_name:
+                continue
+                
+            # Collect metrics from all analyses
+            semantic_metrics = semantic_analyses.get(brand_name, {})
+            linguistic_metrics = linguistic_analyses.get(brand_name, {})
+            cultural_metrics = cultural_analyses.get(brand_name, {})
+            
+            # Define weights for different scores with increased emphasis on brand context alignment
+            weights = {
+                'strategic_alignment': 0.20,  # Increased weight - this directly relates to brand context
+                'brand_fit': 0.20,           # Increased weight - this directly relates to brand context
+                'distinctiveness': 0.12,
+                'memorability': 0.10,
+                'pronounceability': 0.08,
+                'meaningfulness': 0.08,
+                'domain_viability': 0.07,
+                'semantic_quality': 0.05,
+                'linguistic_quality': 0.05,
+                'cultural_sensitivity': 0.05
+            }
+            
+            # Get scores from evaluation
+            eval_scores = {
+                'strategic_alignment': eval_data.get('strategic_alignment_score', 5),
+                'distinctiveness': eval_data.get('distinctiveness_score', 5),
+                'brand_fit': eval_data.get('brand_fit_score', 5),
+                'memorability': eval_data.get('memorability_score', 5),
+                'pronounceability': eval_data.get('pronounceability_score', 5),
+                'meaningfulness': eval_data.get('meaningfulness_score', 5),
+                'domain_viability': eval_data.get('domain_viability_score', 5)
+            }
+            
+            # Get scores from other analyses
+            semantic_rank = semantic_metrics.get('rank', 5) if isinstance(semantic_metrics, dict) else 5
+            linguistic_rank = linguistic_metrics.get('rank', 5) if isinstance(linguistic_metrics, dict) else 5
+            
+            # For cultural risk, lower is better (inverse the score)
+            cultural_risk_str = str(cultural_metrics.get('overall_risk_rating', '5/10')).split('/')[0] if isinstance(cultural_metrics, dict) else '5'
+            try:
+                cultural_risk = float(cultural_risk_str)
+                cultural_sensitivity_score = 10 - cultural_risk  # Invert so higher is better
+            except (ValueError, TypeError):
+                cultural_sensitivity_score = 5
+                
+            other_scores = {
+                'semantic_quality': semantic_rank,
+                'linguistic_quality': linguistic_rank,
+                'cultural_sensitivity': cultural_sensitivity_score
+            }
+            
+            # Combine scores
+            all_scores = {**eval_scores, **other_scores}
+            
+            # Calculate weighted composite score
+            composite_score = sum(all_scores[key] * weights[key] for key in weights)
+            
+            # Add to evaluation data
+            eval_data['composite_score'] = composite_score
+            
+            # Apply a brand context alignment bonus/penalty based on strategic alignment and brand fit
+            # This emphasizes names that specifically align well with the brand context
+            brand_context_alignment_score = (eval_scores['strategic_alignment'] + eval_scores['brand_fit']) / 2
+            if brand_context_alignment_score >= 8:
+                # Apply a bonus for exceptional brand context alignment
+                context_multiplier = 1.1  # 10% bonus
+            elif brand_context_alignment_score <= 4:
+                # Apply a penalty for poor brand context alignment
+                context_multiplier = 0.9  # 10% penalty
+            else:
+                context_multiplier = 1.0
+                
+            # Apply the context multiplier to the composite score
+            eval_data['composite_score'] *= context_multiplier
+            
+            # Add an explanation about brand context consideration
+            eval_data['context_alignment_note'] = f"Brand context alignment {'bonus' if context_multiplier > 1 else 'penalty' if context_multiplier < 1 else 'neutral'} applied: {context_multiplier:.2f}x multiplier based on strategic alignment and brand fit scores."
+            
+        # Sort by composite score (descending)
+        sorted_evals = sorted(evaluations, key=lambda x: x.get('composite_score', 0), reverse=True)
+        
+        # Get the threshold for significant difference (average score drop after top 3)
+        if len(sorted_evals) > 4:
+            top_3_avg = sum(e.get('composite_score', 0) for e in sorted_evals[:3]) / 3
+            next_group_avg = sum(e.get('composite_score', 0) for e in sorted_evals[3:min(6, len(sorted_evals))]) / min(3, len(sorted_evals) - 3)
+            score_threshold = top_3_avg - ((top_3_avg - next_group_avg) * 0.5)  # Midpoint between top 3 and next group
+        else:
+            score_threshold = 0
+            
+        # Mark only top 3 as shortlisted, and only if their score is above the threshold
+        for i, eval_data in enumerate(sorted_evals):
+            should_shortlist = i < 3 and eval_data.get('composite_score', 0) > score_threshold
+            sorted_evals[i]['shortlist_status'] = should_shortlist
+            
+            # Update evaluation comments to explain shortlist decision
+            comment_addition = ""
+            if should_shortlist:
+                comment_addition = f"\n\nSHORTLISTED (SCORE-BASED): This name ranked #{i+1} in the comprehensive evaluation with a composite score of {eval_data.get('composite_score', 0):.2f}."
+            else:
+                reason = "below quality threshold" if i < 3 else f"ranked #{i+1}"
+                comment_addition = f"\n\nNOT SHORTLISTED (SCORE-BASED): This name was {reason} with a composite score of {eval_data.get('composite_score', 0):.2f}."
+                
+            # Add context alignment note to the comments
+            if 'context_alignment_note' in eval_data:
+                comment_addition += f" {eval_data['context_alignment_note']}"
+                del eval_data['context_alignment_note']  # Remove temporary field
+                
+            if 'evaluation_comments' in sorted_evals[i]:
+                sorted_evals[i]['evaluation_comments'] += comment_addition
+            
+        # Log the shortlisting decisions
+        shortlisted = [e.get('brand_name') for e in sorted_evals if e.get('shortlist_status', False)]
+        logger.info(f"Score-based shortlisting selected {len(shortlisted)} brand names: {', '.join(shortlisted)}")
+        
+        return sorted_evals 

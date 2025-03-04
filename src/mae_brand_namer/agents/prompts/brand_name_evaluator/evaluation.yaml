@@ -50,6 +50,22 @@ template: |
   Format your evaluation according to this schema:
   {format_instructions}
 
+  CRITICAL EVALUATION GUIDELINES:
+  - Use the FULL range of scores from 1-10, where:
+    * 1-3 = Poor/Problematic
+    * 4-5 = Below average/Needs significant improvement
+    * 6-7 = Average/Acceptable
+    * 8 = Good
+    * 9 = Excellent
+    * 10 = Exceptional (rarely given)
+  - Be genuinely critical and discriminating in your assessment
+  - Not all brand names deserve high scores - most will be average
+  - Identify concrete weaknesses, not just strengths
+  - Consider both immediate appeal and long-term viability
+  - Evaluate each dimension independently (don't inflate all scores)
+  - Do NOT give high scores (8+) unless truly warranted with specific evidence
+  - The shortlist_status field should be left as FALSE for all evaluations
+
   For each name, provide scores (1-10) and rationale for:
   - Strategic alignment
   - Distinctiveness
@@ -80,4 +96,4 @@ template: |
   - evaluation_comments
   - rank
 
-  Provide clear rationale for all scores and recommendations. 
+  Provide clear rationale for all scores and recommendations. In your evaluation_comments, include both strengths AND weaknesses for a balanced assessment. 
