@@ -1,91 +1,81 @@
 _type: prompt
 input_variables: ["format_instructions", "brand_names", "brand_context"]
 template: |
-  Conduct comprehensive market research for the following brand names:
+  Conduct comprehensive market research for the following SHORTLISTED brand names:
 
-  Brand Names:
+  Shortlisted Brand Names:
   {brand_names}
 
   Brand Context:
   {brand_context}
 
-  Analyze each name across these dimensions:
+  These are FINALIST brand names that have already been shortlisted based on linguistic, semantic, and cultural criteria. 
+  Your task is to provide an in-depth MARKET ANALYSIS for each shortlisted name to help determine 
+  the final selection based on business and market factors.
 
-  1. Market Potential
-     - Industry fit
-     - Market opportunity size
-     - Growth potential
-     - Barriers to entry
-     - Competitive advantage
-     - Market penetration metrics
-     - Growth trajectory analysis
+  For each shortlisted name, analyze these dimensions:
+
+  1. Market Opportunity Analysis
+     - Industry category identification (be specific)
+     - Market size estimation (provide numeric estimates where possible)
+     - Growth potential assessment (include projected growth rates)
+     - Emerging trends identification (focus on 2-3 key trends)
+     - Market opportunity score (1-10)
 
   2. Target Audience Analysis
-     - Demographic alignment
-     - Psychographic fit
-     - Value proposition match
-     - Purchase intent indicators
-     - Brand recall potential
-     - Customer lifetime value potential
-     - Brand loyalty indicators
+     - Primary customer segments identification (3-5 key segments)
+     - Customer pain points alignment (how the name addresses specific pain points)
+     - Value proposition effectiveness (concrete examples)
+     - Brand resonance with target audience (emotional connections)
+     - Target audience fit score (1-10)
 
   3. Competitive Landscape
-     - Direct competitors
-     - Indirect competitors
-     - Naming patterns
-     - Market positioning
-     - Share of voice
-     - Competitive response prediction
-     - Market share potential
+     - Key competitors analysis (name 3-5 specific competitors)
+     - Competitive advantage assessment (clear differentiators)
+     - Market positioning recommendations (precise positioning statement)
+     - Competitive differentiation potential (concrete examples)
+     - Competitive advantage score (1-10)
 
-  4. Digital Presence & SEO
-     - SEO viability assessment
-     - Keyword competition analysis
-     - Content marketing opportunities
-     - Social media availability
-     - Social media discoverability
-     - Branded search potential
-     - Non-branded search potential
+  4. Market Entry Considerations
+     - Market entry barriers identification (specific challenges)
+     - Regulatory considerations (actual regulations that apply)
+     - Market timing recommendations (optimal launch timing)
+     - Go-to-market strategy suggestions (practical steps)
+     - Long-term market viability (5-year outlook)
 
-  5. Market Viability
-     - Commercial feasibility
-     - Market penetration potential
-     - Scalability assessment
-     - Digital presence potential
-     - International expansion opportunities
-     - Risk assessment
-     - Market entry timing
+  5. Market Scalability
+     - Business model scalability (concrete scaling paths)
+     - Market expansion opportunities (specific adjacent markets)
+     - Cross-market potential (international considerations)
+     - Growth limitations (realistic constraints)
+     - Scalability score (1-10)
 
   Format your analysis according to this schema:
   {format_instructions}
 
-  For each name, provide:
-  - Market opportunity assessment (1-10 score)
-  - Competitive positioning analysis
-  - Target audience fit evaluation (1-10 score)
-  - Growth potential analysis (1-10 score)
-  - SEO viability score (1-10)
-  - Content marketing potential
-  - Social media platform availability
-  - Market penetration metrics
-  - Risk assessment
-  - Strategic recommendations
-  - Overall market viability score (1-10)
+  IMPORTANT BOUNDARIES:
+  - These are SHORTLISTED FINALIST names - provide extra depth and precision in your analysis
+  - DO NOT include analysis of domains, SEO, or digital presence
+  - FOCUS ONLY on business and market factors
+  - BE SPECIFIC and ACTIONABLE in all recommendations
+  - TAILOR your analysis to the unique attributes of each brand name
+  
+  For each shortlisted brand name, provide:
+  - Industry name (be very specific, e.g., "Enterprise B2B SaaS for Financial Services")
+  - Market size (provide specific figures, e.g., "$47 billion TAM, growing at 14% CAGR")
+  - Market growth rate (precise figures, e.g., "17.3% CAGR through 2028")
+  - List of key competitors as an array (name actual companies)
+  - List of target customer segments as an array (specific demographic/psychographic profiles)
+  - List of customer pain points as an array (precise problems solved)
+  - Market entry barriers assessment (specific hurdles with mitigation strategies)
+  - Regulatory considerations (name actual regulations if applicable)
+  - Emerging market trends (focus on 2-3 most significant trends)
+  - Overall market score (1-10)
+  - Market opportunity score (1-10)
+  - Target audience score (1-10)
+  - Competitive advantage score (1-10)
+  - Scalability score (1-10)
+  - Potential risks (be specific about likely challenges)
+  - Strategic recommendations (actionable, specific guidance)
 
-  Ensure your analysis aligns with the fields defined in the market_research table and includes:
-  - keyword_alignment
-  - search_volume
-  - keyword_competition
-  - branded_keyword_potential
-  - non_branded_keyword_potential
-  - exact_match_search_results
-  - competitor_domain_strength
-  - name_length_searchability
-  - unusual_spelling_impact
-  - content_marketing_opportunities
-  - social_media_availability
-  - social_media_discoverability
-  - negative_keyword_associations
-  - negative_search_results
-  - seo_viability_score
-  - seo_recommendations 
+  Provide an exceptional depth of analysis for these finalists to help determine the ultimate brand name selection based on market factors. 

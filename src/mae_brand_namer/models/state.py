@@ -122,6 +122,11 @@ class AppState(TypedDict, total=False):
     seo_recommendations: Optional[str]
     seo_analysis_results: Optional[Dict[str, Any]]
     
+    # Market Research Analysis Fields
+    market_research_results: List[Dict[str, Any]]
+    
+    # Domain Analysis Fields
+    
     # Competitor analysis
     competitor_analysis_results: Dict[str, Dict[str, Any]]
 
@@ -397,6 +402,14 @@ class BrandNameGenerationState(Serializable, BaseModel):
     seo_viability_score: Optional[float] = None
     seo_recommendations: Optional[str] = None
     seo_analysis_results: Optional[Dict[str, Any]] = None
+    
+    # Market Research Analysis Fields
+    market_research_results: List[Dict[str, Any]] = Field(
+        default_factory=list, 
+        description="Market research analysis results for shortlisted brand names"
+    )
+    
+    # Domain Analysis Fields
     
     # Competitor analysis
     competitor_analysis_results: Dict[str, CompetitorAnalysisResult] = Field(

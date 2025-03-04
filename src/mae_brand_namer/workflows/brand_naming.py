@@ -1364,29 +1364,60 @@ async def process_market_research(state: BrandNameGenerationState, agent: Market
     """Process market research analysis with error handling and tracing."""
     try:
         with tracing_v2_enabled():
-            market_research = await agent.analyze_market_potential(
-                run_id=state.run_id,
-                brand_names=[name["brand_name"] for name in state.generated_names],
-                brand_context=getattr(state, "brand_context", {})
-            )
+            # Extract only the shortlisted names from evaluation results
+            shortlisted_names = []
             
-            # IMPORTANT: Match the output_keys defined in tasks.yaml for market research
-            # If we have results, extract the first one for state tracking
-            if market_research and len(market_research) > 0:
-                first_result = market_research[0]
+            # Check if we have evaluation results and shortlisted_names in the state
+            if hasattr(state, "shortlisted_names") and state.shortlisted_names:
+                # Use the explicitly shortlisted names if available
+                shortlisted_names = state.shortlisted_names
+            elif hasattr(state, "evaluation_results") and state.evaluation_results:
+                # Extract shortlisted names from evaluation results
+                for brand_name, eval_data in state.evaluation_results.items():
+                    if eval_data.get("shortlist_status", False):
+                        shortlisted_names.append(brand_name)
+            
+            # If no shortlisted names found through normal means, use a fallback approach
+            if not shortlisted_names and hasattr(state, "generated_names") and state.generated_names:
+                logger.warning("No shortlisted names found, using top 3 names from evaluation results if available")
+                
+                # Try to get top 3 based on overall_score if evaluations exist
+                if hasattr(state, "evaluation_results") and state.evaluation_results:
+                    sorted_names = sorted(
+                        state.evaluation_results.items(),
+                        key=lambda x: x[1].get("overall_score", 0),
+                        reverse=True
+                    )
+                    shortlisted_names = [name for name, _ in sorted_names[:3]]
+                else:
+                    # Last resort: just take the first 3 generated names
+                    logger.warning("No evaluation results found, using first 3 generated names")
+                    shortlisted_names = [name["brand_name"] for name in state.generated_names[:3]]
+            
+            logger.info(f"Conducting market research on {len(shortlisted_names)} shortlisted names: {shortlisted_names}")
+            
+            # Only proceed if we have shortlisted names to analyze
+            if shortlisted_names:
+                market_research = await agent.analyze_market_potential(
+                    run_id=state.run_id,
+                    brand_names=shortlisted_names,
+                    brand_context=getattr(state, "brand_context", {})
+                )
+                
+                # Update state with market research results
                 return {
                     "market_research_results": market_research,
-                    "run_id": state.run_id,
-                    "brand_name": first_result.get("brand_name", ""),
-                    "market_size": first_result.get("market_size", ""),
-                    "growth_potential": first_result.get("growth_potential", ""),
-                    "competitor_analysis": first_result.get("competitor_analysis", ""),
-                    "target_market_fit": first_result.get("target_market_fit", ""),
-                    "market_readiness": first_result.get("market_readiness", "")
+                    "run_id": state.run_id
                 }
             else:
+                logger.error("No brand names available for market research analysis")
                 return {
-                    "market_research_results": []
+                    "market_research_results": [],
+                    "errors": [{
+                        "step": "conduct_market_research",
+                        "error": "No shortlisted brand names available for analysis",
+                        "timestamp": datetime.now().isoformat()
+                    }]
                 }
             
     except Exception as e:
