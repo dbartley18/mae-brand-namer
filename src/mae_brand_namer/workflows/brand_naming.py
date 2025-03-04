@@ -506,6 +506,7 @@ def create_workflow(config: dict) -> StateGraph:
     
     workflow.add_node("process_evaluation", 
         wrap_async_node(lambda state: process_evaluation(state, BrandNameEvaluator(
+            supabase=supabase_manager,
             dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
         )), "process_evaluation")
     )
@@ -800,6 +801,28 @@ async def process_semantic_analysis(state: BrandNameGenerationState, agent: Sema
                         run_id=state.run_id,
                         brand_name=brand_name_data["brand_name"]
                     )
+                    
+                    # Fix boolean fields to ensure they're proper booleans
+                    boolean_fields = ["ambiguity", "irony_or_paradox", "humor_playfulness", 
+                                     "rhyme_rhythm", "alliteration_assonance"]
+                    
+                    for field in boolean_fields:
+                        if field in result:
+                            if isinstance(result[field], str):
+                                # Convert string to boolean based on content
+                                # If it starts with "No" or "Not", it's False, otherwise True
+                                text = result[field].lower()
+                                result[field] = not (
+                                    text.startswith("no") or 
+                                    text.startswith("not") or 
+                                    "no " in text[:15] or
+                                    "none" in text[:15] or
+                                    "not " in text[:15]
+                                )
+                            elif result[field] is None:
+                                # Default to False if None
+                                result[field] = False
+                    
                     semantic_results.append(result)
                 except Exception as e:
                     logger.error(f"Error analyzing brand name {brand_name_data.get('brand_name', '[unknown]')}: {str(e)}")
@@ -860,6 +883,24 @@ async def process_linguistic_analysis(state: BrandNameGenerationState, agent: Li
                         run_id=state.run_id,
                         brand_name=brand_name
                     )
+                    
+                    # Fix the homophones_homographs field to ensure it's a boolean
+                    if "homophones_homographs" in result:
+                        if isinstance(result["homophones_homographs"], str):
+                            # Convert string to boolean based on content
+                            # If it starts with "No" or "Not", it's False, otherwise True
+                            text = result["homophones_homographs"].lower()
+                            result["homophones_homographs"] = not (
+                                text.startswith("no") or 
+                                text.startswith("not") or 
+                                "no " in text[:15] or
+                                "none" in text[:15] or
+                                "not " in text[:15]
+                            )
+                        elif result["homophones_homographs"] is None:
+                            # Default to False if None
+                            result["homophones_homographs"] = False
+                    
                     # Store result with brand name as key
                     linguistic_results[brand_name] = result
                 except Exception as e:
@@ -913,6 +954,24 @@ async def process_cultural_analysis(state: BrandNameGenerationState, agent: Cult
                         run_id=state.run_id,
                         brand_name=brand_name
                     )
+                    
+                    # Fix the body_part_bodily_function_connotations field to ensure it's a boolean
+                    if "body_part_bodily_function_connotations" in result:
+                        if isinstance(result["body_part_bodily_function_connotations"], str):
+                            # Convert string to boolean based on content
+                            # If it starts with "No" or "Not", it's False, otherwise True
+                            text = result["body_part_bodily_function_connotations"].lower()
+                            result["body_part_bodily_function_connotations"] = not (
+                                text.startswith("no") or 
+                                text.startswith("not") or 
+                                "no " in text[:15] or
+                                "none" in text[:15] or
+                                "not " in text[:15]
+                            )
+                        elif result["body_part_bodily_function_connotations"] is None:
+                            # Default to False if None
+                            result["body_part_bodily_function_connotations"] = False
+                    
                     # Store result with brand name as key
                     cultural_results[brand_name] = result
                 except Exception as e:
@@ -1068,9 +1127,46 @@ async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEv
             brand_names = state.generated_names
             
             # Extract results from all analyses
-            semantic_analyses = state.semantic_analysis_results if hasattr(state, "semantic_analysis_results") else []
-            linguistic_analyses = state.linguistic_analysis_results if hasattr(state, "linguistic_analysis_results") else []
-            cultural_analyses = state.cultural_analysis_results if hasattr(state, "cultural_analysis_results") else []
+            semantic_analyses_list = state.semantic_analysis_results if hasattr(state, "semantic_analysis_results") else []
+            linguistic_analyses_raw = state.linguistic_analysis_results if hasattr(state, "linguistic_analysis_results") else {}
+            cultural_analyses_raw = state.cultural_analysis_results if hasattr(state, "cultural_analysis_results") else {}
+            
+            # Convert semantic_analyses from list to dictionary
+            semantic_analyses = {}
+            for analysis in semantic_analyses_list:
+                if "brand_name" in analysis:
+                    brand_name = analysis["brand_name"]
+                    semantic_analyses[brand_name] = {
+                        "analysis": analysis
+                    }
+            
+            # Convert linguistic_analyses to the format expected by the evaluator
+            linguistic_analyses = {}
+            for brand_name, analysis in linguistic_analyses_raw.items():
+                # Convert the LinguisticAnalysisResult object to a dictionary
+                if hasattr(analysis, "dict"):
+                    analysis_dict = analysis.dict()
+                else:
+                    # If it's already a dict or has another structure, use it as is
+                    analysis_dict = analysis
+                
+                linguistic_analyses[brand_name] = {
+                    "analysis": analysis_dict
+                }
+            
+            # Convert cultural_analyses to the format expected by the evaluator
+            cultural_analyses = {}
+            for brand_name, analysis in cultural_analyses_raw.items():
+                # Convert the CulturalAnalysisResult object to a dictionary
+                if hasattr(analysis, "dict"):
+                    analysis_dict = analysis.dict()
+                else:
+                    # If it's already a dict or has another structure, use it as is
+                    analysis_dict = analysis
+                
+                cultural_analyses[brand_name] = {
+                    "analysis": analysis_dict
+                }
             
             # Create brand context from state for the evaluator
             # Even though analyzers don't use brand_context anymore, the evaluator still needs it
@@ -1091,7 +1187,7 @@ async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEv
             }
             
             # Evaluate brand names
-            evaluation_results = await agent.evaluate_brand_names(
+            evaluation_results_list = await agent.evaluate_brand_names(
                 brand_names=[name["brand_name"] for name in brand_names],
                 semantic_analyses=semantic_analyses,
                 linguistic_analyses=linguistic_analyses, 
@@ -1100,15 +1196,71 @@ async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEv
                 brand_context=brand_context
             )
             
-            # Shortlist top brand names
-            shortlisted_names = [result for result in evaluation_results if result.get("shortlist_status") is True]
+            # Convert evaluation_results from list to dictionary and ensure all required fields are present
+            evaluation_results = {}
+            for result in evaluation_results_list:
+                if "brand_name" in result:
+                    brand_name = result["brand_name"]
+                    
+                    # Ensure all required fields are present
+                    required_fields = {
+                        "positioning_strength": "Not evaluated",
+                        "phonetic_harmony": "Not evaluated",
+                        "visual_branding_potential": "Not evaluated",
+                        "storytelling_potential": "Not evaluated",
+                        "rank": 0.0
+                    }
+                    
+                    for field, default_value in required_fields.items():
+                        if field not in result or result[field] is None:
+                            result[field] = default_value
+                    
+                    # Convert shortlist_status to string as required by BrandNameEvaluationResult
+                    if "shortlist_status" in result:
+                        result["shortlist_status"] = "Yes" if result["shortlist_status"] else "No"
+                    else:
+                        result["shortlist_status"] = "No"
+                    
+                    evaluation_results[brand_name] = result
+            
+            # Shortlist top brand names (using the original boolean value before conversion)
+            shortlisted_names = [result["brand_name"] for result in evaluation_results_list if result.get("shortlist_status") is True]
             
             logger.info(f"Evaluated {len(brand_names)} brand names; shortlisted {len(shortlisted_names)}")
             
             # IMPORTANT: Match the output_keys defined in tasks.yaml
             # Create a flattened version of the first evaluation for state tracking
-            if evaluation_results and len(evaluation_results) > 0:
-                first_result = evaluation_results[0]
+            if evaluation_results_list and len(evaluation_results_list) > 0:
+                first_result = evaluation_results_list[0]
+                
+                # Ensure all required fields are present in the first result
+                required_fields = {
+                    "strategic_alignment_score": 0,
+                    "distinctiveness_score": 0,
+                    "competitive_advantage": "",
+                    "brand_fit_score": 0,
+                    "positioning_strength": "Not evaluated",
+                    "memorability_score": 0,
+                    "pronounceability_score": 0,
+                    "meaningfulness_score": 0,
+                    "phonetic_harmony": "Not evaluated",
+                    "visual_branding_potential": "Not evaluated",
+                    "storytelling_potential": "Not evaluated",
+                    "domain_viability_score": 0,
+                    "overall_score": 0,
+                    "shortlist_status": "No",
+                    "evaluation_comments": "",
+                    "rank": 0.0
+                }
+                
+                for field, default_value in required_fields.items():
+                    if field not in first_result or first_result[field] is None:
+                        first_result[field] = default_value
+                
+                # Convert shortlist_status to string for the state
+                if "shortlist_status" in first_result and isinstance(first_result["shortlist_status"], bool):
+                    first_result["shortlist_status"] = "Yes" if first_result["shortlist_status"] else "No"
+                
                 return {
                     "evaluation_results": evaluation_results,
                     "shortlisted_names": shortlisted_names,
@@ -1117,23 +1269,41 @@ async def process_evaluation(state: BrandNameGenerationState, agent: BrandNameEv
                     "distinctiveness_score": first_result.get("distinctiveness_score", 0),
                     "competitive_advantage": first_result.get("competitive_advantage", ""),
                     "brand_fit_score": first_result.get("brand_fit_score", 0),
-                    "positioning_strength": first_result.get("positioning_strength", ""),
+                    "positioning_strength": first_result.get("positioning_strength", "Not evaluated"),
                     "memorability_score": first_result.get("memorability_score", 0),
                     "pronounceability_score": first_result.get("pronounceability_score", 0),
                     "meaningfulness_score": first_result.get("meaningfulness_score", 0),
-                    "phonetic_harmony": first_result.get("phonetic_harmony", ""),
-                    "visual_branding_potential": first_result.get("visual_branding_potential", ""),
-                    "storytelling_potential": first_result.get("storytelling_potential", ""),
+                    "phonetic_harmony": first_result.get("phonetic_harmony", "Not evaluated"),
+                    "visual_branding_potential": first_result.get("visual_branding_potential", "Not evaluated"),
+                    "storytelling_potential": first_result.get("storytelling_potential", "Not evaluated"),
                     "domain_viability_score": first_result.get("domain_viability_score", 0),
                     "overall_score": first_result.get("overall_score", 0),
-                    "shortlist_status": first_result.get("shortlist_status", False),
+                    "shortlist_status": first_result.get("shortlist_status", "No"),
                     "evaluation_comments": first_result.get("evaluation_comments", ""),
-                    "rank": first_result.get("rank", 0)
+                    "rank": first_result.get("rank", 0.0)
                 }
             else:
+                # Return empty results if no evaluations were generated
                 return {
-                    "evaluation_results": [],
-                    "shortlisted_names": []
+                    "evaluation_results": {},
+                    "shortlisted_names": [],
+                    "brand_name": "",
+                    "strategic_alignment_score": 0,
+                    "distinctiveness_score": 0,
+                    "competitive_advantage": "",
+                    "brand_fit_score": 0,
+                    "positioning_strength": "Not evaluated",
+                    "memorability_score": 0,
+                    "pronounceability_score": 0,
+                    "meaningfulness_score": 0,
+                    "phonetic_harmony": "Not evaluated",
+                    "visual_branding_potential": "Not evaluated",
+                    "storytelling_potential": "Not evaluated",
+                    "domain_viability_score": 0,
+                    "overall_score": 0,
+                    "shortlist_status": "No",
+                    "evaluation_comments": "",
+                    "rank": 0.0
                 }
     except Exception as e:
         logger.error(f"Error in process_evaluation: {str(e)}")
@@ -1407,16 +1577,24 @@ if __name__ == "__main__":
     asyncio.run(main()) 
 
 # Special entry point for LangGraph API
-def graph_factory(config):
+def graph_factory(config=None):
     """
     Entry point function for LangGraph API.
     
-    This function takes exactly one argument (a RunnableConfig) as required by the LangGraph API.
+    This function can optionally take a config argument as required by the LangGraph API.
     
     Args:
-        config: RunnableConfig object containing configuration parameters
-        
+        config: Optional configuration object containing configuration parameters
+    
     Returns:
         StateGraph: The configured workflow graph
     """
-    return create_workflow(config) 
+    # Use provided config or create a default one
+    workflow_config = config or {
+        "configurable": {
+            "langsmith_client": None,
+            "default_step_delay": 2.0,
+            "step_delays": None  # Use default step delays
+        }
+    }
+    return create_workflow(workflow_config) 

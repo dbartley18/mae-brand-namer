@@ -6,7 +6,8 @@ import click
 import json
 import sys
 
-from mae_brand_namer.workflows.brand_naming import run_brand_naming_workflow
+# Remove the direct import to avoid circular imports
+# from mae_brand_namer.workflows.brand_naming import run_brand_naming_workflow
 from mae_brand_namer.config.settings import settings
 
 
@@ -29,6 +30,9 @@ def run(prompt, output):
     click.echo("This may take a few minutes to complete...")
     
     try:
+        # Import the function here to avoid circular imports
+        from mae_brand_namer.workflows.brand_naming import run_brand_naming_workflow
+        
         # Run the async workflow in the event loop
         result = asyncio.run(run_brand_naming_workflow(prompt))
         

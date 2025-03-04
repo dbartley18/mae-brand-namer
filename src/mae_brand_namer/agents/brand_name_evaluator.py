@@ -34,8 +34,8 @@ class BrandNameEvaluator:
     
     def __init__(
         self,
-        llm,
         supabase,
+        dependencies=None,
         role: str = "Brand Name Evaluation Expert",
         goal: str = "Comprehensively evaluate brand name candidates based on all analysis",
         backstory: str = "Expert in brand evaluation with cross-disciplinary expertise in linguistics, marketing, and brand strategy.",
@@ -45,24 +45,32 @@ class BrandNameEvaluator:
         Initialize the BrandNameEvaluator expert agent.
         
         Args:
-            llm: LLM for evaluation generation
             supabase: Supabase client for data persistence
+            dependencies: Optional dependencies
             role (str): Agent role identity
             goal (str): Agent goal description
             backstory (str): Agent backstory for context
         """
+        # Initialize dependencies
+        self.supabase = supabase
+        if dependencies:
+            self.langsmith = dependencies.langsmith
+        else:
+            self.langsmith = None
+            
+        # Initialize Gemini model with tracing
         self.llm = ChatGoogleGenerativeAI(
             model=settings.model_name,
-            temperature=settings.model_temperature,
+            temperature=1.0,  # Balanced temperature for analysis
             google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,
             callbacks=settings.get_langsmith_callbacks()
         )
-        self.supabase = supabase
+        
+        # Agent identity
         self.role = role
         self.goal = goal
         self.backstory = backstory
-        self.max_retries = settings.max_retries
         
         logger.info(f"Initialized {self.role} with goal: {self.goal}")
         
@@ -215,8 +223,11 @@ class BrandNameEvaluator:
             # Generate completion
             response = await self.llm.invoke(prompt)
             
+            # Extract content from AIMessage if needed
+            content = response.content if hasattr(response, "content") else str(response)
+            
             # Parse the response according to the defined schema
-            evaluation_result = self.output_parser.parse(response.content)
+            evaluation_result = self.output_parser.parse(content)
             
             # Ensure numeric values are properly typed and constrained
             numeric_fields = [
@@ -234,6 +245,9 @@ class BrandNameEvaluator:
                     except (ValueError, TypeError):
                         # Default to middle score if conversion fails
                         evaluation_result[field] = 5
+                else:
+                    # Add missing numeric fields with default value
+                    evaluation_result[field] = 5
             
             # Ensure shortlist_status is a boolean
             if "shortlist_status" in evaluation_result:
@@ -246,6 +260,16 @@ class BrandNameEvaluator:
                 # Default to False if missing
                 evaluation_result["shortlist_status"] = False
             
+            # Ensure required string fields are present
+            string_fields = [
+                "competitive_advantage", "positioning_strength", "phonetic_harmony",
+                "visual_branding_potential", "storytelling_potential", "evaluation_comments"
+            ]
+            
+            for field in string_fields:
+                if field not in evaluation_result or not evaluation_result[field]:
+                    evaluation_result[field] = "Not evaluated"
+            
             return evaluation_result
             
         except Exception as e:
@@ -256,63 +280,98 @@ class BrandNameEvaluator:
                 "distinctiveness_score": 5,
                 "competitive_advantage": "Error in evaluation",
                 "brand_fit_score": 5,
+                "positioning_strength": "Not evaluated",
+                "memorability_score": 5,
+                "pronounceability_score": 5,
+                "meaningfulness_score": 5,
+                "phonetic_harmony": "Not evaluated",
+                "visual_branding_potential": "Not evaluated",
+                "storytelling_potential": "Not evaluated",
+                "domain_viability_score": 5,
                 "overall_score": 5,
                 "shortlist_status": False,
                 "evaluation_comments": f"Error during evaluation: {str(e)}",
+                "rank": 5
             }
 
-    async def _store_in_supabase(self, run_id: str, evaluation_results: Dict[str, Any]) -> None:
+    async def _store_in_supabase(self, run_id: str, evaluation: Dict[str, Any]) -> None:
         """
-        Store the evaluation results in Supabase.
+        Store evaluation results in Supabase.
         
         Args:
-            run_id (str): Unique identifier for this workflow run
-            evaluation_results (Dict[str, Any]): The evaluation results to store
+            run_id: Unique identifier for this workflow run
+            evaluation: Evaluation results to store
         """
-        # Setup event loop if not available
         try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            # No event loop, create one
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            # Ensure required fields are present
+            if "brand_name" not in evaluation:
+                logger.error("Cannot store evaluation: missing brand_name field")
+                return
+                
+            # Ensure run_id is set
+            evaluation["run_id"] = run_id
             
-        try:
-            # Ensure numeric fields are properly typed and constrained
-            numeric_fields = [
+            # Create a copy of the evaluation to modify for Supabase
+            supabase_data = evaluation.copy()
+            
+            # Convert shortlist_status from string to boolean for Supabase
+            if "shortlist_status" in supabase_data:
+                if isinstance(supabase_data["shortlist_status"], str):
+                    supabase_data["shortlist_status"] = supabase_data["shortlist_status"].lower() in ["yes", "true", "1", "t", "y"]
+            else:
+                supabase_data["shortlist_status"] = False
+            
+            # Convert numeric scores to integers and ensure they're within range 1-10
+            integer_score_fields = [
                 "strategic_alignment_score", "distinctiveness_score", "brand_fit_score",
                 "memorability_score", "pronounceability_score", "meaningfulness_score",
-                "domain_viability_score", "overall_score", "rank"
+                "domain_viability_score", "overall_score"
             ]
-            for field in numeric_fields:
-                if field in evaluation_results:
+            
+            for field in integer_score_fields:
+                if field in supabase_data:
                     try:
-                        # Convert to int and constrain between 1-10
-                        value = int(float(evaluation_results[field]))
-                        evaluation_results[field] = max(1, min(10, value))  # Clamp between 1-10
+                        # Convert to integer
+                        value = int(float(supabase_data[field]))
+                        # Constrain to range 1-10
+                        supabase_data[field] = max(1, min(10, value))
                     except (ValueError, TypeError):
-                        evaluation_results[field] = 5  # Default to middle score
-            
-            # Ensure shortlist_status is a boolean
-            if "shortlist_status" in evaluation_results:
-                status = evaluation_results["shortlist_status"]
-                if isinstance(status, str):
-                    evaluation_results["shortlist_status"] = status.lower() in ["true", "yes", "1", "t", "y"]
+                        # Default to middle value if conversion fails
+                        supabase_data[field] = 5
                 else:
-                    evaluation_results["shortlist_status"] = bool(status)
-            else:
-                # Default to False if missing
-                evaluation_results["shortlist_status"] = False
-                
-            # Add timestamp for created_at if needed
-            if "created_at" not in evaluation_results:
-                evaluation_results["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    # Set default value if missing
+                    supabase_data[field] = 5
             
-            # Insert into brand_name_evaluation table
-            await self.supabase.table("brand_name_evaluation").insert(evaluation_results).execute()
-            logger.info(f"Stored brand name evaluation for '{evaluation_results.get('brand_name', 'unknown')}' with run_id '{run_id}'")
+            # Ensure rank is numeric but doesn't need to be an integer
+            if "rank" in supabase_data and not isinstance(supabase_data["rank"], (int, float)):
+                try:
+                    supabase_data["rank"] = float(supabase_data["rank"])
+                except (ValueError, TypeError):
+                    supabase_data["rank"] = 5.0
+            elif "rank" not in supabase_data:
+                supabase_data["rank"] = 5.0
+            
+            # Ensure required string fields are present
+            string_fields = [
+                "competitive_advantage", "positioning_strength", "phonetic_harmony",
+                "visual_branding_potential", "storytelling_potential", "evaluation_comments"
+            ]
+            
+            for field in string_fields:
+                if field not in supabase_data or not supabase_data[field]:
+                    supabase_data[field] = "Not evaluated"
+            
+            # Add created_at timestamp if not present
+            if "created_at" not in supabase_data:
+                supabase_data["created_at"] = datetime.now().isoformat()
+            
+            # Log the data being inserted
+            logger.info(f"Storing evaluation for brand name '{supabase_data['brand_name']}' with run_id '{run_id}'")
+            
+            # Insert into Supabase
+            result = await self.supabase.table("brand_name_evaluation").insert(supabase_data).execute()
+            logger.info(f"Successfully stored evaluation in Supabase")
             
         except Exception as e:
-            error_msg = f"Error storing evaluation in Supabase: {str(e)}"
-            logger.error(error_msg)
-            raise  # Re-raise to handle in calling function 
+            logger.error(f"Error storing evaluation in Supabase: {str(e)}")
+            # Continue execution even if storage fails 

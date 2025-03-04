@@ -318,6 +318,20 @@ class BrandNameGenerationState(Serializable, BaseModel):
     visual_branding_potential_list: List[str] = Field(default_factory=list, description="Visual branding potential for each name")
     name_rankings: List[float] = Field(default_factory=list, description="Ranking scores for each name")
     
+    # Evaluation fields from process_evaluation function
+    strategic_alignment_score: Optional[int] = Field(default=None, description="How well the name aligns with the Brand Identity Brief (1-10)")
+    distinctiveness_score: Optional[int] = Field(default=None, description="How unique the name is compared to competitors (1-10)")
+    competitive_advantage: Optional[str] = Field(default=None, description="Analysis of competitive differentiation")
+    brand_fit_score: Optional[int] = Field(default=None, description="How well the name aligns with brand strategy (1-10)")
+    positioning_strength: Optional[str] = Field(default=None, description="Effectiveness in market positioning")
+    meaningfulness_score: Optional[int] = Field(default=None, description="Clarity and positive connotation (1-10)")
+    phonetic_harmony: Optional[str] = Field(default=None, description="Analysis of sound patterns and flow")
+    storytelling_potential: Optional[str] = Field(default=None, description="Capacity for brand narrative development")
+    domain_viability_score: Optional[int] = Field(default=None, description="Initial domain name availability assessment (1-10)")
+    overall_score: Optional[int] = Field(default=None, description="Total weighted evaluation score (1-10)")
+    shortlist_status: Optional[bool] = Field(default=None, description="Whether selected for final round")
+    evaluation_comments: Optional[str] = Field(default=None, description="Detailed rationale for evaluation")
+    
     # Process monitoring
     task_statuses: Dict[str, TaskStatus] = Field(
         default_factory=dict,
