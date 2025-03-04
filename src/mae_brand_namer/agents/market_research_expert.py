@@ -43,53 +43,27 @@ class MarketResearchExpert:
             raise
         
         # Initialize Gemini model with tracing
-        self.llm = ChatGoogleGenerativeAI(
-            model=settings.model_name,
-            temperature=0.3,  # Lower temperature for more consistent analysis
-            google_api_key=settings.google_api_key,
-            convert_system_message_to_human=True,
-            callbacks=settings.get_langsmith_callbacks()
-        )
-        
-        # Define output schemas for structured parsing
-        self.output_schemas = [
-            # Core analysis fields
-            ResponseSchema(name="market_opportunity", description="Analysis of market opportunity and potential"),
-            ResponseSchema(name="target_audience_fit", description="Analysis of fit with target audience"),
-            ResponseSchema(name="competitive_analysis", description="Analysis of competitive landscape"),
-            ResponseSchema(name="market_viability", description="Assessment of market viability"),
+        try:
+            self.llm = ChatGoogleGenerativeAI(
+                model=settings.model_name,  # Use the correct model name from settings
+                temperature=0.3,  # Lower temperature for more consistent analysis
+                google_api_key=settings.gemini_api_key,  # Use the correct API key from settings
+                convert_system_message_to_human=True,
+                top_k=40,
+                top_p=0.95
+            )
+            logger.info("Successfully initialized ChatGoogleGenerativeAI for Market Research Expert")
+        except Exception as e:
+            logger.error(f"Failed to initialize ChatGoogleGenerativeAI: {str(e)}")
+            raise ValueError(f"Could not initialize LLM: {str(e)}")
             
-            # Numeric scores
-            ResponseSchema(name="market_opportunity_score", description="Score from 1-10 for market opportunity", type="number"),
-            ResponseSchema(name="target_audience_score", description="Score from 1-10 for target audience fit", type="number"),
-            ResponseSchema(name="competitive_advantage_score", description="Score from 1-10 for competitive advantage", type="number"),
-            ResponseSchema(name="scalability_score", description="Score from 1-10 for scalability potential", type="number"),
-            ResponseSchema(name="overall_market_score", description="Overall market viability score from 1-10", type="number"),
-            
-            # Industry information
-            ResponseSchema(name="industry_name", description="Name of the industry the brand operates in"),
-            ResponseSchema(name="market_size", description="Estimated size of the market"),
-            ResponseSchema(name="market_growth_rate", description="Estimated growth rate of the market"),
-            
-            # Competitive landscape
-            ResponseSchema(name="key_competitors", description="List of main competitors in the market", type="array"),
-            
-            # Customer information
-            ResponseSchema(name="target_customer_segments", description="Primary customer segments targeted", type="array"),
-            ResponseSchema(name="customer_pain_points", description="Key pain points the brand addresses", type="array"),
-            
-            # Market entry considerations
-            ResponseSchema(name="market_entry_barriers", description="Barriers to market entry for the brand"),
-            ResponseSchema(name="regulatory_considerations", description="Relevant regulatory factors to consider"),
-            
-            # Future outlook
-            ResponseSchema(name="emerging_trends", description="Emerging market trends relevant to the brand"),
-            
-            # Additional analysis
-            ResponseSchema(name="potential_risks", description="Potential market risks for the brand"),
-            ResponseSchema(name="recommendations", description="Strategic market recommendations")
-        ]
-        self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
+        # Initialize output parser for structured data
+        try:
+            self.output_parser = self._create_output_parser()
+            logger.info("Successfully initialized output parser for market research")
+        except Exception as e:
+            logger.error(f"Failed to initialize output parser: {str(e)}")
+            raise
 
     async def analyze_market_potential(
         self,
@@ -117,77 +91,206 @@ class MarketResearchExpert:
             return []
         
         try:
-            # Try to get the running event loop, create one if it doesn't exist
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+            # Create system message
+            system_message = SystemMessage(content=self.system_prompt.format())
+            
+            # Log the names being analyzed
+            logger.info(f"Shortlisted names for analysis: {brand_names}")
+            
+            # For 3 or fewer names, analyze each individually for deeper analysis
+            if len(brand_names) <= 3:
+                logger.info(f"Performing individual deep analysis for {len(brand_names)} shortlisted names")
+                all_results = []
                 
-            with tracing_v2_enabled():
-                # For 3 or fewer names, analyze each individually for deeper analysis
-                if len(brand_names) <= 3:
-                    logger.info(f"Performing individual deep analysis for {len(brand_names)} brand names")
-                    all_results = []
-                    
-                    for brand_name in brand_names:
-                        # Format the research prompt for a single name
-                        research_prompt = self._format_research_prompt(
-                            [brand_name],
-                            brand_context
-                        )
-                        
-                        # Get the output from the LLM
-                        chain = self._create_chain()
-                        output = await chain.ainvoke({"input": research_prompt})
-                        content = output.content if hasattr(output, "content") else str(output)
-                        
-                        # Parse the output to extract the JSON
-                        try:
-                            results = self._parse_llm_output(content, brand_names=[brand_name])
-                            if results and len(results) > 0:
-                                all_results.extend(results)
-                            else:
-                                logger.warning(f"Failed to parse market research results for {brand_name}")
-                        except Exception as e:
-                            logger.error(f"Error parsing market research results for {brand_name}: {str(e)}")
-                    
-                    return all_results
-                else:
-                    # For more names, analyze them as a batch
-                    # Format the research prompt with all brand names
-                    research_prompt = self._format_research_prompt(
-                        brand_names,
-                        brand_context
+                for brand_name in brand_names:
+                    # Format the research prompt for a single name
+                    formatted_prompt = self.research_prompt.format(
+                        format_instructions=self.output_parser.get_format_instructions(),
+                        brand_names=[brand_name],  # Analyze one shortlisted name at a time
+                        brand_context=brand_context
                     )
                     
-                    # Get the output from the LLM
-                    chain = self._create_chain()
-                    output = await chain.ainvoke({"input": research_prompt})
-                    content = output.content if hasattr(output, "content") else str(output)
+                    # Create human message
+                    human_message = HumanMessage(content=formatted_prompt)
                     
-                    # Parse the output to extract the JSON
-                    results = self._parse_llm_output(content, brand_names=brand_names)
-                    
-                    # Add common fields (run_id, timestamp, etc.) to each result
-                    for result in results:
-                        if "brand_name" in result and result["brand_name"] in brand_names:
-                            # Store in Supabase if client is available
+                    # Get response from LLM
+                    try:
+                        response = await self.llm.ainvoke([system_message, human_message])
+                        logger.info(f"Got response for brand name: {brand_name}")
+                        
+                        # Parse the structured output
+                        try:
+                            parsed_output = self.output_parser.parse(response.content)
+                            parsed_output["brand_name"] = brand_name
+                            parsed_output["run_id"] = run_id
+                            parsed_output["timestamp"] = datetime.now().isoformat()
+                            parsed_output["version"] = "1.0"  # Hardcoded version since it's not in settings
+                            
+                            # Store in Supabase
                             if self.supabase:
-                                try:
-                                    # Add run_id and timestamp
-                                    result["run_id"] = run_id
-                                    result["timestamp"] = datetime.now().isoformat()
-                                    result["version"] = settings.version
-                                    
-                                    await self._store_in_supabase(run_id, result)
-                                except Exception as e:
-                                    logger.error(f"Failed to store market research in Supabase: {str(e)}")
+                                await self._store_in_supabase(run_id, parsed_output)
+                                
+                            all_results.append(parsed_output)
+                            logger.info(f"Successfully processed market research for {brand_name}")
+                        except Exception as parse_error:
+                            logger.error(f"Error parsing market research results for {brand_name}: {str(parse_error)}")
+                            # Create a minimal result for this name
+                            minimal_result = {
+                                "brand_name": brand_name,
+                                "run_id": run_id,
+                                "timestamp": datetime.now().isoformat(),
+                                "version": "1.0",  # Hardcoded version
+                                "market_opportunity": "Error parsing analysis",
+                                "target_audience_fit": "Error parsing analysis",
+                                "competitive_analysis": "Error parsing analysis",
+                                "market_viability": "Error parsing analysis",
+                                "overall_market_score": 5.0
+                            }
+                            all_results.append(minimal_result)
+                    except Exception as llm_error:
+                        logger.error(f"LLM invocation error for {brand_name}: {str(llm_error)}")
+                        # Add a placeholder result
+                        all_results.append({
+                            "brand_name": brand_name,
+                            "run_id": run_id,
+                            "timestamp": datetime.now().isoformat(),
+                            "version": "1.0",  # Hardcoded version
+                            "market_opportunity": "Unable to analyze due to LLM error",
+                            "target_audience_fit": "Unable to analyze due to LLM error",
+                            "competitive_analysis": "Unable to analyze due to LLM error",
+                            "market_viability": "Unable to analyze due to LLM error",
+                            "overall_market_score": 5.0
+                        })
+                    
+                    # Brief pause between requests to avoid rate limiting
+                    await asyncio.sleep(1.0)
+                
+                return all_results
+            else:
+                # For more names, analyze them as a batch
+                logger.info(f"Performing batch analysis for {len(brand_names)} shortlisted names")
+                
+                # Format the research prompt for all names at once
+                formatted_prompt = self.research_prompt.format(
+                    format_instructions=self.output_parser.get_format_instructions(),
+                    brand_names=brand_names,
+                    brand_context=brand_context
+                )
+                
+                # Create human message
+                human_message = HumanMessage(content=formatted_prompt)
+                
+                # Get response from LLM
+                response = await self.llm.ainvoke([system_message, human_message])
+                
+                # Parse the response - since we may get multiple analyses
+                content = response.content
+                
+                # Handle cases where we get a single analysis vs multiple
+                results = []
+                
+                try:
+                    # Extract JSON content if wrapped in markdown code blocks
+                    if "```json" in content:
+                        json_matches = re.findall(r'```json\n(.*?)\n```', content, re.DOTALL)
+                        if json_matches:
+                            content = json_matches[0]
+                            
+                    # Try parsing as a JSON array directly
+                    try:
+                        json_data = json.loads(content)
+                        if isinstance(json_data, list):
+                            results = json_data
+                        else:
+                            # Single result
+                            results = [json_data]
+                    except json.JSONDecodeError:
+                        # If not a JSON array, try parsing as individual JSON objects
+                        # This might happen if the model returns multiple JSON objects
+                        if len(brand_names) > 1:
+                            # Try to split by brand name and parse each section
+                            for brand_name in brand_names:
+                                brand_pattern = re.compile(
+                                    rf'(?:Analysis for|Brand Name:|\*\*)\s*{re.escape(brand_name)}.*?'
+                                    r'(.*?)(?=(?:Analysis for|Brand Name:|\*\*)\s*\w+|\Z)',
+                                    re.DOTALL | re.IGNORECASE
+                                )
+                                matches = brand_pattern.findall(content)
+                                if matches:
+                                    for match in matches:
+                                        # Try to extract JSON from this section
+                                        json_pattern = re.compile(r'\{.*?\}', re.DOTALL)
+                                        json_matches = json_pattern.findall(match)
+                                        if json_matches:
+                                            for json_str in json_matches:
+                                                try:
+                                                    parsed = json.loads(json_str)
+                                                    parsed["brand_name"] = brand_name
+                                                    results.append(parsed)
+                                                    break  # Take the first valid JSON for this brand
+                                                except json.JSONDecodeError:
+                                                    continue
+                        
+                        # If we still don't have parsed outputs, fall back to the output parser
+                        if not results:
+                            # Use the output parser as fallback for a single analysis
+                            parsed = self.output_parser.parse(content)
+                            if brand_names and len(brand_names) == 1:
+                                parsed["brand_name"] = brand_names[0]
+                            results = [parsed]
+                    
+                    # Process each parsed output
+                    for idx, parsed_output in enumerate(results):
+                        # Make sure we have a brand name
+                        if "brand_name" not in parsed_output and brand_names:
+                            if len(results) == len(brand_names):
+                                # Assign brand names in order
+                                parsed_output["brand_name"] = brand_names[idx]
+                            elif idx < len(brand_names):
+                                # Assign by index if possible
+                                parsed_output["brand_name"] = brand_names[idx]
+                            else:
+                                # Just use the first name as fallback
+                                parsed_output["brand_name"] = brand_names[0]
+                        
+                        # Add common fields
+                        parsed_output["run_id"] = run_id
+                        parsed_output["timestamp"] = datetime.now().isoformat()
+                        parsed_output["version"] = "1.0"  # Hardcoded version since it's not in settings
+                        
+                        # Store in Supabase
+                        if self.supabase and "brand_name" in parsed_output:
+                            await self._store_in_supabase(run_id, parsed_output)
                     
                     return results
+                except Exception as parsing_error:
+                    logger.error(f"Error parsing multiple analyses: {str(parsing_error)}")
+                    # Fall back to creating minimal results for each name
+                    return [{
+                        "brand_name": name,
+                        "run_id": run_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "version": "1.0",  # Hardcoded version
+                        "market_opportunity": "Error parsing analysis",
+                        "target_audience_fit": "Error parsing analysis",
+                        "competitive_analysis": "Error parsing analysis",
+                        "market_viability": "Error parsing analysis",
+                        "overall_market_score": 5.0
+                    } for name in brand_names]
         except Exception as e:
             logger.error(f"Failed to analyze market potential: {str(e)}")
-            return []
+            # Return minimal placeholder results
+            return [{
+                "brand_name": name,
+                "run_id": run_id,
+                "timestamp": datetime.now().isoformat(),
+                "version": "1.0",  # Hardcoded version
+                "market_opportunity": "Failed to analyze due to error",
+                "target_audience_fit": "Failed to analyze due to error",
+                "competitive_analysis": "Failed to analyze due to error",
+                "market_viability": "Failed to analyze due to error",
+                "overall_market_score": 5.0
+            } for name in brand_names]
 
     async def _store_in_supabase(self, run_id: str, analysis_data: Dict[str, Any]) -> None:
         """
@@ -265,7 +368,7 @@ class MarketResearchExpert:
                 extra={
                     "run_id": run_id,
                     "error": str(e),
-                    "data": analysis_data
+                    "brand_name": analysis_data.get("brand_name", "unknown")
                 }
             )
             raise ValueError(f"Error preparing market research data: {str(e)}")
@@ -276,22 +379,25 @@ class MarketResearchExpert:
                 extra={
                     "run_id": run_id,
                     "error": str(e),
-                    "data": supabase_data
+                    "brand_name": supabase_data.get("brand_name", "unknown")
                 }
             )
             raise
     
     def _ensure_array(self, value):
-        """Ensures the value is in array format for PostgreSQL ARRAY columns."""
-        if value is None:
-            return None
-        
+        """Safely convert different data types to arrays for PostgreSQL."""
+        # If already a list, return as is
         if isinstance(value, list):
             return value
-        
+            
+        # If None, return an empty list
+        if value is None:
+            return []
+            
+        # If a string, try to parse as JSON first
         if isinstance(value, str):
-            # If it's a string, check if it might be a JSON array
             try:
+                # Try parsing as JSON
                 parsed = json.loads(value)
                 if isinstance(parsed, list):
                     return parsed
@@ -308,158 +414,6 @@ class MarketResearchExpert:
                 
         # Fallback for any other type
         return [str(value)] 
-
-    def _create_chain(self):
-        """Create a chain with the LLM and prompts."""
-        try:
-            return ChatGoogleGenerativeAI(
-                model=settings.gemini_model,
-                google_api_key=settings.gemini_api_key,
-                temperature=0.2,
-                top_k=40,
-                top_p=0.95,
-                max_output_tokens=settings.max_output_tokens
-            )
-        except Exception as e:
-            logger.error(f"Error creating LLM chain: {str(e)}")
-            raise ValueError(f"Failed to create LLM chain: {str(e)}")
-            
-    def _format_research_prompt(self, brand_names: List[str], brand_context: Dict[str, Any]) -> str:
-        """
-        Format the research prompt for market analysis.
-        
-        Args:
-            brand_names: List of brand names to analyze
-            brand_context: Dictionary containing brand context information
-            
-        Returns:
-            Formatted prompt string
-        """
-        try:
-            # Load the research prompt template
-            research_prompt = load_prompt(
-                str(Path(__file__).parent / "prompts" / "market_research" / "research.yaml")
-            )
-            
-            # Load the output parser schema template
-            output_parser = self._create_output_parser()
-            
-            # Format the prompt with all required variables
-            formatted_prompt = research_prompt.format(
-                format_instructions=output_parser.get_format_instructions(),
-                brand_names=brand_names,
-                brand_context=brand_context
-            )
-            
-            return formatted_prompt
-        except Exception as e:
-            logger.error(f"Error formatting research prompt: {str(e)}")
-            raise ValueError(f"Failed to format research prompt: {str(e)}")
-            
-    def _parse_llm_output(self, content: str, brand_names: List[str]) -> List[Dict[str, Any]]:
-        """
-        Parse the LLM output to extract structured data.
-        
-        Args:
-            content: Raw content from the LLM
-            brand_names: List of brand names that were analyzed
-            
-        Returns:
-            List of dictionaries with parsed results
-        """
-        parsed_outputs = []
-        
-        # Create an output parser as fallback
-        output_parser = self._create_output_parser()
-        
-        try:
-            # Extract JSON content if wrapped in markdown code blocks
-            if "```json" in content:
-                json_matches = re.findall(r'```json\n(.*?)\n```', content, re.DOTALL)
-                if json_matches:
-                    content = json_matches[0]
-                    
-            # Try parsing as a JSON array directly
-            try:
-                json_data = json.loads(content)
-                if isinstance(json_data, list):
-                    parsed_outputs = json_data
-                else:
-                    # Single result
-                    parsed_outputs = [json_data]
-            except json.JSONDecodeError:
-                # If not a JSON array, try parsing as individual JSON objects
-                # This might happen if the model returns multiple JSON objects
-                if len(brand_names) > 1:
-                    # Try to split by brand name and parse each section
-                    for brand_name in brand_names:
-                        brand_pattern = re.compile(
-                            rf'(?:Analysis for|Brand Name:|\*\*)\s*{re.escape(brand_name)}.*?'
-                            r'(.*?)(?=(?:Analysis for|Brand Name:|\*\*)\s*\w+|\Z)',
-                            re.DOTALL | re.IGNORECASE
-                        )
-                        matches = brand_pattern.findall(content)
-                        if matches:
-                            for match in matches:
-                                # Try to extract JSON from this section
-                                json_pattern = re.compile(r'\{.*?\}', re.DOTALL)
-                                json_matches = json_pattern.findall(match)
-                                if json_matches:
-                                    for json_str in json_matches:
-                                        try:
-                                            parsed = json.loads(json_str)
-                                            parsed["brand_name"] = brand_name
-                                            parsed_outputs.append(parsed)
-                                            break  # Take the first valid JSON for this brand
-                                        except json.JSONDecodeError:
-                                            continue
-                
-                # If we still don't have parsed outputs, fall back to the output parser
-                if not parsed_outputs:
-                    # Use the output parser as fallback for a single analysis
-                    try:
-                        parsed = output_parser.parse(content)
-                        if brand_names and len(brand_names) == 1:
-                            parsed["brand_name"] = brand_names[0]
-                        parsed_outputs = [parsed]
-                    except Exception as parser_error:
-                        logger.error(f"Output parser failed: {str(parser_error)}")
-                        # Last resort - create a minimal entry
-                        if brand_names:
-                            parsed_outputs = [{
-                                "brand_name": name,
-                                "market_opportunity": "Unable to parse analysis",
-                                "target_audience_fit": "Unable to parse analysis",
-                                "overall_market_score": 5
-                            } for name in brand_names]
-            
-            # Process each parsed output to ensure it has a brand name
-            for idx, parsed_output in enumerate(parsed_outputs):
-                # Make sure we have a brand name
-                if "brand_name" not in parsed_output and brand_names:
-                    if len(parsed_outputs) == len(brand_names):
-                        # Assign brand names in order
-                        parsed_output["brand_name"] = brand_names[idx]
-                    elif idx < len(brand_names):
-                        # Assign by index if possible
-                        parsed_output["brand_name"] = brand_names[idx]
-                    else:
-                        # Just use the first name as fallback
-                        parsed_output["brand_name"] = brand_names[0]
-                        
-            return parsed_outputs
-            
-        except Exception as parsing_error:
-            logger.error(f"Error parsing output: {str(parsing_error)}")
-            # Return minimal data as fallback
-            if brand_names:
-                return [{
-                    "brand_name": name,
-                    "market_opportunity": "Error parsing analysis",
-                    "target_audience_fit": "Error parsing analysis", 
-                    "overall_market_score": 5
-                } for name in brand_names]
-            return []
 
     def _create_output_parser(self):
         """Create the output parser for structured data."""
@@ -540,6 +494,14 @@ class MarketResearchExpert:
             ResponseSchema(
                 name="target_audience_fit",
                 description="Analysis of how well the brand fits the target audience"
+            ),
+            ResponseSchema(
+                name="competitive_analysis",
+                description="Analysis of the competitive landscape and the brand's position within it"
+            ),
+            ResponseSchema(
+                name="market_viability",
+                description="Assessment of the brand's long-term market viability and potential"
             )
         ]
         

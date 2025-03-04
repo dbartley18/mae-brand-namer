@@ -1,7 +1,7 @@
 _type: prompt
 input_variables: ["format_instructions", "brand_name", "brand_context"]
 template: |
-  Conduct a comprehensive domain analysis for the following brand name:
+  Analyze the domain strategy for the following shortlisted brand name:
 
   Brand Name:
   {brand_name}
@@ -9,52 +9,16 @@ template: |
   Brand Context:
   {brand_context}
 
-  Analyze across these dimensions:
+  Important: You are only analyzing shortlisted names that have already passed initial screening.
+  The brand context may contain real domain availability data from API checks.
+  If domain data is provided, use it as the ground truth for domain availability and incorporate
+  it into your analysis. This includes whether the primary .com domain is available, alternative
+  available domains, and available TLDs.
 
-  1. Domain Availability
-     - Primary TLD availability (.com, .net, .org)
-     - Country-specific TLD options
-     - Industry-relevant TLD options
-     - New gTLD opportunities
-     - Historical domain usage
-     - Domain age and history
-     - Previous registrations
-
-  2. Digital Brand Protection
-     - Similar domain registrations
-     - Trademark conflicts
-     - Cybersquatting risks
-     - Domain squatting history
-     - Brand protection recommendations
-     - Registration strategy
-     - Portfolio management approach
-
-  3. Technical Infrastructure
-     - DNS configuration requirements
-     - SSL/TLS certificate implications
-     - Email deliverability assessment
-     - SPF/DKIM compatibility
-     - Mobile optimization potential
-     - CDN compatibility
-     - Infrastructure scalability
-
-  4. Security Considerations
-     - SSL implementation complexity
-     - Security certificate requirements
-     - Email security implications
-     - Domain security best practices
-     - DNSSEC requirements
-     - Security monitoring needs
-     - Incident response planning
-
-  5. Implementation Strategy
-     - Registration process
-     - DNS setup requirements
-     - Email configuration
-     - Security implementation
-     - Monitoring setup
-     - Maintenance requirements
-     - Cost implications
+  KEY ANALYSIS BOUNDARIES:
+  1. When analyzing SEO keyword relevance, focus ONLY on how keywords appear in the domain name itself, not broader SEO implications
+  2. For social media availability, focus ONLY on generating appropriate handle formats that match the domain name
+  3. When evaluating scalability and future-proofing, focus ONLY on the domain's ability to accommodate business expansion via subdomains, not market scalability
 
   Format your analysis according to this schema:
   {format_instructions}

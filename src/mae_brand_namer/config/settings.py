@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     supabase_service_key: Optional[str] = None
     supabase_timeout: int = 10
     
+    # RapidAPI configuration
+    rapid_api_key: Optional[str] = None
+    
     # Report configuration
     template_dir: str = "./templates"
     report_template: str = "report_template.md"
@@ -47,6 +50,10 @@ class Settings(BaseSettings):
     # Graph configuration
     graph_name: str = "brand-naming-workflow"
     graph_description: str = "Brand naming workflow using expert agents"
+    
+    # API configuration for RapidAPI services
+    username_hunter_host: Optional[str] = "username-hunter-api.p.rapidapi.com"
+    domainr_host: Optional[str] = "domainr.p.rapidapi.com"
     
     # Helper methods
     def get_langsmith_callbacks(self):

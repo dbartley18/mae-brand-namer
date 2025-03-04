@@ -11,6 +11,7 @@ create table if not exists process_logs (
     input_size_kb integer,
     output_size_kb integer,
     error_message text,
+    error_details jsonb,
     retry_count integer default 0,
     last_retry_at timestamp with time zone,
     retry_status text check (retry_status in ('pending', 'exhausted', null)),

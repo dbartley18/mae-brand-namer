@@ -7,6 +7,7 @@ import traceback
 
 from langchain.callbacks import tracing_enabled
 from supabase import create_client, Client
+from postgrest.exceptions import APIError
 from ..utils.logging import get_logger
 from ..config.settings import settings
 from ..utils.supabase_utils import SupabaseManager
@@ -246,6 +247,29 @@ class ProcessSupervisor:
             # Ensure the run_id exists in workflow_runs table first
             await self._ensure_workflow_run_exists(run_id)
             
+            # Extract error details from the exception if available
+            error_details = {}
+            
+            # Check for context attribute on the error object
+            if hasattr(error, 'context'):
+                error_details['context'] = error.context
+                
+            # Add error type information
+            error_details['error_type'] = type(error).__name__
+            
+            # If error has args, include them
+            if hasattr(error, 'args') and error.args:
+                error_details['args'] = [str(arg) for arg in error.args]
+                
+            # For APIError specifically, extract more details
+            if isinstance(error, APIError):
+                if hasattr(error, 'details'):
+                    error_details['api_details'] = error.details
+                if hasattr(error, 'code'):
+                    error_details['code'] = error.code
+                if hasattr(error, 'hint'):
+                    error_details['hint'] = error.hint
+                    
             # Update the process_logs record
             await self.supabase.table("process_logs").upsert({
                 "run_id": run_id,
@@ -253,6 +277,7 @@ class ProcessSupervisor:
                 "task_name": task_name,
                 "status": "error",
                 "error_message": str(error),
+                "error_details": error_details,
                 "retry_count": retry_count,
                 "last_retry_at": current_time.strftime("%Y-%m-%d %H:%M:%S") if should_retry else None,
                 "retry_status": "pending" if should_retry else "exhausted",

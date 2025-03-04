@@ -1,7 +1,7 @@
 _type: prompt
 input_variables: ["format_instructions", "brand_name", "brand_context", "domain_analysis"]
 template: |
-  Conduct a comprehensive SEO analysis for the following brand name:
+  Analyze the SEO potential and online discoverability of the following shortlisted brand name:
 
   Brand Name:
   {brand_name}
@@ -11,6 +11,14 @@ template: |
 
   Domain Analysis:
   {domain_analysis}
+
+  Important: You are only analyzing shortlisted names that have already passed initial screening.
+  Focus on providing detailed online discovery analysis for this specific name.
+
+  KEY ANALYSIS BOUNDARIES:
+  1. When analyzing branded_keyword_potential and non_branded_keyword_potential, focus ONLY on search behavior, not domain aspects
+  2. For social_media_discoverability, focus on how easily findable the brand will be on social platforms, not just handle availability
+  3. Ensure your analysis focuses on content opportunities, search volume, and user intent that drive online discovery
 
   Analyze across these dimensions:
 

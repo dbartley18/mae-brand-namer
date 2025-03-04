@@ -103,7 +103,7 @@ class BrandContextExpert:
         
         # Initialize Gemini model with tracing
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
+            model=settings.model_name,
             temperature=1.0,
             google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,

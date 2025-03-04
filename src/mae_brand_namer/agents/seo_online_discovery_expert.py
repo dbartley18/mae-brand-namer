@@ -1,14 +1,16 @@
 """Expert in analyzing SEO potential and online discoverability of brand names."""
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 from pathlib import Path
 import asyncio
+import requests
+import json
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate, load_prompt
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-from langchain.callbacks import tracing_enabled
+from langchain_core.tracers.context import tracing_v2_enabled
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..config.settings import settings
@@ -53,6 +55,7 @@ class SEOOnlineDiscoveryExpert:
         # Load prompts from YAML files
         prompt_dir = Path(__file__).parent / "prompts" / "seo_discovery"
         self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
+        self.human_prompt = load_prompt(str(prompt_dir / "analysis.yaml"))
         
         # Define output schemas for structured parsing
         self.output_schemas = [
@@ -129,29 +132,6 @@ class SEOOnlineDiscoveryExpert:
             convert_system_message_to_human=True,
             callbacks=[self.langsmith] if self.langsmith else None
         )
-        
-        # Create the prompt template with metadata
-        system_message = SystemMessage(
-            content=self.system_prompt.format(),
-            additional_kwargs={
-                "metadata": {
-                    "agent_type": "seo_analyzer",
-                    "methodology": "Digital Brand Optimization Framework"
-                }
-            }
-        )
-        human_template = (
-            "Analyze the SEO potential and online discoverability of the "
-            "following brand name:\n"
-            "Brand Name: {brand_name}\n"
-            "Brand Context: {brand_context}\n"
-            "\nFormat your analysis according to this schema:\n"
-            "{format_instructions}"
-        )
-        self.prompt = ChatPromptTemplate.from_messages([
-            system_message,
-            HumanMessage(content=human_template)
-        ])
 
     async def analyze_brand_name(
         self,
@@ -159,14 +139,19 @@ class SEOOnlineDiscoveryExpert:
         brand_name: str,
         brand_context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Analyze the SEO potential and online discoverability of a brand name.
+        """
+        Analyze the SEO potential and online discoverability of a shortlisted brand name.
         
-        Evaluates the brand name's potential for search engine optimization,
-        digital marketing effectiveness, and online visibility.
+        This method focuses specifically on online discovery aspects for names that
+        have already passed initial screening:
+        - Search engine findability and keyword potential
+        - Social media availability (verified by API) and discoverability
+        - Search intent alignment and content opportunities
+        - Broader online visibility beyond domain aspects
         
         Args:
             run_id: Unique identifier for this workflow run
-            brand_name: The brand name to analyze
+            brand_name: The shortlisted brand name to analyze
             brand_context: Additional brand context information
             
         Returns:
@@ -176,24 +161,69 @@ class SEOOnlineDiscoveryExpert:
             ValueError: If the analysis fails
         """
         try:
-            with tracing_enabled(
-                tags={
-                    "agent": "SEOOnlineDiscoveryExpert",
-                    "run_id": run_id
-                }
-            ):
+            with tracing_v2_enabled():
                 # Format prompt with parser instructions
-                formatted_prompt = self.prompt.format_messages(
-                    format_instructions=self.output_parser.get_format_instructions(),
-                    brand_name=brand_name,
-                    brand_context=brand_context
+                system_message = SystemMessage(
+                    content=self.system_prompt.format(),
+                    additional_kwargs={
+                        "metadata": {
+                            "agent_type": "seo_analyzer",
+                            "methodology": "Digital Brand Optimization Framework"
+                        }
+                    }
                 )
                 
+                # The domain_analysis variable is expected by the template but may not be available
+                domain_analysis = brand_context.get("domain_analysis", {})
+                
+                human_message = HumanMessage(
+                    content=self.human_prompt.format(
+                        format_instructions=self.output_parser.get_format_instructions(),
+                        brand_name=brand_name,
+                        brand_context=json.dumps(brand_context),
+                        domain_analysis=json.dumps(domain_analysis)
+                    )
+                )
+                
+                formatted_messages = [system_message, human_message]
+                
                 # Get response from LLM
-                response = await self.llm.ainvoke(formatted_prompt)
+                response = await self.llm.ainvoke(formatted_messages)
                 
                 # Parse and validate response
                 analysis = self.output_parser.parse(response.content)
+                
+                # Enforce field boundaries to ensure experts stay in their lanes
+                
+                # Ensure branded_keyword_potential focuses on search behavior
+                if "branded_keyword_potential" in analysis:
+                    branded_text = analysis["branded_keyword_potential"]
+                    if any(term in branded_text.lower() for term in ["domain", "url", "tld", "subdomain"]):
+                        # Redirect focus to search behavior
+                        analysis["branded_keyword_potential"] = f"Potential for '{brand_name}' as a branded search term"
+                
+                # Ensure non_branded_keyword_potential focuses on search behavior
+                if "non_branded_keyword_potential" in analysis:
+                    non_branded_text = analysis["non_branded_keyword_potential"]
+                    if any(term in non_branded_text.lower() for term in ["domain", "url", "tld", "subdomain"]):
+                        # Redirect focus to search behavior
+                        keywords = [word for word in brand_name.lower().split() if len(word) > 3]
+                        if keywords:
+                            analysis["non_branded_keyword_potential"] = f"Potential for generic terms like: {', '.join(keywords)}"
+                        else:
+                            analysis["non_branded_keyword_potential"] = "Limited potential for non-branded keyword advantage"
+                
+                # Check social media availability using Username Hunter API
+                social_media_available, platform_details, discoverability_rating = await self.check_social_media_availability(brand_name)
+                
+                # Update analysis with social media availability data
+                analysis["social_media_availability"] = social_media_available
+                analysis["social_media_discoverability"] = discoverability_rating
+                analysis["social_media_platform_details"] = platform_details  # Additional data for context
+                
+                # Ensure social_media_discoverability focuses on findability, not just availability
+                if analysis["social_media_discoverability"] in ["Available", "Not Available", "Partially Available"]:
+                    analysis["social_media_discoverability"] = discoverability_rating
                 
                 # Store results
                 await self._store_analysis(run_id, brand_name, analysis)
@@ -217,42 +247,157 @@ class SEOOnlineDiscoveryExpert:
         brand_name: str,
         analysis: Dict[str, Any]
     ) -> None:
-        """Store SEO analysis results in Supabase.
-        
-        Args:
-            run_id: Unique identifier for this workflow run
-            brand_name: The analyzed brand name
-            analysis: Analysis results to store
-            
-        Raises:
-            Exception: If storage fails
         """
-        # Setup event loop if not available
+        Store the SEO analysis in Supabase.
+        
+        This method specifically focuses on online discovery aspects:
+        - Search engine optimization metrics and potential
+        - Actual social media availability (verified by API)
+        - Discoverability factors across digital platforms
+        - Search intent and keyword behavior analysis
+        """
         try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            # No event loop, create one
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            # Validate that analysis stays within proper boundaries
             
-        try:
+            # Ensure branded_keyword_potential focuses on search behavior, not domain aspects
+            branded_keyword = analysis.get("branded_keyword_potential", "Moderate")
+            if any(term in branded_keyword.lower() for term in ["domain", "url", "tld"]):
+                logger.warning("branded_keyword_potential contains domain aspects - focusing on search aspects only")
+                branded_keyword = "Moderate"
+                
+            # Ensure non_branded_keyword_potential focuses on search behavior
+            non_branded_keyword = analysis.get("non_branded_keyword_potential", "Moderate")
+            if any(term in non_branded_keyword.lower() for term in ["domain", "url", "tld"]):
+                logger.warning("non_branded_keyword_potential contains domain aspects - focusing on search aspects only")
+                non_branded_keyword = "Moderate"
+                
+            # Ensure social_media_discoverability focuses on findability, not just availability
+            social_discoverability = analysis.get("social_media_discoverability", "Moderate")
+            if social_discoverability in ["Available", "Not Available", "Partially Available"]:
+                logger.warning("social_media_discoverability contains availability info - changing to discoverability rating")
+                social_discoverability = "Moderate"
+            
+            # Prepare data for storage based on the database schema
             data = {
                 "run_id": run_id,
                 "brand_name": brand_name,
                 "timestamp": datetime.now().isoformat(),
-                **analysis
+                
+                # Core SEO metrics - focused on search behavior, not domain aspects
+                "branded_keyword_potential": branded_keyword,
+                "non_branded_keyword_potential": non_branded_keyword,
+                "keyword_competition": analysis.get("keyword_competition", "Moderate"),
+                "competitor_domain_strength": analysis.get("competitor_domain_strength", "Moderate"),
+                
+                # Search characteristics
+                "keyword_alignment": analysis.get("keyword_alignment", ""),
+                "name_length_searchability": analysis.get("name_length_searchability", "Medium"),
+                "search_volume": analysis.get("search_volume", 0),
+                "exact_match_search_results": analysis.get("exact_match_search_results", ""),
+                
+                # Potential issues
+                "negative_keyword_associations": analysis.get("negative_keyword_associations", ""),
+                "negative_search_results": analysis.get("negative_search_results", False),
+                "unusual_spelling_impact": analysis.get("unusual_spelling_impact", False),
+                
+                # Social media aspects (actual availability verified by API)
+                "social_media_availability": analysis.get("social_media_availability", False),
+                "social_media_discoverability": social_discoverability,
+                
+                # Content strategy
+                "content_marketing_opportunities": analysis.get("content_marketing_opportunities", ""),
+                "seo_recommendations": analysis.get("seo_recommendations", ""),
+                
+                # Overall score
+                "seo_viability_score": analysis.get("seo_viability_score", 5.0)
             }
             
-            await self.supabase.table("seo_analysis").insert(data).execute()
+            # Store in Supabase
+            await self.supabase.table("seo_online_discoverability").insert(data).execute()
             logger.info(f"Stored SEO analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
         except Exception as e:
             logger.error(
-                "Error storing SEO analysis",
+                "Error storing SEO analysis in Supabase",
                 extra={
+                    "error": str(e),
                     "run_id": run_id,
-                    "brand_name": brand_name,
-                    "error": str(e)
+                    "brand_name": brand_name
                 }
             )
-            raise 
+            raise
+
+    async def check_social_media_availability(self, brand_name: str) -> Tuple[bool, Dict[str, Any], str]:
+        """
+        Check if a brand name is available on key social media platforms using Username Hunter API.
+        
+        Args:
+            brand_name (str): The brand name to check
+            
+        Returns:
+            Tuple containing:
+            - Boolean indicating overall availability
+            - Dictionary with platform details
+            - Discoverability rating (Easy, Moderate, Difficult)
+        """
+        try:
+            # Strip spaces and special characters for username check
+            username = brand_name.lower().replace(" ", "").replace("-", "")
+            
+            # Setup API request
+            url = "https://username-hunter-api.p.rapidapi.com/hunt/username"
+            
+            querystring = {
+                "username": username,
+                "platforms": "facebook,threads,tiktok,instagram"
+            }
+            
+            headers = {
+                "x-rapidapi-key": settings.rapid_api_key,
+                "x-rapidapi-host": settings.username_hunter_host
+            }
+            
+            # Make API request
+            logger.info(f"Checking social media availability for: {username}")
+            response = requests.get(url, headers=headers, params=querystring)
+            results = response.json()
+            
+            # Process results
+            available_platforms = []
+            platform_details = {}
+            
+            if "availability" in results:
+                availability_data = results["availability"]
+                for platform, data in availability_data.items():
+                    is_available = data.get("is_available", False)
+                    platform_details[platform] = {
+                        "available": is_available,
+                        "url": data.get("url", "")
+                    }
+                    
+                    if is_available:
+                        available_platforms.append(platform)
+            
+            # Determine overall availability and discoverability rating
+            total_platforms = len(platform_details)
+            available_count = len(available_platforms)
+            
+            # Overall availability is true if at least half the platforms are available
+            overall_available = available_count >= (total_platforms / 2)
+            
+            # Determine discoverability rating
+            if available_count >= total_platforms * 0.75:
+                discoverability = "Easy"
+            elif available_count >= total_platforms * 0.5:
+                discoverability = "Moderate"
+            else:
+                discoverability = "Difficult"
+                
+            logger.info(f"Social media availability results for '{username}': Available platforms: {available_platforms}, Discoverability: {discoverability}")
+            
+            return overall_available, platform_details, discoverability
+            
+        except Exception as e:
+            logger.error(f"Error checking social media availability for '{brand_name}': {str(e)}")
+            # Return default values in case of error
+            return False, {}, "Difficult" 

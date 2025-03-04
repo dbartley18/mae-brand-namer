@@ -1398,39 +1398,84 @@ async def process_market_research(state: BrandNameGenerationState, agent: Market
             
             # Only proceed if we have shortlisted names to analyze
             if shortlisted_names:
+                # Extract brand context for the market research
+                brand_context = {}
+                if hasattr(state, "brand_identity_brief"):
+                    brand_context["brand_identity_brief"] = state.brand_identity_brief
+                if hasattr(state, "brand_values"):
+                    brand_context["brand_values"] = state.brand_values
+                if hasattr(state, "brand_personality"):
+                    brand_context["brand_personality"] = state.brand_personality
+                if hasattr(state, "target_audience"):
+                    brand_context["target_audience"] = state.target_audience
+                if hasattr(state, "industry_focus"):
+                    brand_context["industry_focus"] = state.industry_focus
+                
                 market_research = await agent.analyze_market_potential(
                     run_id=state.run_id,
                     brand_names=shortlisted_names,
-                    brand_context=getattr(state, "brand_context", {})
+                    brand_context=brand_context
                 )
                 
-                # Update state with market research results
-                return {
-                    "market_research_results": market_research,
-                    "run_id": state.run_id
-                }
+                # Ensure market_research is a list
+                if not isinstance(market_research, list):
+                    logger.warning(f"Expected market_research to be a list, got {type(market_research)}. Converting to empty list.")
+                    market_research = []
+                
+                # Create a new dictionary with only the fields defined in the state model
+                results = {}
+                results["run_id"] = state.run_id
+                
+                # Explicitly handle the market_research_results field to avoid field access error
+                results["market_research_results"] = market_research
+                
+                return results
             else:
                 logger.error("No brand names available for market research analysis")
-                return {
-                    "market_research_results": [],
-                    "errors": [{
-                        "step": "conduct_market_research",
-                        "error": "No shortlisted brand names available for analysis",
-                        "timestamp": datetime.now().isoformat()
-                    }]
-                }
+                
+                # Create a new dictionary with only the fields defined in the state model
+                results = {}
+                
+                # Ensure the run_id is passed through
+                if hasattr(state, "run_id"):
+                    results["run_id"] = state.run_id
+                    
+                # Initialize empty market research results
+                results["market_research_results"] = []
+                
+                # Add error information
+                results["errors"] = [{
+                    "step": "conduct_market_research",
+                    "error": "No shortlisted brand names available for analysis",
+                    "timestamp": datetime.now().isoformat()
+                }]
+                results["status"] = "error"
+                
+                return results
             
     except Exception as e:
         logger.error(f"Error in process_market_research: {str(e)}")
-        return {
-            "errors": [{
-                "step": "conduct_market_research",
-                "error": str(e),
-                "traceback": traceback.format_exc(),
-                "timestamp": datetime.now().isoformat()
-            }],
-            "status": "error"
-        }
+        
+        # Create a new dictionary with only the fields defined in the state model
+        results = {}
+        
+        # Ensure the run_id is passed through
+        if hasattr(state, "run_id"):
+            results["run_id"] = state.run_id
+            
+        # Initialize empty market research results
+        results["market_research_results"] = []
+        
+        # Add error information
+        results["errors"] = [{
+            "step": "conduct_market_research",
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "timestamp": datetime.now().isoformat()
+        }]
+        results["status"] = "error"
+        
+        return results
 
 async def process_report(state: BrandNameGenerationState, agent: ReportCompiler) -> Dict[str, Any]:
     """Process report compilation with error handling and tracing."""
