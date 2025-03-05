@@ -416,6 +416,12 @@ class BrandNameGenerationState(Serializable, BaseModel):
         description="SEO analysis results for shortlisted brand names"
     )
     
+    # Competitor Analysis Fields
+    competitor_analysis_results: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Competitor analysis results for shortlisted brand names"
+    )
+    
     # Market Research Analysis Fields
     market_research_results: List[Dict[str, Any]] = Field(
         default_factory=list, 
@@ -426,12 +432,6 @@ class BrandNameGenerationState(Serializable, BaseModel):
     domain_analysis_results: List[Dict[str, Any]] = Field(
         default_factory=list,
         description="Domain analysis results for shortlisted brand names"
-    )
-    
-    # Competitor analysis
-    competitor_analysis_results: Dict[str, "CompetitorAnalysisResult"] = Field(
-        default_factory=dict,
-        description="Competitor analysis results for each brand name"
     )
     
     # Brand evaluation fields

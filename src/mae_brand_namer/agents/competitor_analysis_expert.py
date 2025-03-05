@@ -10,6 +10,7 @@ from langchain.prompts import ChatPromptTemplate, load_prompt
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 from langchain.callbacks import tracing_enabled
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.tools import Tool
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
@@ -57,77 +58,84 @@ class CompetitorAnalysisExpert:
         # Define output schemas for structured parsing
         self.output_schemas = [
             ResponseSchema(
-                name="market_positioning",
-                description="Analysis of market positioning potential",
+                name="competitor_name",
+                description="Name of the primary competitor being analyzed",
                 type="string"
             ),
             ResponseSchema(
-                name="competitor_similarity",
-                description="Similarity to competitor brands",
+                name="competitor_naming_style",
+                description="Whether competitors use descriptive, abstract, or other naming styles",
                 type="string"
             ),
             ResponseSchema(
-                name="differentiation_potential",
-                description="Potential for market differentiation",
+                name="competitor_keywords",
+                description="Common words or themes in competitor brand names",
                 type="string"
             ),
             ResponseSchema(
-                name="brand_strength",
-                description="Relative brand strength assessment",
+                name="competitor_positioning",
+                description="How competitors position their brands in the market",
                 type="string"
             ),
             ResponseSchema(
-                name="market_share_potential",
-                description="Potential market share capture",
+                name="competitor_strengths",
+                description="Strengths of competitor brand names",
                 type="string"
             ),
             ResponseSchema(
-                name="competitive_advantage",
-                description="Sources of competitive advantage",
+                name="competitor_weaknesses",
+                description="Weaknesses of competitor brand names",
                 type="string"
             ),
             ResponseSchema(
-                name="market_barriers",
-                description="Barriers to market entry",
+                name="competitor_differentiation_opportunity",
+                description="How to create differentiation from competitors",
                 type="string"
             ),
             ResponseSchema(
-                name="trademark_risk",
-                description="Risk of trademark conflicts",
-                type="string"
-            ),
-            ResponseSchema(
-                name="brand_confusion_risk",
-                description="Risk of brand confusion",
-                type="string"
-            ),
-            ResponseSchema(
-                name="market_readiness",
-                description="Market readiness assessment",
-                type="string"
-            ),
-            ResponseSchema(
-                name="competitor_recommendations",
-                description="Strategic recommendations",
-                type="array"
-            ),
-            ResponseSchema(
-                name="competitive_score",
-                description="Overall competitive strength score (1-10)",
+                name="differentiation_score",
+                description="Quantified differentiation from competitors (1-10)",
                 type="number"
+            ),
+            ResponseSchema(
+                name="risk_of_confusion",
+                description="Likelihood of brand confusion with competitors",
+                type="string"
+            ),
+            ResponseSchema(
+                name="target_audience_perception",
+                description="How consumers may compare this name to competitors",
+                type="string"
+            ),
+            ResponseSchema(
+                name="competitive_advantage_notes",
+                description="Any competitive advantages of the brand name",
+                type="string"
+            ),
+            ResponseSchema(
+                name="trademark_conflict_risk",
+                description="Potential conflicts with existing trademarks",
+                type="string"
             )
         ]
         self.output_parser = StructuredOutputParser.from_response_schemas(
             self.output_schemas
         )
         
-        # Initialize Gemini model with tracing
+        # Create Google Search tool
+        search_tool = {
+            "type": "google_search",
+            "google_search": {}
+        }
+        
+        # Initialize Gemini model with tracing and Google Search tool
         self.llm = ChatGoogleGenerativeAI(
             model=settings.model_name,
             temperature=settings.model_temperature,
             google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,
-            callbacks=settings.get_langsmith_callbacks()
+            callbacks=settings.get_langsmith_callbacks(),
+            tools=[search_tool]
         )
         
         # Create the prompt template with metadata
@@ -235,15 +243,39 @@ class CompetitorAnalysisExpert:
             asyncio.set_event_loop(loop)
             
         try:
+            # Map the analysis fields to the Supabase schema fields
             data = {
                 "run_id": run_id,
                 "brand_name": brand_name,
-                "timestamp": datetime.now().isoformat(),
-                **analysis
+                "competitor_name": analysis.get("competitor_name", ""),
+                "competitor_naming_style": analysis.get("competitor_naming_style", ""),
+                "competitor_keywords": analysis.get("competitor_keywords", ""),
+                "competitor_positioning": analysis.get("competitor_positioning", ""),
+                "competitor_strengths": analysis.get("competitor_strengths", ""),
+                "competitor_weaknesses": analysis.get("competitor_weaknesses", ""),
+                "competitor_differentiation_opportunity": analysis.get("competitor_differentiation_opportunity", ""),
+                "differentiation_score": analysis.get("differentiation_score", 0),
+                "risk_of_confusion": analysis.get("risk_of_confusion", ""),
+                "target_audience_perception": analysis.get("target_audience_perception", ""),
+                "competitive_advantage_notes": analysis.get("competitive_advantage_notes", ""),
+                "trademark_conflict_risk": analysis.get("trademark_conflict_risk", ""),
+                "timestamp": datetime.now().isoformat()
             }
             
+            # Ensure differentiation_score is a float between 0 and 10
+            if "differentiation_score" in data:
+                try:
+                    score = float(data["differentiation_score"])
+                    data["differentiation_score"] = max(0, min(10, score))
+                except (ValueError, TypeError):
+                    data["differentiation_score"] = 0
+                    logger.warning(f"Invalid differentiation_score value: {data['differentiation_score']}, defaulting to 0")
+            
+            # Log the data being stored
+            logger.info(f"Storing competitor analysis for brand name '{brand_name}' with run_id '{run_id}'")
+            
             await self.supabase.table("competitor_analysis").insert(data).execute()
-            logger.info(f"Stored competitor analysis for brand name '{brand_name}' with run_id '{run_id}'")
+            logger.info(f"Successfully stored competitor analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
         except Exception as e:
             logger.error(

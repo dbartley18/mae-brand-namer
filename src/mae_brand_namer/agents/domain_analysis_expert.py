@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 import asyncio
 import requests
+import aiohttp
 
 from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -408,10 +409,11 @@ class DomainAnalysisExpert:
                 "x-rapidapi-host": settings.domainr_host
             }
             
-            # Make API request
+            # Make async API request
             logger.info(f"Searching domains for brand name: {brand_name}")
-            response = requests.get(url, headers=headers, params=querystring)
-            results = response.json()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, params=querystring) as response:
+                    results = await response.json()
             
             # Extract domain results
             domains = []
@@ -449,10 +451,11 @@ class DomainAnalysisExpert:
                 "x-rapidapi-host": settings.domainr_host
             }
             
-            # Make API request
+            # Make async API request
             logger.info(f"Checking status for domain: {domain}")
-            response = requests.get(url, headers=headers, params=querystring)
-            result = response.json()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, params=querystring) as response:
+                    result = await response.json()
             
             # Extract status information
             status = {}

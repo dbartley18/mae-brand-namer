@@ -9,13 +9,19 @@ template: |
   Brand Context:
   {brand_context}
 
+  IMPORTANT: Use web search to find up-to-date information about competitors, industry trends, and market positioning. Focus on:
+  - Recent company information and branding strategies
+  - Current trademark databases and potential conflicts
+  - Latest market trends and competitor positioning
+  - Current digital presence and marketing approaches
+
   Analyze across these dimensions:
 
   1. Competitive Landscape
-     - Direct competitor analysis
-     - Indirect competitor review
-     - Market positioning map
-     - Industry naming conventions
+     - Direct competitor analysis (search for current competitors)
+     - Indirect competitor review (look for emerging competitors)
+     - Market positioning map (based on latest market data)
+     - Industry naming conventions (examine recent naming trends)
 
   2. Differentiation Potential
      - Competitive advantage factors
@@ -24,7 +30,7 @@ template: |
      - Brand distinctiveness
 
   3. Risk Assessment
-     - Trademark conflict likelihood
+     - Trademark conflict likelihood (search trademark databases)
      - Brand confusion potential
      - Market entry challenges
      - Competitive response scenarios
@@ -47,17 +53,19 @@ template: |
   - Implementation priorities
 
   Ensure your analysis aligns with the fields defined in the competitor_analysis table:
-  - competitor_name
-  - competitor_naming_style
-  - competitor_keywords
-  - competitor_positioning
-  - competitor_strengths
-  - competitor_weaknesses
-  - competitor_differentiation_opportunity
-  - differentiation_score
-  - risk_of_confusion
-  - target_audience_perception
-  - competitive_advantage_notes
-  - trademark_conflict_risk
+  - competitor_name (Name of the primary competitor being analyzed)
+  - competitor_naming_style (Whether competitors use descriptive, abstract, or other naming styles)
+  - competitor_keywords (Common words or themes in competitor brand names)
+  - competitor_positioning (How competitors position their brands in the market)
+  - competitor_strengths (Strengths of competitor brand names)
+  - competitor_weaknesses (Weaknesses of competitor brand names)
+  - competitor_differentiation_opportunity (How to create differentiation from competitors)
+  - differentiation_score (Quantified differentiation from competitors, 1-10 scale)
+  - risk_of_confusion (Likelihood of brand confusion with competitors)
+  - target_audience_perception (How consumers may compare this name to competitors)
+  - competitive_advantage_notes (Any competitive advantages of the brand name)
+  - trademark_conflict_risk (Potential conflicts with existing trademarks)
+
+  When performing this analysis, search for the most recent information available to provide accurate, up-to-date insights about the competitive landscape and potential positioning strategies.
 
   Provide clear recommendations for competitive positioning and strategy. 

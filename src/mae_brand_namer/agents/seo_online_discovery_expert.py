@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 import asyncio
 import requests
+import aiohttp
 import json
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -12,6 +13,7 @@ from langchain.prompts import ChatPromptTemplate, load_prompt
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 from langchain_core.tracers.context import tracing_v2_enabled
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.tools import Tool
 
 from ..config.settings import settings
 from ..utils.logging import get_logger
@@ -144,13 +146,20 @@ class SEOOnlineDiscoveryExpert:
             self.output_schemas
         )
         
-        # Initialize Gemini model with tracing
+        # Create Google Search tool
+        search_tool = {
+            "type": "google_search",
+            "google_search": {}
+        }
+        
+        # Initialize Gemini model with tracing and Google Search tool
         self.llm = ChatGoogleGenerativeAI(
             model=settings.model_name,
             temperature=0.7,
             google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,
-            callbacks=[self.langsmith] if self.langsmith else None
+            callbacks=[self.langsmith] if self.langsmith else None,
+            tools=[search_tool]
         )
 
     async def analyze_brand_name(
@@ -420,10 +429,11 @@ class SEOOnlineDiscoveryExpert:
                 "x-rapidapi-host": settings.username_hunter_host
             }
             
-            # Make API request
+            # Make async API request
             logger.info(f"Checking social media availability for: {username}")
-            response = requests.get(url, headers=headers, params=querystring)
-            results = response.json()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, params=querystring) as response:
+                    results = await response.json()
             
             # Process results
             available_platforms = []

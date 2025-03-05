@@ -61,6 +61,7 @@ NODE_AGENT_TASK_MAPPING = {
     "process_market_research": ("MarketResearchExpert", "Research_Market"),
     "process_domain_analysis": ("DomainAnalysisExpert", "Analyze_Domain"),
     "process_seo_analysis": ("SEOOnlineDiscoveryExpert", "Analyze_SEO"),
+    "process_competitor_analysis": ("CompetitorAnalysisExpert", "Analyze_Competition"),
     "compile_report": ("ReportCompiler", "Compile_Report"),
     "store_report": ("ReportStorer", "Store_Report")
 }
@@ -531,6 +532,12 @@ def create_workflow(config: dict) -> StateGraph:
         )), "process_seo_analysis")
     )
     
+    workflow.add_node("process_competitor_analysis", 
+        wrap_async_node(lambda state: process_competitor_analysis(state, CompetitorAnalysisExpert(
+            dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
+        )), "process_competitor_analysis")
+    )
+    
     workflow.add_node("compile_report", 
         wrap_async_node(lambda state: process_report(state, ReportCompiler(
             dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
@@ -555,7 +562,8 @@ def create_workflow(config: dict) -> StateGraph:
     workflow.add_edge("process_evaluation", "process_market_research")
     workflow.add_edge("process_market_research", "process_domain_analysis")
     workflow.add_edge("process_domain_analysis", "process_seo_analysis")
-    workflow.add_edge("process_seo_analysis", "compile_report")
+    workflow.add_edge("process_seo_analysis", "process_competitor_analysis")
+    workflow.add_edge("process_competitor_analysis", "compile_report")
     workflow.add_edge("compile_report", "store_report")
     
     # Define entry point
@@ -1608,16 +1616,10 @@ async def process_seo_analysis(state: BrandNameGenerationState, agent: SEOOnline
             if hasattr(state, "industry_focus"):
                 brand_context["industry_focus"] = state.industry_focus
             
-            # Include domain analysis results in brand context if available
-            if hasattr(state, "domain_analysis_results") and state.domain_analysis_results:
-                brand_context["domain_analysis"] = {
-                    item["brand_name"]: item for item in state.domain_analysis_results
-                }
-            
             # Process each shortlisted name for SEO analysis
             seo_analyses = []
             for brand_name in shortlisted_names:
-                logger.info(f"Analyzing SEO and online discoverability for shortlisted name: {brand_name}")
+                logger.info(f"Analyzing SEO for shortlisted name: {brand_name}")
                 try:
                     analysis = await agent.analyze_brand_name(
                         run_id=state.run_id,
@@ -1650,6 +1652,87 @@ async def process_seo_analysis(state: BrandNameGenerationState, agent: SEOOnline
             "run_id": state.run_id if hasattr(state, "run_id") else "unknown",
             "errors": [{
                 "step": "process_seo_analysis",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
+
+async def process_competitor_analysis(state: BrandNameGenerationState, agent: CompetitorAnalysisExpert) -> Dict[str, Any]:
+    """Process competitor analysis with error handling and tracing."""
+    try:
+        with tracing_v2_enabled():
+            # Extract only the shortlisted names from the state
+            shortlisted_names = []
+            
+            # Check if we have shortlisted_names in the state
+            if hasattr(state, "shortlisted_names") and state.shortlisted_names:
+                shortlisted_names = state.shortlisted_names
+            else:
+                logger.warning("No shortlisted names found for competitor analysis")
+                return {
+                    "competitor_analysis_results": [],
+                    "run_id": state.run_id,
+                    "errors": [{
+                        "step": "process_competitor_analysis",
+                        "error": "No shortlisted brand names available for analysis",
+                        "timestamp": datetime.now().isoformat()
+                    }],
+                    "status": "error"
+                }
+            
+            # Extract brand context for competitor analysis
+            brand_context = {}
+            if hasattr(state, "brand_identity_brief"):
+                brand_context["brand_identity_brief"] = state.brand_identity_brief
+            if hasattr(state, "brand_values"):
+                brand_context["brand_values"] = state.brand_values
+            if hasattr(state, "brand_personality"):
+                brand_context["brand_personality"] = state.brand_personality
+            if hasattr(state, "target_audience"):
+                brand_context["target_audience"] = state.target_audience
+            if hasattr(state, "industry_focus"):
+                brand_context["industry_focus"] = state.industry_focus
+            if hasattr(state, "competitors"):
+                brand_context["competitors"] = state.competitors
+            
+            # Process each shortlisted name for competitor analysis
+            competitor_analyses = []
+            for brand_name in shortlisted_names:
+                logger.info(f"Analyzing competitive position for shortlisted name: {brand_name}")
+                try:
+                    analysis = await agent.analyze_brand_name(
+                        run_id=state.run_id,
+                        brand_name=brand_name,
+                        brand_context=brand_context
+                    )
+                    competitor_analyses.append({
+                        "brand_name": brand_name,
+                        **analysis
+                    })
+                except Exception as e:
+                    logger.error(f"Error analyzing competitive position for {brand_name}: {str(e)}")
+                    competitor_analyses.append({
+                        "brand_name": brand_name,
+                        "error": str(e),
+                        "status": "error"
+                    })
+            
+            # Create a new dictionary with only the fields defined in the state model
+            results = {}
+            results["run_id"] = state.run_id
+            results["competitor_analysis_results"] = competitor_analyses
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error in process_competitor_analysis: {str(e)}")
+        return {
+            "competitor_analysis_results": [],
+            "run_id": state.run_id if hasattr(state, "run_id") else "unknown",
+            "errors": [{
+                "step": "process_competitor_analysis",
                 "error": str(e),
                 "traceback": traceback.format_exc(),
                 "timestamp": datetime.now().isoformat()

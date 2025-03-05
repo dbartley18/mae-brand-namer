@@ -119,7 +119,10 @@ class ReportCompiler:
                     "cultural_analysis": state.get("cultural_analysis_results", {}),
                     "evaluation_results": state.get("evaluation_results", {}),
                     "shortlisted_names": state.get("shortlisted_names", []),
-                    "market_research": state.get("market_research_results", {})
+                    "market_research": state.get("market_research_results", {}),
+                    "domain_analysis": state.get("domain_analysis_results", []),
+                    "seo_analysis": state.get("seo_analysis_results", []),
+                    "competitor_analysis": state.get("competitor_analysis_results", [])
                 }
                 
                 # Format prompt with parser instructions

@@ -12,6 +12,13 @@ template: |
   Domain Analysis:
   {domain_analysis}
 
+  IMPORTANT: Use web search to find up-to-date information about:
+  - Current search volumes and keyword trends
+  - Competitive landscape in search results
+  - Recent algorithm changes that might affect SEO
+  - Social media platform updates and best practices
+  - Latest digital marketing trends relevant to this brand
+
   Important: You are only analyzing shortlisted names that have already passed initial screening.
   Focus on providing detailed online discovery analysis for this specific name.
 
@@ -23,27 +30,27 @@ template: |
   Analyze across these dimensions:
 
   1. Keyword Potential
-     - Search volume estimation
+     - Search volume estimation (use search to find current data)
      - Keyword difficulty
      - Branded search potential
      - Non-branded opportunities
      - Long-tail variations
 
   2. Search Competition
-     - SERP landscape analysis
+     - SERP landscape analysis (search for current SERP features)
      - Competitor domain strength
      - Content gap opportunities
      - Local search impact
 
   3. Technical Optimization
      - URL structure optimization
-     - Mobile search compatibility
+     - Mobile search compatibility (consider latest mobile search requirements)
      - Voice search potential
      - International SEO considerations
 
   4. Digital Marketing Impact
      - Content marketing opportunities
-     - Social media visibility
+     - Social media visibility (research platform-specific best practices)
      - PPC effectiveness potential
      - Online presence optimization
 
@@ -67,6 +74,8 @@ template: |
   - social_media_discoverability: String describing how easily findable the brand will be on social platforms
   - seo_recommendations: Array of SEO strategy recommendations
   - seo_viability_score: Float from 1-10 representing the overall SEO viability score
+
+  Search for the latest information to ensure your analysis is accurate and reflects current search engine trends and best practices. Include specific search-based insights in your analysis.
 
   Provide detailed analysis of:
   - Keyword metrics and potential
