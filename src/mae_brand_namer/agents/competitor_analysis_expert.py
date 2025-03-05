@@ -8,7 +8,7 @@ import asyncio
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate, load_prompt
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-from langchain.callbacks import tracing_enabled
+from langchain.callbacks import tracing_v2_enabled
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import Tool
 
@@ -183,12 +183,7 @@ class CompetitorAnalysisExpert:
             ValueError: If the analysis fails
         """
         try:
-            with tracing_enabled(
-                tags={
-                    "agent": "CompetitorAnalysisExpert",
-                    "run_id": run_id
-                }
-            ):
+            with tracing_v2_enabled():
                 # Format prompt with parser instructions
                 formatted_prompt = self.prompt.format_messages(
                     format_instructions=self.output_parser.get_format_instructions(),
@@ -274,7 +269,8 @@ class CompetitorAnalysisExpert:
             # Log the data being stored
             logger.info(f"Storing competitor analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
-            await self.supabase.table("competitor_analysis").insert(data).execute()
+            # Use the async execute_with_retry method instead of direct table operations
+            await self.supabase.execute_with_retry("insert", "competitor_analysis", data)
             logger.info(f"Successfully stored competitor analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
         except Exception as e:

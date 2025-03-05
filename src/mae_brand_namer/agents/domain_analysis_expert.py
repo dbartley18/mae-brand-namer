@@ -364,7 +364,8 @@ class DomainAnalysisExpert:
             # Log what we're storing
             logger.info(f"Storing domain analysis for '{brand_name}' with fields: {list(data.keys())}")
             
-            await self.supabase.table("domain_analysis").insert(data).execute()
+            # Use the async execute_with_retry method instead of direct table operations
+            await self.supabase.execute_with_retry("insert", "domain_analysis", data)
             logger.info(f"Stored domain analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
         except Exception as e:
@@ -413,7 +414,12 @@ class DomainAnalysisExpert:
             logger.info(f"Searching domains for brand name: {brand_name}")
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=headers, params=querystring) as response:
-                    results = await response.json()
+                    # Properly handle the response
+                    if response.status == 200:
+                        results = await response.json()
+                    else:
+                        logger.error(f"API request failed with status code {response.status}")
+                        return []
             
             # Extract domain results
             domains = []
@@ -455,7 +461,12 @@ class DomainAnalysisExpert:
             logger.info(f"Checking status for domain: {domain}")
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=headers, params=querystring) as response:
-                    result = await response.json()
+                    # Properly handle the response
+                    if response.status == 200:
+                        result = await response.json()
+                    else:
+                        logger.error(f"API request failed with status code {response.status}")
+                        return {"domain": domain, "status": "error", "error": f"API error: {response.status}"}
             
             # Extract status information
             status = {}

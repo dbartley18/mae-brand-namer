@@ -52,7 +52,7 @@ class BrandNameCreationExpert:
         # Initialize Gemini model with tracing
         self.llm = ChatGoogleGenerativeAI(
             model=settings.model_name,
-            temperature=1.0,  # Higher temperature for more creative name generation
+            temperature=1.0,  # Reduced from 2.0 to comply with current langchain-google-genai validation
             google_api_key=settings.google_api_key,
             convert_system_message_to_human=True,
             callbacks=settings.get_langsmith_callbacks()

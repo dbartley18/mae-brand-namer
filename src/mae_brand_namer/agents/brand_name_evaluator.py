@@ -370,8 +370,8 @@ class BrandNameEvaluator:
             logger.info(f"Storing evaluation for brand name '{filtered_evaluation['brand_name']}' with run_id '{run_id}'")
             logger.debug(f"Evaluation data: {json.dumps(filtered_evaluation, default=str)}")
             
-            # Insert into Supabase
-            result = await self.supabase.table("brand_name_evaluation").insert(filtered_evaluation).execute()
+            # Use the async execute_with_retry method instead of direct table operations
+            await self.supabase.execute_with_retry("insert", "brand_name_evaluation", filtered_evaluation)
             logger.info(f"Successfully stored evaluation in Supabase")
             
         except Exception as e:

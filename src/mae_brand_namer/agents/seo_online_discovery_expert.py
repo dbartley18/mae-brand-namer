@@ -384,8 +384,8 @@ class SEOOnlineDiscoveryExpert:
             # Log what we're storing
             logger.info(f"Storing SEO analysis for '{brand_name}' with fields: {list(data.keys())}")
             
-            # Store in Supabase
-            await self.supabase.table("seo_online_discoverability").insert(data).execute()
+            # Use the async execute_with_retry method instead of direct table operations
+            await self.supabase.execute_with_retry("insert", "seo_online_discoverability", data)
             logger.info(f"Stored SEO analysis for brand name '{brand_name}' with run_id '{run_id}'")
             
         except Exception as e:

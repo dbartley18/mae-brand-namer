@@ -556,10 +556,12 @@ def create_workflow(config: dict) -> StateGraph:
     workflow.add_edge("generate_brand_names", "process_semantic_analysis")
     workflow.add_edge("process_semantic_analysis", "process_linguistic_analysis")
     workflow.add_edge("process_linguistic_analysis", "process_cultural_analysis")
-    workflow.add_edge("process_cultural_analysis", "process_translation_analysis")
-    workflow.add_edge("process_translation_analysis", "process_evaluation")
+    workflow.add_edge("process_cultural_analysis", "process_evaluation")
     
-    workflow.add_edge("process_evaluation", "process_market_research")
+    # Move translation after evaluation so it only processes shortlisted names
+    workflow.add_edge("process_evaluation", "process_translation_analysis")
+    workflow.add_edge("process_translation_analysis", "process_market_research")
+    
     workflow.add_edge("process_market_research", "process_domain_analysis")
     workflow.add_edge("process_domain_analysis", "process_seo_analysis")
     workflow.add_edge("process_seo_analysis", "process_competitor_analysis")
@@ -1028,7 +1030,7 @@ async def process_multi_language_translation(
     language_codes: List[str], 
     dependencies: Dependencies
 ) -> Dict[str, Any]:
-    """Run translation analysis for multiple languages on each brand name.
+    """Run translation analysis for multiple languages on shortlisted brand names.
     
     Args:
         state: Current workflow state
@@ -1046,14 +1048,25 @@ async def process_multi_language_translation(
             # Prepare results container
             all_translation_results = []
             
-            # Log the start of analysis
-            num_names = len(state.generated_names) if state.generated_names else 0
-            num_languages = len(language_codes)
-            logger.info(f"Starting multi-language translation analysis for {num_names} brand names across {num_languages} languages")
+            # Check if we have shortlisted_names in the state
+            if not hasattr(state, "shortlisted_names") or not state.shortlisted_names:
+                logger.warning("No shortlisted names found for translation analysis")
+                return {
+                    "translation_analysis_results": [],
+                    "errors": [{
+                        "step": "process_translation_analysis",
+                        "error": "No shortlisted brand names available for translation",
+                        "timestamp": datetime.now().isoformat()
+                    }]
+                }
             
-            # Process each brand name in sequence
-            for brand_name_data in state.generated_names:
-                brand_name = brand_name_data.get("brand_name", "")
+            # Log the start of analysis
+            num_names = len(state.shortlisted_names)
+            num_languages = len(language_codes)
+            logger.info(f"Starting multi-language translation analysis for {num_names} shortlisted brand names across {num_languages} languages")
+            
+            # Process each shortlisted brand name in sequence
+            for brand_name in state.shortlisted_names:
                 # Skip empty names
                 if not brand_name:
                     logger.warning("Skipping empty brand name in translation analysis")
@@ -1083,7 +1096,7 @@ async def process_multi_language_translation(
                         
                         # Log the analysis start
                         language_name = get_language_display_name(language_code)
-                        logger.info(f"Analyzing {language_name} translation for brand name: '{brand_name}'")
+                        logger.info(f"Analyzing {language_name} translation for shortlisted brand name: '{brand_name}'")
                         
                         # Run analysis
                         result = await language_expert.analyze_brand_name(
@@ -1542,6 +1555,7 @@ async def process_domain_analysis(state: BrandNameGenerationState, agent: Domain
             for brand_name in shortlisted_names:
                 logger.info(f"Analyzing domain for shortlisted name: {brand_name}")
                 try:
+                    # Try to analyze domain but handle any exceptions
                     analysis = await agent.analyze_domain(
                         run_id=state.run_id,
                         brand_name=brand_name,
@@ -1553,6 +1567,7 @@ async def process_domain_analysis(state: BrandNameGenerationState, agent: Domain
                     })
                 except Exception as e:
                     logger.error(f"Error analyzing domain for {brand_name}: {str(e)}")
+                    # Continue with next name instead of breaking the entire process
                     domain_analyses.append({
                         "brand_name": brand_name,
                         "error": str(e),
@@ -1568,13 +1583,15 @@ async def process_domain_analysis(state: BrandNameGenerationState, agent: Domain
             
     except Exception as e:
         logger.error(f"Error in process_domain_analysis: {str(e)}")
+        traceback_str = traceback.format_exc()
+        logger.error(f"Traceback: {traceback_str}")
         return {
             "domain_analysis_results": [],
             "run_id": state.run_id if hasattr(state, "run_id") else "unknown",
             "errors": [{
                 "step": "process_domain_analysis",
                 "error": str(e),
-                "traceback": traceback.format_exc(),
+                "traceback": traceback_str,
                 "timestamp": datetime.now().isoformat()
             }],
             "status": "error"
