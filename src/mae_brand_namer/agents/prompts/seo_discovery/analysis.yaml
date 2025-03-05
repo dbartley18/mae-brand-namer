@@ -50,6 +50,24 @@ template: |
   Format your analysis according to this schema:
   {format_instructions}
 
+  YOUR COMPLETE RESPONSE MUST INCLUDE ALL THESE FIELDS:
+  - keyword_alignment: String describing how well the name aligns with target keywords
+  - search_volume: Float representing estimated monthly search volume
+  - keyword_competition: String describing the level of competition for keywords
+  - branded_keyword_potential: String describing potential for branded keyword success
+  - non_branded_keyword_potential: String describing potential for non-branded keyword success
+  - exact_match_search_results: Integer representing number of exact match search results
+  - competitor_domain_strength: String describing analysis of competitor domain strength
+  - name_length_searchability: String describing impact of name length on search
+  - unusual_spelling_impact: Boolean indicating the impact of unusual spelling on search
+  - negative_keyword_associations: String describing potential negative keyword associations
+  - negative_search_results: Boolean indicating whether negative search results exist for the name
+  - content_marketing_opportunities: String describing content marketing opportunities
+  - social_media_availability: Object describing social media handle availability (will be verified by API)
+  - social_media_discoverability: String describing how easily findable the brand will be on social platforms
+  - seo_recommendations: Array of SEO strategy recommendations
+  - seo_viability_score: Float from 1-10 representing the overall SEO viability score
+
   Provide detailed analysis of:
   - Keyword metrics and potential
   - Competition analysis
@@ -77,3 +95,4 @@ template: |
   - seo_recommendations
 
   Provide clear recommendations for SEO strategy and implementation. 
+  IMPORTANT: YOUR RESPONSE MUST CONTAIN ALL FIELDS LISTED ABOVE. DO NOT OMIT ANY FIELDS. 

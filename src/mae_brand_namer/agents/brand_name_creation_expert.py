@@ -61,7 +61,7 @@ class BrandNameCreationExpert:
         # Define output schemas for structured parsing
         self.output_schemas = [
             ResponseSchema(name="brand_name", description="The generated brand name candidate"),
-            ResponseSchema(name="naming_category", description="The category or type of name (e.g., descriptive, abstract, evocative)"),
+            ResponseSchema(name="naming_category", description="The category or type of name (e.g., descriptive, evocative/suggestive, invented/coined/abstract, experiential, founder/personal, geographic, symbolic)"),
             ResponseSchema(name="brand_personality_alignment", description="How the name aligns with the defined brand personality"),
             ResponseSchema(name="brand_promise_alignment", description="The degree to which the name reflects the brand's promise and value proposition"),
             
@@ -104,7 +104,9 @@ class BrandNameCreationExpert:
             purpose (str): Brand purpose
             key_attributes (List[str]): Key brand attributes
             num_names_per_category (int, optional): Number of brand names to generate per category. Defaults to 3.
-            categories (List[str], optional): List of naming categories to use. Defaults to all four categories.
+            categories (List[str], optional): List of naming categories to use. Defaults to all seven categories:
+                Descriptive Names, Evocative/Suggestive Names, Invented/Coined/Abstract Names, Experiential Names,
+                Founder/Personal Names, Geographic Names, and Symbolic Names.
             
         Returns:
             List[Dict[str, Any]]: List of generated brand names with their evaluations
@@ -116,9 +118,12 @@ class BrandNameCreationExpert:
         if not categories:
             categories = [
                 "Descriptive Names",
-                "Suggestive Names",
-                "Abstract Names",
-                "Experiential Names"
+                "Evocative/Suggestive Names",
+                "Invented/Coined/Abstract Names",
+                "Experiential Names",
+                "Founder/Personal Names",
+                "Geographic Names",
+                "Symbolic Names"
             ]
         
         # Validate required inputs

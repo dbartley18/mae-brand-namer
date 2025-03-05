@@ -23,32 +23,31 @@ template: |
   Format your analysis according to this schema:
   {format_instructions}
 
-  For each analysis dimension, provide:
+  YOUR COMPLETE RESPONSE MUST INCLUDE ALL THESE FIELDS WITH EXACT NAMES AND FORMATS:
+  - domain_exact_match: Boolean indicating if the exact match domain is available
+  - alternative_tlds: Array of alternative top-level domains (e.g., ["com", "net", "org", "io"])
+  - domain_length_readability: MUST be one of: "Short", "Medium", or "Long"
+  - domain_history_reputation: MUST be one of: "Clean", "Neutral", or "Problematic"
+  - acquisition_cost: MUST be one of: "Low", "Moderate", "High", or "Not for Sale"
+  - brand_name_clarity_in_url: MUST be one of: "High", "Moderate", or "Low"
+  - seo_keyword_relevance: MUST be one of: "High", "Moderate", or "Low"
+  - hyphens_numbers_present: Boolean indicating presence of hyphens or numbers
+  - misspellings_variations_available: Boolean indicating if common variations are available
+  - idn_support_needed: Boolean indicating if international domain name support is needed
+  - social_media_availability: Array of suggested handle formats for social media
+  - scalability_future_proofing: String analysis of how the domain accommodates expansion
+  - security_privacy_recommendations: String security and privacy considerations
+  - notes: Additional observations or considerations
+  - rank: Numeric value from 1.0-10.0 rating the domain's overall quality and fit
+
+  For your analysis, please provide:
   - Availability assessment
   - Technical requirements
   - Security implications
   - Implementation recommendations
   - Risk assessment
   - Cost estimates
-  - Timeline projections
 
-  Ensure your analysis aligns with the fields defined in the domain_analysis table:
-  - primary_domain_available
-  - alternative_tlds_available
-  - similar_domains_registered
-  - trademark_conflicts
-  - domain_history
-  - technical_requirements
-  - ssl_implications
-  - email_deliverability
-  - mobile_optimization
-  - security_requirements
-  - implementation_complexity
-  - maintenance_needs
-  - cost_estimate
-  - registration_strategy
-  - protection_recommendations
-  - notes
-  - rank
-
-  Provide clear recommendations for domain strategy and next steps. 
+  IMPORTANT: YOUR RESPONSE MUST CONTAIN ALL FIELDS LISTED ABOVE WITH EXACTLY MATCHING NAMES. DO NOT OMIT ANY FIELDS.
+  FOR ENUM FIELDS, YOU MUST USE THE EXACT VALUES SPECIFIED (e.g., "High", "Medium", "Low").
+  The rank field should be a numeric value between 1.0 and 10.0. 

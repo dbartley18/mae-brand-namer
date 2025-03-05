@@ -42,19 +42,21 @@ class DomainAnalysisExpert:
         
         # Define output schemas for structured parsing
         self.output_schemas = [
-            ResponseSchema(name="exact_match_domain", description="Availability of exact match domain", type="boolean"),
-            ResponseSchema(name="alternative_domains", description="List of viable domain alternatives", type="array"),
-            ResponseSchema(name="domain_length", description="Analysis of domain length impact", type="string"),
-            ResponseSchema(name="domain_memorability", description="Assessment of domain memorability", type="string"),
-            ResponseSchema(name="domain_brandability", description="Potential for domain branding", type="string"),
-            ResponseSchema(name="domain_pronunciation", description="Ease of verbal communication", type="string"),
-            ResponseSchema(name="domain_spelling", description="Risk of misspelling", type="string"),
-            ResponseSchema(name="tld_strategy", description="Top-level domain recommendations", type="string"),
-            ResponseSchema(name="domain_availability", description="Overall domain availability assessment", type="string"),
-            ResponseSchema(name="domain_cost_estimate", description="Estimated cost range for domains", type="string"),
-            ResponseSchema(name="domain_history", description="Analysis of domain history if previously used", type="string"),
-            ResponseSchema(name="digital_presence_score", description="Overall digital presence score (1-10)", type="float"),
-            ResponseSchema(name="recommendations", description="Strategic domain recommendations", type="array")
+            ResponseSchema(name="domain_exact_match", description="Availability of exact match domain", type="boolean"),
+            ResponseSchema(name="alternative_tlds", description="List of alternative top-level domains", type="array"),
+            ResponseSchema(name="domain_length_readability", description="Domain length assessment (Short, Medium, Long)", type="string"),
+            ResponseSchema(name="domain_history_reputation", description="Domain history assessment (Clean, Neutral, Problematic)", type="string"),
+            ResponseSchema(name="acquisition_cost", description="Cost estimate (Low, Moderate, High, Not for Sale)", type="string"),
+            ResponseSchema(name="brand_name_clarity_in_url", description="Clarity of brand name in URL (High, Moderate, Low)", type="string"),
+            ResponseSchema(name="seo_keyword_relevance", description="SEO keyword relevance (High, Moderate, Low)", type="string"),
+            ResponseSchema(name="hyphens_numbers_present", description="Presence of hyphens or numbers in domain", type="boolean"),
+            ResponseSchema(name="misspellings_variations_available", description="Availability of common misspellings or variations", type="boolean"),
+            ResponseSchema(name="idn_support_needed", description="Whether international domain name support is required", type="boolean"),
+            ResponseSchema(name="social_media_availability", description="Suggested handle formats for social media", type="array"),
+            ResponseSchema(name="scalability_future_proofing", description="How well the domain accommodates future expansion", type="string"),
+            ResponseSchema(name="security_privacy_recommendations", description="Security and privacy recommendations", type="string"),
+            ResponseSchema(name="notes", description="Additional observations or considerations", type="string"),
+            ResponseSchema(name="rank", description="Overall domain quality rating (1.0-10.0)", type="number")
         ]
         self.output_parser = StructuredOutputParser.from_response_schemas(self.output_schemas)
         
@@ -171,17 +173,29 @@ class DomainAnalysisExpert:
                 
                 # Add real domain data from API to analysis
                 analysis["domain_exact_match"] = primary_domain_available
-                analysis["alternative_domains"] = available_domains[:5] if available_domains else []
+                
+                # Process alternative TLDs
+                alternative_tlds = []
+                if available_domains:
+                    # Extract unique TLDs from alternative domains
+                    for domain in available_domains:
+                        parts = domain.split(".")
+                        if len(parts) > 1:
+                            tld = parts[-1]
+                            if tld not in alternative_tlds:
+                                alternative_tlds.append(tld)
+                
+                analysis["alternative_tlds"] = alternative_tlds
                 
                 # Generate domain-based social media handles
                 sanitized_name = brand_name.lower().replace(" ", "")
                 social_handles = [
-                    f"@{sanitized_name}",
-                    f"@{sanitized_name}_official",
-                    f"@the{sanitized_name}",
-                    f"@{sanitized_name}brand"
+                    f"{sanitized_name}",
+                    f"{sanitized_name}_official",
+                    f"the{sanitized_name}",
+                    f"{sanitized_name}brand"
                 ]
-                analysis["social_media_handle_suggestions"] = social_handles
+                analysis["social_media_availability"] = social_handles
                 
                 # Enforce field boundaries to ensure experts stay in their lanes
                 
@@ -238,10 +252,41 @@ class DomainAnalysisExpert:
             # Validate that analysis stays within proper boundaries
             # For SEO keyword relevance, restrict to how keywords appear in domain name only
             seo_keyword_relevance = analysis.get("seo_keyword_relevance", "Moderate")
-            if len(seo_keyword_relevance) > 100:  # If too detailed, likely exceeding boundaries
-                logger.warning("seo_keyword_relevance is too detailed - restricting to domain-specific aspects only")
+            
+            # Ensure SEO keyword relevance is one of the allowed values
+            allowed_seo_values = ["High", "Moderate", "Low"]
+            if seo_keyword_relevance not in allowed_seo_values:
+                logger.warning(f"Invalid seo_keyword_relevance value: {seo_keyword_relevance}. Setting to 'Moderate'")
                 seo_keyword_relevance = "Moderate"
                 
+            # For domain_length_readability, ensure it's one of the allowed values
+            domain_length = analysis.get("domain_length_readability", "Medium")
+            allowed_length_values = ["Short", "Medium", "Long"]
+            if domain_length not in allowed_length_values:
+                logger.warning(f"Invalid domain_length_readability value: {domain_length}. Setting to 'Medium'")
+                domain_length = "Medium"
+                
+            # For domain_history_reputation, ensure it's one of the allowed values
+            domain_history = analysis.get("domain_history_reputation", "Neutral")
+            allowed_history_values = ["Clean", "Neutral", "Problematic"]
+            if domain_history not in allowed_history_values:
+                logger.warning(f"Invalid domain_history_reputation value: {domain_history}. Setting to 'Neutral'")
+                domain_history = "Neutral"
+                
+            # For brand_name_clarity_in_url, ensure it's one of the allowed values
+            brand_clarity = analysis.get("brand_name_clarity_in_url", "Moderate")
+            allowed_clarity_values = ["High", "Moderate", "Low"]
+            if brand_clarity not in allowed_clarity_values:
+                logger.warning(f"Invalid brand_name_clarity_in_url value: {brand_clarity}. Setting to 'Moderate'")
+                brand_clarity = "Moderate"
+                
+            # For acquisition_cost, ensure it's one of the allowed values
+            acquisition_cost = analysis.get("acquisition_cost", "Moderate")
+            allowed_cost_values = ["Low", "Moderate", "High", "Not for Sale"]
+            if acquisition_cost not in allowed_cost_values:
+                logger.warning(f"Invalid acquisition_cost value: {acquisition_cost}. Setting to 'Moderate'")
+                acquisition_cost = "Moderate"
+            
             # For scalability_future_proofing, ensure focus on domain expansion, not market scalability
             scalability = analysis.get("scalability_future_proofing", "")
             if scalability and any(term in scalability.lower() for term in ["market", "audience", "revenue", "profit"]):
@@ -249,16 +294,36 @@ class DomainAnalysisExpert:
                 scalability = "Domain provides room for expansion via subdomains if needed."
             
             # Handle suggestions should be domain-based formats, not platform availability analysis
-            social_handles = analysis.get("social_media_handle_suggestions", [])
+            social_handles = analysis.get("social_media_availability", [])
             if not social_handles:
                 # Generate domain-based social media handles if not provided
                 sanitized_name = brand_name.lower().replace(" ", "")
                 social_handles = [
-                    f"@{sanitized_name}",
-                    f"@{sanitized_name}_official",
-                    f"@the{sanitized_name}",
-                    f"@{sanitized_name}brand"
+                    f"{sanitized_name}",
+                    f"{sanitized_name}_official",
+                    f"the{sanitized_name}",
+                    f"{sanitized_name}brand"
                 ]
+            
+            # Handle the rank value
+            rank = analysis.get("rank")
+            try:
+                if rank is not None:
+                    rank = float(rank)
+                    # Ensure the rank is within the valid range
+                    if rank < 1.0 or rank > 10.0:
+                        logger.warning(f"Invalid rank value {rank}. Setting to 5.0")
+                        rank = 5.0
+                else:
+                    # Use digital_presence_score as fallback for rank if available
+                    digital_presence_score = analysis.get("digital_presence_score")
+                    if digital_presence_score is not None:
+                        rank = float(digital_presence_score)
+                    else:
+                        rank = 5.0
+            except (ValueError, TypeError):
+                logger.warning(f"Could not convert rank value to float: {rank}. Setting to 5.0")
+                rank = 5.0
             
             # Prepare data for storage
             data = {
@@ -267,32 +332,36 @@ class DomainAnalysisExpert:
                 
                 # Domain registration aspects
                 "domain_exact_match": analysis.get("domain_exact_match", False),
-                "acquisition_cost": analysis.get("acquisition_cost", "Moderate"),
+                "acquisition_cost": acquisition_cost,
                 "alternative_tlds": analysis.get("alternative_tlds", []),
                 
                 # Domain characteristics
-                "domain_length_readability": analysis.get("domain_length_readability", "Medium"),
-                "brand_name_clarity_in_url": analysis.get("brand_name_clarity_in_url", "Moderate"),
+                "domain_length_readability": domain_length,
+                "brand_name_clarity_in_url": brand_clarity,
                 "hyphens_numbers_present": analysis.get("hyphens_numbers_present", False),
                 
                 # Technical aspects
-                "domain_history_reputation": analysis.get("domain_history_reputation", "Neutral"),
+                "domain_history_reputation": domain_history,
                 "misspellings_variations_available": analysis.get("misspellings_variations_available", False),
                 "idn_support_needed": analysis.get("idn_support_needed", False),
                 
-                # Domain-based handle suggestions (not actual social media availability)
+                # Domain-based handle suggestions
                 "social_media_availability": social_handles,
                 
                 # Future considerations - focused on domain aspects only
-                "scalability_future_proofing": scalability,
+                "scalability_future_proofing": analysis.get("scalability_future_proofing", scalability),
                 "security_privacy_recommendations": analysis.get("security_privacy_recommendations", ""),
                 
-                # Domain SEO characteristics only - keyword presence in domain name, not broader SEO
+                # Domain SEO characteristics only
                 "seo_keyword_relevance": seo_keyword_relevance,
                 
-                # Notes
-                "notes": analysis.get("notes", "")
+                # Additional information
+                "notes": analysis.get("notes", ""),
+                "rank": rank
             }
+            
+            # Log what we're storing
+            logger.info(f"Storing domain analysis for '{brand_name}' with fields: {list(data.keys())}")
             
             await self.supabase.table("domain_analysis").insert(data).execute()
             logger.info(f"Stored domain analysis for brand name '{brand_name}' with run_id '{run_id}'")

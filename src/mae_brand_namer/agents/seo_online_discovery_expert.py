@@ -105,9 +105,29 @@ class SEOOnlineDiscoveryExpert:
                 type="boolean"
             ),
             ResponseSchema(
+                name="negative_keyword_associations",
+                description="Potential negative keyword associations",
+                type="string"
+            ),
+            ResponseSchema(
+                name="negative_search_results",
+                description="Whether negative search results exist for the name",
+                type="boolean"
+            ),
+            ResponseSchema(
+                name="content_marketing_opportunities",
+                description="Content marketing opportunities related to the name",
+                type="string"
+            ),
+            ResponseSchema(
                 name="social_media_availability",
                 description="Social media handle availability",
                 type="object"
+            ),
+            ResponseSchema(
+                name="social_media_discoverability",
+                description="How easily findable the brand will be on social platforms",
+                type="string"
             ),
             ResponseSchema(
                 name="seo_recommendations",
@@ -115,9 +135,9 @@ class SEOOnlineDiscoveryExpert:
                 type="array"
             ),
             ResponseSchema(
-                name="digital_presence_score",
-                description="Overall digital presence score (1-10)",
-                type="number"
+                name="seo_viability_score",
+                description="Overall SEO viability score (1-10)",
+                type="float"
             )
         ]
         self.output_parser = StructuredOutputParser.from_response_schemas(
@@ -277,6 +297,46 @@ class SEOOnlineDiscoveryExpert:
                 logger.warning("social_media_discoverability contains availability info - changing to discoverability rating")
                 social_discoverability = "Moderate"
             
+            # Convert data types where needed
+            try:
+                search_volume = float(analysis.get("search_volume", 0))
+            except (ValueError, TypeError):
+                search_volume = 0.0
+                logger.warning(f"Invalid search_volume value: {analysis.get('search_volume')}, using default")
+                
+            try:
+                seo_viability_score = float(analysis.get("seo_viability_score", 5.0))
+                # Ensure score is within 1-10 range
+                seo_viability_score = max(1.0, min(10.0, seo_viability_score))
+            except (ValueError, TypeError):
+                seo_viability_score = 5.0
+                logger.warning(f"Invalid seo_viability_score value: {analysis.get('seo_viability_score')}, using default")
+                
+            # Handle boolean fields
+            try:
+                unusual_spelling_impact = bool(analysis.get("unusual_spelling_impact", False))
+                if isinstance(unusual_spelling_impact, str):
+                    unusual_spelling_impact = unusual_spelling_impact.lower() in ["true", "yes", "1"]
+            except (ValueError, TypeError):
+                unusual_spelling_impact = False
+                
+            try:
+                negative_search_results = bool(analysis.get("negative_search_results", False))
+                if isinstance(negative_search_results, str):
+                    negative_search_results = negative_search_results.lower() in ["true", "yes", "1"]
+            except (ValueError, TypeError):
+                negative_search_results = False
+                
+            # Handle arrays
+            seo_recommendations = analysis.get("seo_recommendations", [])
+            if isinstance(seo_recommendations, str):
+                try:
+                    # Try to convert string to array if it's in JSON format
+                    seo_recommendations = json.loads(seo_recommendations)
+                except json.JSONDecodeError:
+                    # If not JSON, create a single-item array
+                    seo_recommendations = [seo_recommendations]
+            
             # Prepare data for storage based on the database schema
             data = {
                 "run_id": run_id,
@@ -292,13 +352,13 @@ class SEOOnlineDiscoveryExpert:
                 # Search characteristics
                 "keyword_alignment": analysis.get("keyword_alignment", ""),
                 "name_length_searchability": analysis.get("name_length_searchability", "Medium"),
-                "search_volume": analysis.get("search_volume", 0),
-                "exact_match_search_results": analysis.get("exact_match_search_results", ""),
+                "search_volume": search_volume,
+                "exact_match_search_results": analysis.get("exact_match_search_results", 0),
                 
                 # Potential issues
                 "negative_keyword_associations": analysis.get("negative_keyword_associations", ""),
-                "negative_search_results": analysis.get("negative_search_results", False),
-                "unusual_spelling_impact": analysis.get("unusual_spelling_impact", False),
+                "negative_search_results": negative_search_results,
+                "unusual_spelling_impact": unusual_spelling_impact,
                 
                 # Social media aspects (actual availability verified by API)
                 "social_media_availability": analysis.get("social_media_availability", False),
@@ -306,11 +366,14 @@ class SEOOnlineDiscoveryExpert:
                 
                 # Content strategy
                 "content_marketing_opportunities": analysis.get("content_marketing_opportunities", ""),
-                "seo_recommendations": analysis.get("seo_recommendations", ""),
+                "seo_recommendations": seo_recommendations,
                 
                 # Overall score
-                "seo_viability_score": analysis.get("seo_viability_score", 5.0)
+                "seo_viability_score": seo_viability_score
             }
+            
+            # Log what we're storing
+            logger.info(f"Storing SEO analysis for '{brand_name}' with fields: {list(data.keys())}")
             
             # Store in Supabase
             await self.supabase.table("seo_online_discoverability").insert(data).execute()

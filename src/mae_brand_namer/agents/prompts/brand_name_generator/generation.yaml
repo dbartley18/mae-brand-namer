@@ -18,26 +18,73 @@ template: |
   NAMING CATEGORY: {category}
   
   Apply the naming strategy for {category} names:
-  
-  1. Descriptive Names
+
+  1. Descriptive Names:
+     Definition: These names directly communicate what the brand does, offers, or sells.
+     Characteristics:
+     - Immediately clear about product/service offering
+     - Easy to understand and remember
+     - May be harder to trademark due to being generic
      - Direct description of offering
      - Benefit-focused terms
      - Industry-relevant terminology
+     Examples: Microsoft, Facebook, YouTube, General Electric, American Airlines
 
-  2. Suggestive Names
+  2. Evocative/Suggestive Names:
+     Definition: These names hint at the brand's essence, benefits, personality, or positioning without explicitly describing what the product or service is. They evoke a feeling, idea, or image.
+     Characteristics:
+     - More emotional and less literal than descriptive names
+     - Create stronger brand identity and emotional connection
+     - Require more marketing to educate consumers about offerings
      - Metaphorical connections
      - Emotional associations
      - Value proposition hints
+     Examples: Nike (Greek goddess of victory), Amazon (vast rainforest), Patagonia (rugged outdoors), Nest (home security), Dove (gentleness)
 
-  3. Abstract Names
+  3. Invented/Coined/Abstract Names:
+     Definition: These names are completely made up and have no inherent meaning before being associated with the brand.
+     Characteristics:
+     - Highly distinctive and memorable because they are unique
+     - Offer the most flexibility in brand positioning
+     - Require significant marketing to build meaning
      - Coined words
      - Letter combinations
      - Sound symbolism
+     Examples: Kodak, Xerox, Verizon, Google, Acura
 
-  4. Experiential Names
+  4. Experiential Names:
+     Definition: These names focus on the experience the brand provides to the customer.
+     Characteristics:
+     - Customer-centric and benefit-oriented
+     - Create strong emotional connection by focusing on user needs
      - Action words
      - Sensory elements
      - Emotional triggers
+     Examples: Oracle (wisdom, guidance), Salesforce (empowering sales teams), Red Bull (energy), LinkedIn (professional connection)
+
+  5. Founder/Personal Names:
+     Definition: These names are based on the name of the founder, owner, or a significant person associated with the brand.
+     Characteristics:
+     - Convey authenticity, heritage, and personal connection
+     - Leverage the reputation of the individual
+     - May become limiting if the brand expands beyond the founder's identity
+     Examples: McDonald's, Disney, Johnson & Johnson, Ben & Jerry's, Mercedes-Benz
+
+  6. Geographic Names:
+     Definition: These names are derived from a location, region, city, or geographical feature.
+     Characteristics:
+     - Evoke a sense of place, origin, or specific qualities of that location
+     - May be relevant for brands with a regional focus
+     - Might be limiting if the brand expands globally
+     Examples: Arizona Tea, Fuji Film, Cisco Systems, Kentucky Fried Chicken, London Fog
+
+  7. Symbolic Names:
+     Definition: These names rely on symbolism or abstract concepts rather than direct description.
+     Characteristics:
+     - Powerful and memorable if symbolism aligns with brand values
+     - May require effort to establish connection between name and offering
+     - Use symbols, metaphors, or concepts that resonate with brand values
+     Examples: Apple, Shell, Target, Starbucks
 
   Previously generated names (YOU MUST AVOID THESE):
   {existing_names}

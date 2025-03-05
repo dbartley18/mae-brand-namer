@@ -120,7 +120,10 @@ class AppState(TypedDict, total=False):
     negative_search_results: Optional[bool]
     seo_viability_score: Optional[float]
     seo_recommendations: Optional[str]
-    seo_analysis_results: Optional[Dict[str, Any]]
+    seo_analysis_results: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="SEO analysis results for shortlisted brand names"
+    )
     
     # Market Research Analysis Fields
     market_research_results: List[Dict[str, Any]]
@@ -293,7 +296,10 @@ class BrandNameGenerationState(Serializable, BaseModel):
     # Brand name generation fields (from tasks.yaml)
     generated_names: List[BrandNameData] = Field(default_factory=list, description="List of generated brand names with metadata")
     brand_name: Optional[str] = Field(default=None, description="The selected brand name")
-    naming_category: Optional[str] = Field(default=None, description="Category of the selected brand name")
+    naming_category: Optional[str] = Field(
+        default=None, 
+        description="Category of the selected brand name (Descriptive, Evocative/Suggestive, Invented/Coined/Abstract, Experiential, Founder/Personal, Geographic, Symbolic)"
+    )
     brand_personality_alignment: Optional[str] = Field(default=None, description="Alignment with brand personality")
     brand_promise_alignment: Optional[str] = Field(default=None, description="Alignment with brand promise")
     target_audience_relevance: Optional[float] = Field(default=None, description="Relevance to target audience (1-10)")
@@ -314,7 +320,10 @@ class BrandNameGenerationState(Serializable, BaseModel):
     rank: Optional[float] = Field(default=None, description="Ranking score based on strategic fit")
     
     # Lists for multiple brand names
-    naming_categories: List[str] = Field(default_factory=list, description="Categories for each generated name")
+    naming_categories: List[str] = Field(
+        default_factory=list, 
+        description="Categories for each generated name (Descriptive, Evocative/Suggestive, Invented/Coined/Abstract, Experiential, Founder/Personal, Geographic, Symbolic)"
+    )
     brand_personality_alignments: List[str] = Field(default_factory=list, description="Alignment with brand personality for each name")
     brand_promise_alignments: List[str] = Field(default_factory=list, description="Alignment with brand promise for each name")
     target_audience_relevance_list: List[str] = Field(default_factory=list, description="Relevance to target audience for each name")
@@ -402,7 +411,10 @@ class BrandNameGenerationState(Serializable, BaseModel):
     negative_search_results: Optional[bool] = None
     seo_viability_score: Optional[float] = None
     seo_recommendations: Optional[str] = None
-    seo_analysis_results: Optional[Dict[str, Any]] = None
+    seo_analysis_results: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="SEO analysis results for shortlisted brand names"
+    )
     
     # Market Research Analysis Fields
     market_research_results: List[Dict[str, Any]] = Field(
@@ -421,6 +433,9 @@ class BrandNameGenerationState(Serializable, BaseModel):
         default_factory=dict,
         description="Competitor analysis results for each brand name"
     )
+    
+    # Brand evaluation fields
+    brand_name_data: Optional[Dict[str, Any]] = Field(default=None, description="Combined brand name evaluation data")
     
     model_config = ConfigDict(arbitrary_types_allowed=True)
     
