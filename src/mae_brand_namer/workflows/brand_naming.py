@@ -62,6 +62,7 @@ NODE_AGENT_TASK_MAPPING = {
     "process_domain_analysis": ("DomainAnalysisExpert", "Analyze_Domain"),
     "process_seo_analysis": ("SEOOnlineDiscoveryExpert", "Analyze_SEO"),
     "process_competitor_analysis": ("CompetitorAnalysisExpert", "Analyze_Competition"),
+    "process_survey_simulation": ("SurveySimulationExpert", "Simulate_Survey"),
     "compile_report": ("ReportCompiler", "Compile_Report"),
     "store_report": ("ReportStorer", "Store_Report")
 }
@@ -538,6 +539,12 @@ def create_workflow(config: dict) -> StateGraph:
         )), "process_competitor_analysis")
     )
     
+    workflow.add_node("process_survey_simulation", 
+        wrap_async_node(lambda state: process_survey_simulation(state, SurveySimulationExpert(
+            dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
+        )), "process_survey_simulation")
+    )
+    
     workflow.add_node("compile_report", 
         wrap_async_node(lambda state: process_report(state, ReportCompiler(
             dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
@@ -565,7 +572,8 @@ def create_workflow(config: dict) -> StateGraph:
     workflow.add_edge("process_market_research", "process_domain_analysis")
     workflow.add_edge("process_domain_analysis", "process_seo_analysis")
     workflow.add_edge("process_seo_analysis", "process_competitor_analysis")
-    workflow.add_edge("process_competitor_analysis", "compile_report")
+    workflow.add_edge("process_competitor_analysis", "process_survey_simulation")
+    workflow.add_edge("process_survey_simulation", "compile_report")
     workflow.add_edge("compile_report", "store_report")
     
     # Define entry point
@@ -1722,12 +1730,23 @@ async def process_competitor_analysis(state: BrandNameGenerationState, agent: Co
                     analysis = await agent.analyze_brand_name(
                         run_id=state.run_id,
                         brand_name=brand_name,
-                        brand_context=brand_context
+                        brand_context=brand_context,
+                        user_prompt=state.user_prompt
                     )
-                    competitor_analyses.append({
-                        "brand_name": brand_name,
-                        **analysis
-                    })
+                    # Check if the analysis contains a competitors array
+                    if "competitors" in analysis and isinstance(analysis["competitors"], list):
+                        # Handle multiple competitors returned
+                        competitor_analyses.append({
+                            "brand_name": brand_name,
+                            "competitors": analysis["competitors"],
+                            "competitor_count": analysis.get("competitor_count", len(analysis["competitors"]))
+                        })
+                    else:
+                        # Handle single competitor or error case
+                        competitor_analyses.append({
+                            "brand_name": brand_name,
+                            **analysis
+                        })
                 except Exception as e:
                     logger.error(f"Error analyzing competitive position for {brand_name}: {str(e)}")
                     competitor_analyses.append({
@@ -1750,6 +1769,113 @@ async def process_competitor_analysis(state: BrandNameGenerationState, agent: Co
             "run_id": state.run_id if hasattr(state, "run_id") else "unknown",
             "errors": [{
                 "step": "process_competitor_analysis",
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "timestamp": datetime.now().isoformat()
+            }],
+            "status": "error"
+        }
+
+async def process_survey_simulation(state: BrandNameGenerationState, agent: SurveySimulationExpert) -> Dict[str, Any]:
+    """Process survey simulation with error handling and tracing."""
+    try:
+        with tracing_v2_enabled():
+            # Extract only the shortlisted names from the state
+            shortlisted_names = []
+            
+            # Check if we have shortlisted_names in the state
+            if hasattr(state, "shortlisted_names") and state.shortlisted_names:
+                shortlisted_names = state.shortlisted_names
+            else:
+                logger.warning("No shortlisted names found for survey simulation")
+                return {
+                    "survey_simulation_results": [],
+                    "run_id": state.run_id,
+                    "errors": [{
+                        "step": "process_survey_simulation",
+                        "error": "No shortlisted brand names available for simulation",
+                        "timestamp": datetime.now().isoformat()
+                    }],
+                    "status": "error"
+                }
+            
+            # Extract brand context for survey simulation
+            brand_context = {}
+            if hasattr(state, "brand_identity_brief"):
+                brand_context["brand_identity_brief"] = state.brand_identity_brief
+            if hasattr(state, "brand_values"):
+                brand_context["brand_values"] = state.brand_values
+            if hasattr(state, "brand_personality"):
+                brand_context["brand_personality"] = state.brand_personality
+            if hasattr(state, "target_audience"):
+                brand_context["target_audience"] = state.target_audience
+            if hasattr(state, "industry_focus"):
+                brand_context["industry_focus"] = state.industry_focus
+            
+            # Process each shortlisted name for survey simulation
+            survey_simulations = []
+            for brand_name in shortlisted_names:
+                logger.info(f"Simulating survey for shortlisted name: {brand_name}")
+                try:
+                    # Extract target audience as a list
+                    target_audience = []
+                    if hasattr(state, "target_audience") and state.target_audience:
+                        if isinstance(state.target_audience, list):
+                            target_audience = state.target_audience
+                        elif isinstance(state.target_audience, str):
+                            target_audience = [segment.strip() for segment in state.target_audience.split(',')]
+                    
+                    # Extract brand values as a list
+                    brand_values = []
+                    if hasattr(state, "brand_values") and state.brand_values:
+                        if isinstance(state.brand_values, list):
+                            brand_values = state.brand_values
+                        elif isinstance(state.brand_values, str):
+                            brand_values = [value.strip() for value in state.brand_values.split(',')]
+                    
+                    # Get competitive analysis if available
+                    competitive_analysis = {}
+                    if hasattr(state, "competitor_analysis_results") and state.competitor_analysis_results:
+                        competitive_analysis = state.competitor_analysis_results
+                    
+                    # Call the simulate_survey method with all available parameters
+                    simulation = await agent.simulate_survey(
+                        run_id=state.run_id,
+                        brand_name=brand_name,
+                        brand_context=brand_context,
+                        target_audience=target_audience,
+                        brand_values=brand_values,
+                        competitive_analysis=competitive_analysis
+                    )
+                    
+                    # Add the simulation results to the list
+                    survey_simulations.append({
+                        "brand_name": brand_name,
+                        **simulation
+                    })
+                    
+                    logger.info(f"Successfully simulated survey for {brand_name} with {len(simulation.get('individual_personas', []))} individual personas")
+                    
+                except Exception as e:
+                    logger.error(f"Error simulating survey for {brand_name}: {str(e)}")
+                    survey_simulations.append({
+                        "brand_name": brand_name,
+                        "error": str(e),
+                        "status": "error"
+                    })
+            
+            # Create a new dictionary with only the fields defined in the state model
+            results = {}
+            results["run_id"] = state.run_id
+            results["survey_simulation_results"] = survey_simulations
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"Error in process_survey_simulation: {str(e)}")
+        return {
+            "errors": [{
+                "step": "process_survey_simulation",
                 "error": str(e),
                 "traceback": traceback.format_exc(),
                 "timestamp": datetime.now().isoformat()

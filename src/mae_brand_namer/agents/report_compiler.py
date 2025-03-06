@@ -122,7 +122,8 @@ class ReportCompiler:
                     "market_research": state.get("market_research_results", {}),
                     "domain_analysis": state.get("domain_analysis_results", []),
                     "seo_analysis": state.get("seo_analysis_results", []),
-                    "competitor_analysis": state.get("competitor_analysis_results", [])
+                    "competitor_analysis": state.get("competitor_analysis_results", []),
+                    "survey_simulation": state.get("survey_simulation_results", [])
                 }
                 
                 # Format prompt with parser instructions

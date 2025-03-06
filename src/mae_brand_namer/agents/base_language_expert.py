@@ -488,18 +488,41 @@ class BaseLanguageTranslationExpert:
             # Don't raise - allow the process to continue
     
     def _validate_language_specific_output(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate and potentially modify output for language-specific requirements.
+        """Validate and modify language-specific output.
         
-        This method should be overridden by language-specific subclasses
-        to implement any language-specific validation or transformation.
+        This method should be extended by language-specific subclasses to perform
+        additional validation and modification of the output based on language-specific requirements.
         
         Args:
-            analysis: The analysis output to validate
+            analysis: The analysis to validate/modify
             
         Returns:
-            Validated and potentially modified analysis
+            The validated/modified analysis
         """
-        # Base implementation performs basic validation
+        # Common validation for all language experts
+        
+        # Check if non-direct_translation fields might contain text in the target language
+        # This is a simple check that should be extended in language-specific subclasses
+        suspicious_fields = ["semantic_shift", "pronunciation_difficulty", "cultural_acceptability", 
+                           "proposed_adaptation", "brand_essence_preserved", 
+                           "global_consistency_vs_localization", "notes"]
+        
+        for field in suspicious_fields:
+            if field in analysis and isinstance(analysis[field], str):
+                # Log any fields with non-English text for debugging
+                if len(analysis[field]) > 0 and analysis[field].strip() != "":
+                    words = analysis[field].split()
+                    # Basic check for English - if first 10 words are all < 4 chars, might be non-English
+                    short_word_count = sum(1 for word in words[:10] if len(word) < 4)
+                    if short_word_count > 7:  # If more than 70% are short words, might be non-English
+                        logger.warning(f"Possible non-English text detected in field '{field}' that should be in English")
+        
+        # Standard field type conversions
+        if "phonetic_similarity_undesirable" in analysis and isinstance(analysis["phonetic_similarity_undesirable"], str):
+            analysis["phonetic_similarity_undesirable"] = analysis["phonetic_similarity_undesirable"].lower() == "true"
+        
+        if "adaptation_needed" in analysis and isinstance(analysis["adaptation_needed"], str):
+            analysis["adaptation_needed"] = analysis["adaptation_needed"].lower() == "true"
         
         # Ensure target_language is set correctly
         if "target_language" in analysis:

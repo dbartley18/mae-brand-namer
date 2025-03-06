@@ -1,71 +1,75 @@
 _type: prompt
-input_variables: ["format_instructions", "brand_name", "brand_context"]
+input_variables: ["format_instructions", "brand_name", "brand_context", "user_prompt"]
 template: |
-  Conduct a comprehensive competitor analysis for the following brand name:
+  Conduct a comprehensive competitive landscape analysis for the following brand name:
 
   Brand Name:
   {brand_name}
 
-  Brand Context:
+  Based on the following brand context:
   {brand_context}
 
-  IMPORTANT: Use web search to find up-to-date information about competitors, industry trends, and market positioning. Focus on:
-  - Recent company information and branding strategies
-  - Current trademark databases and potential conflicts
-  - Latest market trends and competitor positioning
-  - Current digital presence and marketing approaches
+  For this type of brand:
+  {user_prompt}
 
-  Analyze across these dimensions:
+  REQUIRED: YOU MUST IDENTIFY AND ANALYZE THE TOP 3-5 COMPETITORS IN THE MARKET. USE GOOGLE SEARCH TO FIND THE MOST RELEVANT COMPETITORS.
 
-  1. Competitive Landscape
-     - Direct competitor analysis (search for current competitors)
-     - Indirect competitor review (look for emerging competitors)
-     - Market positioning map (based on latest market data)
-     - Industry naming conventions (examine recent naming trends)
+  IMPORTANT INSTRUCTIONS:
+  1. First, use web search to identify the top 3-5 competitors based on the brand context and '{user_prompt}'
+  2. For EACH competitor, conduct a separate in-depth analysis
+  3. Format each competitor analysis according to the schema below
+  4. Use up-to-date information about competitors, industry trends, and market positioning
 
-  2. Differentiation Potential
-     - Competitive advantage factors
+  For each competitor, focus on:
+  - The competitor's brand name and positioning
+  - How their naming style compares to the proposed brand name
+  - Their strengths and weaknesses in the market
+  - Key differentiators that separate them from others
+  - Risk of confusion with the proposed brand name
+  - Opportunities for the proposed brand to differentiate
+
+  Analyze each competitor across these dimensions:
+
+  1. Competitive Positioning
+     - Market position and brand strength
+     - Target audience and customer perception
+     - Naming style and conventions
+     - Brand voice and persona
+
+  2. Differentiation Factors
+     - Competitive advantage elements
      - Value proposition uniqueness
-     - Market gap alignment
      - Brand distinctiveness
+     - Naming strategy effectiveness
 
   3. Risk Assessment
-     - Trademark conflict likelihood (search trademark databases)
+     - Trademark conflict likelihood
      - Brand confusion potential
      - Market entry challenges
      - Competitive response scenarios
 
   4. Strategic Opportunity
-     - Category leadership potential
-     - Market share capture
-     - Brand extension opportunities
-     - Growth trajectory
+     - Areas where the proposed brand can differentiate
+     - Positioning opportunities against this competitor
+     - Specific advantages to leverage
 
-  Format your analysis according to this schema:
+  Format your analysis according to this schema FOR EACH COMPETITOR:
   {format_instructions}
 
-  Provide detailed analysis of:
-  - Competitor landscape
-  - Differentiation opportunities
-  - Risk factors
-  - Strategic positioning
-  - Market potential
-  - Implementation priorities
+  CRITICAL: You must identify 3-5 distinct, real competitors based on the brand context. For EACH competitor, provide a separate complete analysis using all the fields in the schema.
 
   Ensure your analysis aligns with the fields defined in the competitor_analysis table:
-  - competitor_name (Name of the primary competitor being analyzed)
-  - competitor_naming_style (Whether competitors use descriptive, abstract, or other naming styles)
-  - competitor_keywords (Common words or themes in competitor brand names)
-  - competitor_positioning (How competitors position their brands in the market)
-  - competitor_strengths (Strengths of competitor brand names)
-  - competitor_weaknesses (Weaknesses of competitor brand names)
-  - competitor_differentiation_opportunity (How to create differentiation from competitors)
-  - differentiation_score (Quantified differentiation from competitors, 1-10 scale)
-  - risk_of_confusion (Likelihood of brand confusion with competitors)
-  - target_audience_perception (How consumers may compare this name to competitors)
-  - competitive_advantage_notes (Any competitive advantages of the brand name)
-  - trademark_conflict_risk (Potential conflicts with existing trademarks)
-
-  When performing this analysis, search for the most recent information available to provide accurate, up-to-date insights about the competitive landscape and potential positioning strategies.
-
-  Provide clear recommendations for competitive positioning and strategy. 
+  - competitor_name (Name of the actual competitor being analyzed) - MUST BE A REAL COMPETITOR
+  - competitor_naming_style (Whether the competitor uses descriptive, abstract, or other naming styles)
+  - competitor_keywords (Common words or themes in the competitor's brand name)
+  - competitor_positioning (How the competitor positions their brand in the market)
+  - competitor_strengths (Strengths of the competitor's brand name)
+  - competitor_weaknesses (Weaknesses of the competitor's brand name)
+  - competitor_differentiation_opportunity (How the proposed brand can create differentiation from this competitor)
+  - differentiation_score (Quantified differentiation from competitor, 1-10 scale, MUST BE A NUMBER)
+  - risk_of_confusion (Likelihood of brand confusion with competitor, MUST BE A NUMBER between 1-10)
+  - target_audience_perception (How consumers may compare the proposed name to this competitor)
+  - competitive_advantage_notes (Any competitive advantages over this specific competitor)
+  - trademark_conflict_risk (Potential trademark conflicts with this specific competitor)
+  
+  REMINDER: You MUST analyze 3-5 real competitors individually. Do not provide a general competitive analysis. 

@@ -42,6 +42,17 @@ template: |
   - Evaluate Spanish pronunciation challenges systematically
   - Consider historical and cultural context in Spanish-speaking regions
 
+  CRITICALLY IMPORTANT: Your entire analysis MUST be written in ENGLISH, not in Spanish.
+  The ONLY text that should be in Spanish is the 'direct_translation' field.
+  ALL other fields must contain English text only, including:
+  - semantic_shift (English analysis of meaning changes)
+  - pronunciation_difficulty (English description of difficulties)
+  - cultural_acceptability (English analysis of cultural fit)
+  - proposed_adaptation (English explanation of any adaptation)
+  - brand_essence_preserved (English analysis of essence preservation)
+  - global_consistency_vs_localization (English analysis of balance)
+  - notes (English additional observations)
+
   IMPORTANT FORMAT REQUIREMENTS: Your response must be valid JSON that matches the required schema for the Supabase translation_analysis table. All boolean fields should be true/false, not strings. Numeric fields must be numbers. Your analysis should include all required fields including:
   - target_language: "es"
   - direct_translation

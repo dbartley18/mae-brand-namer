@@ -1,0 +1,622 @@
+src/mae_brand_namer/workflows/brand_naming.py:3:1: F401 'typing.TypedDict' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:3:1: F401 'typing.Union' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:3:1: F401 'typing.Callable' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:3:1: F401 'typing.TypeVar' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:3:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:6:1: F401 'functools.partial' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:7:1: F401 'json' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:8:1: F401 'os' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:12:1: F401 'langgraph.graph.Graph' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:15:1: F401 'langchain.output_parsers.ResponseSchema' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:15:1: F401 'langchain.output_parsers.StructuredOutputParser' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:18:1: F401 'langchain_core.messages.SystemMessage' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:18:1: F401 'langchain_core.messages.HumanMessage' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:19:1: F401 'postgrest.APIError as PostgrestError' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:20:1: F401 'postgrest.APIError' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:20:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:21:1: F401 'langgraph.constants.Send' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:22:1: F401 'pydantic.BaseModel' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:22:1: F401 'pydantic.Field' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:22:1: F401 'pydantic.ConfigDict' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:45:1: F401 'mae_brand_namer.agents.language_expert_factory.get_language_expert' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:45:1: F401 'mae_brand_namer.agents.language_expert_factory.get_language_display_name' imported but unused
+src/mae_brand_namer/workflows/brand_naming.py:45:80: E501 line too long (105 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:53:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:55:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:56:80: E501 line too long (87 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:57:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:59:80: E501 line too long (90 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:63:80: E501 line too long (87 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:64:80: E501 line too long (87 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:69:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:71:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:72:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:74:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:75:80: E501 line too long (104 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:76:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:85:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:89:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:90:80: E501 line too long (93 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:94:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:100:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:109:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:111:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:112:80: E501 line too long (86 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:118:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:125:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:133:17: E722 do not use bare 'except'
+src/mae_brand_namer/workflows/brand_naming.py:135:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:140:17: E722 do not use bare 'except'
+src/mae_brand_namer/workflows/brand_naming.py:142:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:146:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:149:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:150:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:151:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:156:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:157:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:159:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:160:80: E501 line too long (110 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:166:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:170:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:172:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:175:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:178:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:181:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:183:17: F541 f-string is missing placeholders
+src/mae_brand_namer/workflows/brand_naming.py:187:46: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:191:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:199:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:215:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:218:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:219:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:222:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:223:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:224:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:225:80: E501 line too long (98 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:227:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:231:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:234:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:236:17: F541 f-string is missing placeholders
+src/mae_brand_namer/workflows/brand_naming.py:240:46: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:244:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:251:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:267:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:270:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:274:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:275:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:276:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:279:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:282:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:286:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:289:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:292:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:294:17: F541 f-string is missing placeholders
+src/mae_brand_namer/workflows/brand_naming.py:298:46: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:303:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:311:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:329:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:332:80: E501 line too long (93 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:333:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:348:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:348:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:351:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:358:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:363:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:365:80: E501 line too long (91 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:366:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:368:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:370:80: E501 line too long (91 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:371:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:372:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:378:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:385:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:388:9: E131 continuation line unaligned for hanging indent
+src/mae_brand_namer/workflows/brand_naming.py:390:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:393:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:396:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:397:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:400:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:401:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:407:80: E501 line too long (93 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:408:80: E501 line too long (86 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:410:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:418:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:423:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:427:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:431:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:434:80: E501 line too long (100 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:436:80: E501 line too long (109 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:439:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:443:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:447:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:466:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:468:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:471:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:473:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:475:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:475:80: E501 line too long (117 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:476:5: E124 closing bracket does not match visual indentation
+src/mae_brand_namer/workflows/brand_naming.py:478:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:478:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:479:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:482:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:485:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:485:80: E501 line too long (94 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:486:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:489:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:490:53: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:491:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:491:80: E501 line too long (91 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:492:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:495:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:496:51: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:497:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:497:80: E501 line too long (97 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:498:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:501:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:502:54: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:503:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:504:19: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:506:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:509:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:510:44: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:511:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:511:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:513:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:516:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:517:49: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:518:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:518:80: E501 line too long (90 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:519:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:522:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:523:49: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:524:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:524:80: E501 line too long (90 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:525:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:528:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:529:46: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:530:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:530:80: E501 line too long (91 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:531:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:534:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:535:53: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:536:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:536:80: E501 line too long (98 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:537:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:540:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:541:51: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:542:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:542:80: E501 line too long (94 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:543:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:546:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:547:40: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:548:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:549:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:552:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:553:38: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:554:9: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:554:80: E501 line too long (100 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:555:5: E124 closing bracket does not match visual indentation
+src/mae_brand_namer/workflows/brand_naming.py:556:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:560:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:563:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:564:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:566:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:569:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:570:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:574:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:577:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:580:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:583:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:587:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:590:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:601:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:603:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:609:80: E501 line too long (101 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:611:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:616:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:619:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:621:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:632:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:633:80: E501 line too long (94 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:644:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:644:80: E501 line too long (110 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:652:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:653:80: E501 line too long (99 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:654:80: E501 line too long (99 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:659:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:660:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:665:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:666:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:669:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:684:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:684:80: E501 line too long (113 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:687:80: E501 line too long (93 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:691:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:695:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:698:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:700:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:701:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:702:80: E501 line too long (90 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:703:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:710:80: E501 line too long (104 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:714:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:721:80: E501 line too long (99 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:722:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:746:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:747:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:748:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:750:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:756:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:762:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:765:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:766:80: E501 line too long (99 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:772:80: E501 line too long (103 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:775:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:776:80: E501 line too long (105 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:777:80: E501 line too long (97 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:778:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:780:80: E501 line too long (100 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:781:80: E501 line too long (94 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:782:80: E501 line too long (100 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:783:80: E501 line too long (86 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:784:80: E501 line too long (94 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:785:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:787:80: E501 line too long (117 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:788:80: E501 line too long (111 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:789:80: E501 line too long (117 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:790:80: E501 line too long (103 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:791:80: E501 line too long (111 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:792:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:794:80: E501 line too long (105 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:813:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:813:80: E501 line too long (118 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:819:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:821:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:822:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:823:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:829:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:831:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:837:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:839:80: E501 line too long (91 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:839:92: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:840:38: E128 continuation line under-indented for visual indent
+src/mae_brand_namer/workflows/brand_naming.py:841:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:846:80: E501 line too long (93 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:849:61: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:850:62: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:858:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:861:80: E501 line too long (122 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:864:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:866:80: E501 line too long (116 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:875:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:880:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:893:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:893:80: E501 line too long (115 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:899:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:901:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:902:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:903:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:909:80: E501 line too long (90 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:911:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:913:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:914:35: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:919:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:920:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:924:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:927:57: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:928:58: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:936:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:940:80: E501 line too long (122 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:942:80: E501 line too long (90 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:943:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:946:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:951:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:964:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:964:80: E501 line too long (121 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:970:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:972:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:973:80: E501 line too long (94 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:974:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:980:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:982:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:984:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:985:35: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:990:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:991:80: E501 line too long (99 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:993:80: E501 line too long (93 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:995:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:996:80: E501 line too long (91 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:997:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:998:57: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:999:58: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1004:80: E501 line too long (86 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1006:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1007:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1011:80: E501 line too long (122 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1013:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1014:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1017:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1022:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1035:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:1036:37: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1037:31: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1040:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1041:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1044:80: E501 line too long (102 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1046:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1052:9: F811 redefinition of unused 'get_language_expert' from line 45
+src/mae_brand_namer/workflows/brand_naming.py:1052:9: F811 redefinition of unused 'get_language_display_name' from line 45
+src/mae_brand_namer/workflows/brand_naming.py:1052:80: E501 line too long (113 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1053:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1057:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1059:80: E501 line too long (86 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1060:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1065:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1069:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1073:80: E501 line too long (145 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1074:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1079:80: E501 line too long (87 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1081:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1086:80: E501 line too long (103 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1087:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1089:80: E501 line too long (97 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1091:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1092:80: E501 line too long (127 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1094:80: E501 line too long (113 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1096:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1098:80: E501 line too long (93 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1099:80: E501 line too long (104 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1103:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1105:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1106:80: E501 line too long (120 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1107:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1113:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1116:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1118:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1119:80: E501 line too long (124 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1120:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1123:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1124:80: E501 line too long (96 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1135:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1139:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1144:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1154:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:1154:80: E501 line too long (107 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1157:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1161:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1163:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1169:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1172:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1174:80: E501 line too long (123 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1175:80: E501 line too long (128 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1176:80: E501 line too long (122 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1177:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1186:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1187:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1194:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1196:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1200:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1208:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1210:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1214:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1216:80: E501 line too long (97 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1218:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1222:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1228:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1232:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1237:57: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1242:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1243:80: E501 line too long (107 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1248:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1257:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1261:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1264:80: E501 line too long (96 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1265:80: E501 line too long (95 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1268:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1282:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1287:80: E501 line too long (113 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1291:80: E501 line too long (90 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1294:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1296:80: E501 line too long (102 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1304:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1306:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1309:75: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1310:66: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1311:20: E131 continuation line unaligned for hanging indent
+src/mae_brand_namer/workflows/brand_naming.py:1311:80: E501 line too long (103 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1312:72: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1313:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1315:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1316:80: E501 line too long (106 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1317:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1319:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1322:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1342:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1344:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1346:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1348:80: E501 line too long (109 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1349:80: E501 line too long (106 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1350:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1355:80: E501 line too long (98 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1356:80: E501 line too long (90 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1357:80: E501 line too long (91 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1359:80: E501 line too long (102 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1360:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1361:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1362:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1363:80: E501 line too long (94 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1364:80: E501 line too long (112 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1365:80: E501 line too long (106 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1366:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1368:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1369:80: E501 line too long (87 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1407:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:1407:80: E501 line too long (114 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1413:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1414:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1418:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1423:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1424:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1425:80: E501 line too long (101 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1426:80: E501 line too long (116 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1427:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1429:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1438:80: E501 line too long (96 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1439:80: E501 line too long (98 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1440:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1441:80: E501 line too long (121 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1442:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1448:80: E501 line too long (86 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1452:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1457:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1463:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1466:80: E501 line too long (132 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1468:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1469:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1472:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1473:80: E501 line too long (97 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1475:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1478:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1479:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1480:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1482:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1486:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1489:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1493:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1497:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1499:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1502:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1503:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1505:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1509:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1512:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1521:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1524:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:1524:80: E501 line too long (114 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1530:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1535:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1541:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1546:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1550:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1559:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1563:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1576:80: E501 line too long (86 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1577:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1583:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1584:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1588:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1590:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1607:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:1607:80: E501 line too long (115 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1608:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1613:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1624:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1629:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1633:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1642:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1646:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1658:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1664:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1665:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1669:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1671:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1686:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:1686:80: E501 line too long (122 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1692:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1697:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1703:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1708:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1712:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1723:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1727:80: E501 line too long (97 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1728:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1732:80: E501 line too long (97 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1745:80: E501 line too long (100 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1751:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1752:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1756:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1758:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1773:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:1773:80: E501 line too long (118 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1775:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1776:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1784:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1789:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1795:80: E501 line too long (94 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1800:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1804:80: E501 line too long (82 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1813:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1817:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1818:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1822:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1826:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1840:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1842:80: E501 line too long (90 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1848:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1852:36: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1853:66: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1854:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1857:80: E501 line too long (83 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1858:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1859:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1863:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1865:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1880:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:1880:80: E501 line too long (99 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1888:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1902:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1915:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:1915:80: E501 line too long (105 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1923:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1934:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1947:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:1958:16: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1961:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:1968:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1970:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1972:80: E501 line too long (85 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1973:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1974:80: E501 line too long (94 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:1975:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1986:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1992:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:1997:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2007:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2009:80: E501 line too long (92 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:2010:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2015:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2016:80: E501 line too long (80 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:2021:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2023:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2030:80: E501 line too long (99 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:2036:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:2038:80: E501 line too long (84 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:2039:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2040:80: E501 line too long (88 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:2044:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2053:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2056:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2066:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2068:80: E501 line too long (86 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:2069:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2071:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2075:80: E501 line too long (95 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:2075:96: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2077:15: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2080:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2082:80: E501 line too long (94 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:2084:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2087:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2089:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2097:5: F811 redefinition of unused 'asyncio' from line 5
+src/mae_brand_namer/workflows/brand_naming.py:2098:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2100:24: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2103:1: E302 expected 2 blank lines, found 1
+src/mae_brand_namer/workflows/brand_naming.py:2106:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2107:80: E501 line too long (89 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:2108:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2110:80: E501 line too long (81 > 79 characters)
+src/mae_brand_namer/workflows/brand_naming.py:2111:1: W293 blank line contains whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2123:44: W291 trailing whitespace
+src/mae_brand_namer/workflows/brand_naming.py:2123:45: W292 no newline at end of file

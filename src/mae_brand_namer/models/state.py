@@ -437,6 +437,12 @@ class BrandNameGenerationState(Serializable, BaseModel):
     # Brand evaluation fields
     brand_name_data: Optional[Dict[str, Any]] = Field(default=None, description="Combined brand name evaluation data")
     
+    # Survey simulation fields
+    survey_simulation_results: List[Dict[str, Any]] = Field(default_factory=list, description="Results of market survey simulation with synthetic personas")
+    
+    # Report fields
+    report: Optional[Dict[str, Any]] = Field(default=None, description="Generated executive report")
+    
     model_config = ConfigDict(arbitrary_types_allowed=True)
     
     def dict(self, *args, **kwargs):
