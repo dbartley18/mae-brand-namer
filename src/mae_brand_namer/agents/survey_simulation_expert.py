@@ -253,46 +253,51 @@ class SurveySimulationExpert:
             # Now generate individual personas one by one
             logger.info(f"Generating individual personas for {brand_name}")
             individual_personas = []
-            num_personas = 100
+            num_personas = 50  # Reduced from 100 to 50 as requested
             
-            # Create individual persona response schema
-            persona_schema = [
-                ResponseSchema(name="persona_id", description="Unique identifier for this persona"),
-                ResponseSchema(name="segment", description="Which segment of the target audience this persona belongs to"),
-                ResponseSchema(name="age_group", description="Age range (e.g., 25-34)"),
-                ResponseSchema(name="gender", description="Gender"),
-                ResponseSchema(name="income_level", description="Income level"),
-                ResponseSchema(name="job_title", description="Job title"),
-                ResponseSchema(name="scores", description="Dictionary of perception scores (1-10)"),
-                ResponseSchema(name="emotional_associations", description="List of emotional associations with the brand"),
-                ResponseSchema(name="functional_associations", description="List of functional associations with the brand"),
-                ResponseSchema(name="qualitative_feedback", description="Qualitative feedback on the brand name"),
-                ResponseSchema(name="purchase_intent", description="Whether they would purchase (Yes/No/Maybe)"),
-            ]
-            
-            persona_parser = StructuredOutputParser.from_response_schemas(persona_schema)
-            persona_format_instructions = persona_parser.get_format_instructions()
+            # Create the prompt with all inputs for individual persona generation
+            # Use the existing prompt templates from _load_prompts()
+            prompt_inputs = {
+                "format_instructions": self.format_instructions,
+                "brand_name": brand_name,
+                "brand_context": formatted_brand_context,
+                "target_audience": formatted_target_audience,
+                "brand_values": formatted_brand_values,
+                "competitive_analysis": formatted_competitive_analysis,
+                "generate_individual_personas": True,
+                "num_personas": 1  # Generate one persona at a time
+            }
             
             # Generate personas one by one
             success_count = 0
             for i in range(num_personas):
                 try:
                     persona_id = f"{brand_name.replace(' ', '')}-{i+1:03d}"
+                    prompt_inputs["persona_number"] = i + 1
+                    prompt_inputs["total_personas"] = num_personas
+                    prompt_inputs["persona_id"] = persona_id
                     
-                    # Use the single persona template with focused format instructions
-                    persona_inputs = {
-                        "format_instructions": persona_format_instructions,
-                        "brand_name": brand_name,
-                        "brand_context": formatted_brand_context,
-                        "target_audience": formatted_target_audience,
-                        "brand_values": formatted_brand_values,
-                        "persona_number": i + 1,
-                        "total_personas": num_personas,
-                        "persona_id": persona_id
-                    }
+                    # Add a note about generating just ONE persona in this call
+                    # Also emphasize that the agent should first create the persona, then answer as that persona
+                    prompt_note = f"""
+                    IMPORTANT: In this call, generate ONLY ONE detailed persona (persona #{i+1} of {num_personas}) with ID '{persona_id}'.
                     
-                    # Format the single persona prompt
-                    formatted_prompt = self.single_persona_template.format_prompt(**persona_inputs)
+                    FOLLOW THIS TWO-STEP APPROACH:
+                    1. First, create a detailed, realistic persona with demographic and firmographic details.
+                    2. Then, answer the survey questions AS this persona would respond to the brand name.
+                    
+                    The persona should think about each question holistically, as if they were actually taking the survey.
+                    
+                    Return a complete JSON object for this one persona only.
+                    """
+                    
+                    # Format the prompt using the template from _load_prompts()
+                    single_persona_prompt = ChatPromptTemplate.from_messages([
+                        ("system", self.system_prompt.template),
+                        ("human", self.simulation_prompt.template + prompt_note)
+                    ])
+                    
+                    formatted_prompt = single_persona_prompt.format_prompt(**prompt_inputs)
                     
                     # Call the LLM
                     logger.info(f"Generating persona {i+1}/{num_personas} for {brand_name}")
@@ -334,12 +339,10 @@ class SurveySimulationExpert:
                             # Extract key fields with regex
                             fallback_persona = {
                                 "persona_id": persona_id,
-                                "segment": self._extract_field(persona_content, "segment"),
+                                "segment": self._extract_field(persona_content, "persona_segment"),
                                 "job_title": self._extract_field(persona_content, "job_title"),
-                                "age_group": self._extract_field(persona_content, "age_group"),
-                                "gender": self._extract_field(persona_content, "gender"),
-                                "qualitative_feedback": self._extract_field(persona_content, "qualitative_feedback"),
-                                "purchase_intent": self._extract_field(persona_content, "purchase_intent")
+                                "industry": self._extract_field(persona_content, "industry"),
+                                "qualitative_feedback_summary": self._extract_field(persona_content, "qualitative_feedback_summary")
                             }
                             
                             # Store this fallback persona
@@ -480,95 +483,244 @@ class SurveySimulationExpert:
         try:
             brand_name = overall_results.get("brand_name", "Unknown")
             
-            # Create the base data with overall results
+            # Create the base data with overall results and ensure NOT NULL fields have non-null values
+            # Updated to match the new schema
             base_data = {
                 "run_id": run_id,
                 "brand_name": brand_name,
-                "persona_segment": overall_results.get("persona_segment", []),
-                "brand_promise_perception_score": overall_results.get("brand_promise_perception_score", 5.0),
-                "personality_fit_score": overall_results.get("personality_fit_score", 5.0),
-                "emotional_association": overall_results.get("emotional_association", ["Neutral"]),
-                "functional_association": overall_results.get("functional_association", ["Generic"]),
-                "competitive_differentiation_score": overall_results.get("competitive_differentiation_score", 5.0),
-                "psychometric_sentiment_mapping": overall_results.get("psychometric_sentiment_mapping", {}),
-                "competitor_benchmarking_score": overall_results.get("competitor_benchmarking_score", 5.0),
-                "simulated_market_adoption_score": overall_results.get("simulated_market_adoption_score", 5.0),
+                
+                # Required fields (NOT NULL)
+                "persona_segment": "General Consumer",  # Changed from array to string
+                "emotional_association": "Neutral",  # Changed from array to string
+                "psychometric_sentiment_mapping": overall_results.get("psychometric_sentiment_mapping", {"general": 5.0}),
+                "raw_qualitative_feedback": overall_results.get("raw_qualitative_feedback", {"feedback": "Not provided"}),
                 "qualitative_feedback_summary": overall_results.get("qualitative_feedback_summary", "Not provided"),
-                "raw_qualitative_feedback": overall_results.get("raw_qualitative_feedback", {}),
                 "final_survey_recommendation": overall_results.get("final_survey_recommendation", "Not provided"),
                 "strategic_ranking": overall_results.get("strategic_ranking", 5),
                 
-                # Company-related fields - use defaults from overall results
-                "industry": overall_results.get("industry", None),
-                "company_size_employees": overall_results.get("company_size_employees", None),
-                "company_size_revenue": overall_results.get("company_size_revenue", None),
-                "market_share": overall_results.get("market_share", None),
-                "company_structure": overall_results.get("company_structure", None),
-                "geographic_location": overall_results.get("geographic_location", None),
-                "technology_stack": overall_results.get("technology_stack", None),
-                "company_growth_stage": overall_results.get("company_growth_stage", None),
-                "company_culture": overall_results.get("company_culture", None),
-                "financial_stability": overall_results.get("financial_stability", None),
-                "supply_chain": overall_results.get("supply_chain", None),
-                "legal_regulatory_environment": overall_results.get("legal_regulatory_environment", None),
+                # Nullable numeric fields
+                "brand_promise_perception_score": overall_results.get("brand_promise_perception_score", None),
+                "personality_fit_score": overall_results.get("personality_fit_score", None),
+                "competitive_differentiation_score": overall_results.get("competitive_differentiation_score", None),
+                "competitor_benchmarking_score": overall_results.get("competitor_benchmarking_score", None),
+                "simulated_market_adoption_score": overall_results.get("simulated_market_adoption_score", None),
                 
-                # Persona-related fields - will use defaults initially
-                "job_title": overall_results.get("job_title", None),
-                "seniority": overall_results.get("seniority", None),
-                "years_of_experience": overall_results.get("years_of_experience", None),
-                "department": overall_results.get("department", None),
-                "education_level": overall_results.get("education_level", None),
-                "goals_and_challenges": overall_results.get("goals_and_challenges", None),
-                "values_and_priorities": overall_results.get("values_and_priorities", None),
-                "decision_making_style": overall_results.get("decision_making_style", None),
-                "information_sources": overall_results.get("information_sources", None),
-                "communication_preferences": overall_results.get("communication_preferences", None),
-                "pain_points": overall_results.get("pain_points", None),
-                "technological_literacy": overall_results.get("technological_literacy", None),
-                "attitude_towards_risk": overall_results.get("attitude_towards_risk", None),
-                "purchasing_behavior": overall_results.get("purchasing_behavior", None),
-                "online_behavior": overall_results.get("online_behavior", None),
-                "interaction_with_brand": overall_results.get("interaction_with_brand", None),
-                "professional_associations": overall_results.get("professional_associations", None),
-                "technical_skills": overall_results.get("technical_skills", None),
-                "language": overall_results.get("language", None),
-                "learning_style": overall_results.get("learning_style", None),
-                "networking_habits": overall_results.get("networking_habits", None),
-                "professional_aspirations": overall_results.get("professional_aspirations", None),
-                "influence_within_company": overall_results.get("influence_within_company", None),
-                "channel_preferences": overall_results.get("channel_preferences", None),
-                "event_attendance": overall_results.get("event_attendance", None),
-                "content_consumption_habits": overall_results.get("content_consumption_habits", None),
-                "vendor_relationship_preferences": overall_results.get("vendor_relationship_preferences", None)
+                # New fields from the updated schema
+                "industry": None,
+                "company_size_employees": None,
+                "company_revenue": None,
+                "market_share": None,
+                "company_structure": None,
+                "geographic_location": None,
+                "technology_stack": None,
+                "company_growth_stage": None,
+                "job_title": None,
+                "seniority": None,
+                "years_of_experience": None,
+                "department": None,
+                "education_level": None,
+                "goals_and_challenges": None,
+                "values_and_priorities": None,
+                "decision_making_style": None,
+                "information_sources": None,
+                "pain_points": None,
+                "technological_literacy": None,
+                "attitude_towards_risk": None,
+                "purchasing_behavior": None,
+                "online_behavior": None,
+                "interaction_with_brand": None,
+                "professional_associations": None,
+                "technical_skills": None,
+                "networking_habits": None,
+                "professional_aspirations": None,
+                "influence_within_company": None,
+                "event_attendance": None,
+                "content_consumption_habits": None,
+                "vendor_relationship_preferences": None,
+                
+                # Additional new fields from the updated schema
+                "business_chemistry": None,
+                "reports_to": None,
+                "buying_group_structure": None,
+                "decision_maker": None,
+                "company_focus": None,
+                "company_maturity": None,
+                "budget_authority": None,
+                "preferred_vendor_size": None,
+                "innovation_adoption": None,
+                "key_performance_indicators": None,
+                "professional_development_interests": None,
+                "social_media_usage": None,
+                "work_life_balance_priorities": None,
+                "frustrations_annoyances": None,
+                "personal_aspirations_life_goals": None,
+                "motivations": None,
+                "current_brand_relationships": None,
+                "product_adoption_lifecycle_stage": None,
+                "purchase_triggers_events": None,
+                "success_metrics_product_service": None,
+                "channel_preferences_brand_interaction": None,
+                "barriers_to_adoption": None,
+                "generation_age_range": None,
+                "company_culture_values": None,
+                "industry_sub_vertical": None,
+                "confidence_score_persona_accuracy": None,
+                "data_sources_persona_creation": None,
+                "persona_archetype_type": None,
+                "behavioral_tags_keywords": None
             }
             
             # Update with persona-specific fields
             for key, value in persona.items():
+                # Handle field name mappings and type conversions
                 if key == "segment":
-                    # Convert to list if it's a string
-                    if isinstance(value, str):
-                        base_data["persona_segment"] = [value]
+                    # Convert from segment to persona_segment (string, not array)
+                    if isinstance(value, list):
+                        base_data["persona_segment"] = value[0] if value else "General Consumer"
                     else:
-                        base_data["persona_segment"] = value
+                        base_data["persona_segment"] = str(value)
+                
                 elif key == "emotional_associations":
-                    base_data["emotional_association"] = value
+                    # Convert from array to string
+                    if isinstance(value, list):
+                        base_data["emotional_association"] = ", ".join(value)
+                    else:
+                        base_data["emotional_association"] = str(value)
+                
                 elif key == "functional_associations":
-                    base_data["functional_association"] = value
+                    # No longer in schema as array, convert to string if needed for qualitative feedback
+                    if isinstance(value, list) and value:
+                        functional_str = ", ".join(value)
+                        if "qualitative_feedback_summary" in base_data:
+                            base_data["qualitative_feedback_summary"] += f" Functional associations: {functional_str}"
+                
                 elif key == "qualitative_feedback":
-                    base_data["qualitative_feedback_summary"] = value
+                    # Map to qualitative_feedback_summary
+                    base_data["qualitative_feedback_summary"] = str(value)
+                
                 elif key == "scores" and isinstance(value, dict):
                     # Handle individual scores
                     for score_key, score_value in value.items():
-                        if score_key in base_data:
+                        mapped_key = None
+                        
+                        # Map score keys to database fields
+                        if score_key == "brand_perception":
+                            mapped_key = "brand_promise_perception_score"
+                        elif score_key == "personality_fit":
+                            mapped_key = "personality_fit_score"
+                        elif score_key == "competitive_position":
+                            mapped_key = "competitive_differentiation_score"
+                        elif score_key == "market_potential":
+                            mapped_key = "simulated_market_adoption_score"
+                        
+                        if mapped_key and mapped_key in base_data:
                             try:
-                                base_data[score_key] = float(score_value)
+                                base_data[mapped_key] = float(score_value)
                             except (ValueError, TypeError):
                                 # Keep the default
                                 pass
-                else:
-                    # Use the persona value for all other fields
-                    if key in base_data:
-                        base_data[key] = value
+                
+                # Handle behavioral tags if present
+                elif key == "behavioral_tags" or key == "behavioral_tags_keywords":
+                    if isinstance(value, list):
+                        # Keep as a list for text[] PostgreSQL array type
+                        base_data["behavioral_tags_keywords"] = value
+                    elif isinstance(value, str):
+                        # Convert comma-separated string to list for text[] PostgreSQL array type
+                        base_data["behavioral_tags_keywords"] = [tag.strip() for tag in value.split(",")]
+                
+                # Direct mapping for other fields
+                elif key in base_data:
+                    base_data[key] = value
+            
+            # Ensure all NOT NULL fields have valid values
+            if not base_data["persona_segment"]:
+                base_data["persona_segment"] = "General Consumer"
+                
+            if not base_data["emotional_association"]:
+                base_data["emotional_association"] = "Neutral"
+                
+            # Ensure psychometric_sentiment_mapping is a valid JSON object
+            if not base_data["psychometric_sentiment_mapping"] or not isinstance(base_data["psychometric_sentiment_mapping"], dict):
+                base_data["psychometric_sentiment_mapping"] = {"general": 5.0}
+                
+            # Ensure raw_qualitative_feedback is a valid JSON object
+            if not base_data["raw_qualitative_feedback"] or not isinstance(base_data["raw_qualitative_feedback"], dict):
+                base_data["raw_qualitative_feedback"] = {"feedback": base_data["qualitative_feedback_summary"]}
+                
+            # Convert any None values in NOT NULL fields to appropriate defaults
+            if base_data["qualitative_feedback_summary"] is None:
+                base_data["qualitative_feedback_summary"] = "Not provided"
+                
+            if base_data["final_survey_recommendation"] is None:
+                base_data["final_survey_recommendation"] = "Not provided"
+                
+            if base_data["strategic_ranking"] is None:
+                base_data["strategic_ranking"] = 5
+                
+            # Convert numeric fields to correct types
+            try:
+                if base_data["strategic_ranking"] is not None:
+                    base_data["strategic_ranking"] = int(float(base_data["strategic_ranking"]))
+            except (ValueError, TypeError):
+                base_data["strategic_ranking"] = 5
+                
+            # Convert numeric score fields to floats
+            numeric_fields = [
+                "brand_promise_perception_score", 
+                "personality_fit_score",
+                "competitive_differentiation_score", 
+                "competitor_benchmarking_score",
+                "simulated_market_adoption_score",
+                "years_of_experience",
+                "company_revenue",
+                "confidence_score_persona_accuracy"
+            ]
+            
+            for field in numeric_fields:
+                if field in base_data and base_data[field] is not None:
+                    try:
+                        base_data[field] = float(base_data[field])
+                    except (ValueError, TypeError):
+                        # Set to None since these fields can be NULL
+                        base_data[field] = None
+            
+            # Convert boolean fields
+            boolean_fields = ["decision_maker"]
+            for field in boolean_fields:
+                if field in base_data and base_data[field] is not None:
+                    if isinstance(base_data[field], str):
+                        base_data[field] = base_data[field].lower() in ("yes", "true", "1")
+            
+            # Ensure JSON fields are proper JSON objects
+            json_fields = [
+                "psychometric_sentiment_mapping", 
+                "raw_qualitative_feedback",
+                "current_brand_relationships",
+                "purchase_triggers_events",
+                "data_sources_persona_creation"
+            ]
+            
+            for field in json_fields:
+                if field in base_data and base_data[field] is not None:
+                    if isinstance(base_data[field], str):
+                        try:
+                            base_data[field] = json.loads(base_data[field])
+                        except json.JSONDecodeError:
+                            if field == "psychometric_sentiment_mapping" or field == "raw_qualitative_feedback":
+                                # These are required fields
+                                base_data[field] = {"value": base_data[field]}
+                            else:
+                                # These can be null
+                                base_data[field] = None
+                    elif not isinstance(base_data[field], dict) and not isinstance(base_data[field], list):
+                        if field == "psychometric_sentiment_mapping" or field == "raw_qualitative_feedback":
+                            base_data[field] = {"value": str(base_data[field])}
+                        else:
+                            base_data[field] = None
+            
+            # Log the data being sent
+            logger.debug(f"Storing persona with keys: {list(base_data.keys())}")
             
             # Execute the insert with retries
             await self.supabase.execute_with_retry(
@@ -582,6 +734,17 @@ class SurveySimulationExpert:
         except Exception as e:
             error_msg = f"Error storing persona in Supabase: {str(e)}"
             logger.error(error_msg)
+            # Include more information about the error
+            if hasattr(e, 'code'):
+                logger.error(f"Error code: {e.code}")
+            if hasattr(e, 'details'):
+                logger.error(f"Error details: {e.details}")
+            
+            # Log partial data for debugging
+            try:
+                logger.debug(f"Persona data causing error: run_id={run_id}, brand_name={overall_results.get('brand_name', 'Unknown')}")
+            except:
+                pass
             # Log error but don't re-raise to prevent workflow disruption
 
     def _manual_extract_fields(self, content: str) -> Dict[str, Any]:

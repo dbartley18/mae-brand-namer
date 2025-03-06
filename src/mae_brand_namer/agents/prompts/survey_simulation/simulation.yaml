@@ -33,6 +33,13 @@ template: |
   Generate Individual Personas: {generate_individual_personas}
   Number of Personas to Generate: {num_personas}
 
+  IMPORTANT TWO-STEP APPROACH FOR EACH PERSONA:
+  1. FIRST, create a detailed, realistic persona with demographic and firmographic details.
+  2. THEN, answer the survey questions AS this persona would respond to the brand name.
+  
+  Think about each question holistically, as if the persona is actually taking the survey. Each persona should have a consistent 
+  perspective based on their background, values, and needs.
+
   When generating individual personas (Synthetic Personas--not fake personas), you must create realistic, detailed personas based on the target audience and industry context. 
   DO NOT generate random personas. Each persona should be a realistic representation of an actual customer or stakeholder who would 
   interact with this brand. The personas should be diverse but representative of the actual target market, with realistic demographic 
@@ -100,11 +107,10 @@ template: |
 
   Your output must include all the following fields required by the survey_simulation database:
   - brand_name: The name being evaluated
-  - persona_segment: Array of target audience segments analyzed
+  - persona_segment: String describing the target audience segment analyzed (NOT an array)
   - brand_promise_perception_score: How well the name conveys brand promise (0-10 scale)
   - personality_fit_score: Alignment with brand personality (0-10 scale)
-  - emotional_association: Array of key emotional responses evoked by the name
-  - functional_association: Array of practical/functional associations with the name
+  - emotional_association: String describing emotional responses evoked by the name (NOT an array)
   - competitive_differentiation_score: Distinctiveness from competitors (0-10 scale)
   - psychometric_sentiment_mapping: JSON mapping emotional dimensions to scores
   - competitor_benchmarking_score: Performance vs competitors (0-10 scale)
@@ -116,29 +122,27 @@ template: |
   
   Company-related fields:
   - industry: Industry the brand operates in
-  - company_size_employees: Number of employees at the company
-  - company_size_revenue: Annual revenue of the company in millions
-  - market_share: Approximate market share percentage
-  - company_structure: Organizational structure (e.g., Hierarchical, Flat, Matrix)
+  - company_size_employees: Size of the company (text)
+  - company_revenue: Annual revenue of the company (numeric)
+  - market_share: Approximate market share (text)
+  - company_structure: Organizational structure
   - geographic_location: Primary geographic location of operations
   - technology_stack: Description of technology used by company
-  - company_growth_stage: Growth stage (e.g., Startup, Growth, Mature)
-  - company_culture: Type of company culture
-  - financial_stability: Assessment of financial stability
-  - supply_chain: Description of supply chain
-  - legal_regulatory_environment: Regulatory environment affecting the brand/company the surveyed persona works for
+  - company_growth_stage: Growth stage
+  - company_culture_values: Type of company culture and values
+  - company_focus: Main focus of the company
+  - company_maturity: Maturity stage of the company
   
   Persona-related fields:
   - job_title: Job title of target persona
-  - seniority: Seniority level (e.g., Entry-level, Mid-level, Executive)
-  - years_of_experience: Years of professional experience
+  - seniority: Seniority level
+  - years_of_experience: Years of professional experience (numeric)
   - department: Department within organization
   - education_level: Highest education level attained
   - goals_and_challenges: Key professional goals and challenges
   - values_and_priorities: Core values and priorities
   - decision_making_style: Approach to decision making
   - information_sources: Primary sources of information
-  - communication_preferences: Preferred communication channels
   - pain_points: Primary pain points related to products/services
   - technological_literacy: Level of comfort with technology
   - attitude_towards_risk: Risk tolerance level
@@ -147,15 +151,39 @@ template: |
   - interaction_with_brand: How they typically interact with brands
   - professional_associations: Professional groups or associations
   - technical_skills: Key technical skills
-  - language: Primary language
-  - learning_style: Preferred way of learning
   - networking_habits: Approach to professional networking
   - professional_aspirations: Career goals and aspirations
   - influence_within_company: Level of influence in decision making
-  - channel_preferences: Preferred marketing/sales channels
   - event_attendance: Types of events they attend
   - content_consumption_habits: How they consume content
   - vendor_relationship_preferences: Preferred vendor relationship style
+  
+  Additional fields from updated schema:
+  - business_chemistry: Business personality type
+  - reports_to: Who they report to in the organization
+  - buying_group_structure: Structure of their buying group
+  - decision_maker: Whether they are a decision maker (boolean)
+  - preferred_vendor_size: Size of vendors they prefer to work with
+  - innovation_adoption: How quickly they adopt innovations
+  - key_performance_indicators: KPIs they track
+  - professional_development_interests: Areas they want to develop
+  - social_media_usage: How they use social media
+  - work_life_balance_priorities: Their priorities for work-life balance
+  - frustrations_annoyances: What frustrates them
+  - personal_aspirations_life_goals: Their personal goals
+  - motivations: What motivates them
+  - current_brand_relationships: JSON object describing relationships with other brands
+  - product_adoption_lifecycle_stage: Where they fall in adoption lifecycle
+  - purchase_triggers_events: JSON object with events that trigger purchases
+  - success_metrics_product_service: How they measure success
+  - barriers_to_adoption: What prevents them from adopting new products/services
+  - generation_age_range: Their generation or age range
+  - industry_sub_vertical: More specific industry category
+  - confidence_score_persona_accuracy: How confident you are in this persona's accuracy
+  - data_sources_persona_creation: JSON object describing data sources used
+  - persona_archetype_type: Type of archetype this persona represents
+  - behavioral_tags_keywords: Array of keywords describing this persona's behavior
+  - channel_preferences_brand_interaction: Preferred channels for brand interaction
 
   If "generate_individual_personas" is true, you MUST include a field called "individual_personas" with an array of {num_personas} UNIQUE, REALISTIC, NON-RANDOM individual persona responses. 
   These should reflect your expertise in market research and understanding of actual customer demographics, behavior patterns, and preferences in this specific market segment.
@@ -168,55 +196,13 @@ template: |
   - Genuine communication preferences and purchasing behavior patterns for this demographic
   - Realistic company sizes, structures, and technology stacks for this market segment
   
-  Each persona should include:
+  Each persona should include all the fields listed above, with special attention to:
   - persona_id: A unique identifier for the persona
-  - segment: The audience segment they belong to
-  - age_group: Their age group
-  - gender: Their gender
-  - income_level: Their income level
-  - education_level: Their education level
-  - job_title: Their job title
-  - seniority: Their seniority level
-  - years_of_experience: Years of professional experience
-  - department: Their department
-  - goals_and_challenges: Their professional goals and challenges
-  - values_and_priorities: Their core values and priorities
-  - decision_making_style: Their approach to decision making
-  - information_sources: Their primary sources of information
-  - communication_preferences: Their preferred communication channels
-  - pain_points: Their primary pain points
-  - technological_literacy: Their level of comfort with technology
-  - attitude_towards_risk: Their risk tolerance level
-  - purchasing_behavior: Their purchasing habits
-  - online_behavior: Their online activity patterns
-  - interaction_with_brand: How they typically interact with brands
-  - professional_associations: Their professional groups or associations
-  - technical_skills: Their key technical skills
-  - language: Their primary language
-  - learning_style: Their preferred way of learning
-  - networking_habits: Their approach to networking
-  - professional_aspirations: Their career goals
-  - influence_within_company: Their influence in decision making
-  - channel_preferences: Their preferred marketing channels
-  - event_attendance: Types of events they attend
-  - content_consumption_habits: How they consume content
-  - vendor_relationship_preferences: Their preferred vendor relationship style
-  - industry: Their industry
-  - company_size_employees: Size of their company
-  - company_size_revenue: Revenue of their company
-  - market_share: Their company's market share
-  - company_structure: Structure of their company
-  - geographic_location: Their location
-  - technology_stack: Technology used at their company
-  - company_growth_stage: Growth stage of their company
-  - company_culture: Culture of their company
-  - financial_stability: Financial stability of their company
-  - supply_chain: Supply chain of their company
-  - legal_regulatory_environment: Regulatory environment of their company
-  - scores: Object containing their individual scores for various metrics
-  - emotional_associations: Array of emotional associations they have with the brand name
-  - functional_associations: Array of functional associations they have with the brand name
-  - qualitative_feedback: Their personal feedback about the brand name
-  - purchase_intent: Whether they would purchase from this brand (Yes/No)
+  - persona_segment: The audience segment they belong to (as a string, not array)
+  - emotional_association: Their emotional associations with the brand name (as a string, not array)
+  - qualitative_feedback_summary: Their personal feedback about the brand name
+  - scores for various metrics (each on a 1-10 scale)
+
+  REMEMBER: Follow the two-step approach for each persona - first create the persona, then have them answer the survey questions.
 
   Provide clear insights and recommendations based on simulated survey results. 
