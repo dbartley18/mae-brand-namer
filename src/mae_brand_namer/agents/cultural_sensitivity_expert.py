@@ -327,7 +327,7 @@ class CulturalSensitivityExpert:
                 logger.debug(f"Type of body_part_bodily_function_connotations: {type(data.get('body_part_bodily_function_connotations'))}")
                 
                 # Perform the insert with better error reporting
-                result = await self.supabase.table("cultural_sensitivity_analysis").insert(data).execute()
+                await self.supabase.table("cultural_sensitivity_analysis").insert(data).execute()
                 logger.info(f"Successfully stored cultural sensitivity analysis for brand name '{brand_name}' with run_id '{run_id}'")
                 
             except Exception as e:

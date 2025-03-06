@@ -20,6 +20,10 @@ from ..utils.supabase_utils import SupabaseManager
 
 logger = get_logger(__name__)
 
+# Add near the top of the file, after imports
+ERROR_IN_ANALYSIS = "Error in analysis"
+UNKNOWN_DUE_TO_ERROR = "Unknown due to error"
+
 class BaseLanguageTranslationExpert:
     """Base class for language-specific translation analysis experts.
     
@@ -320,15 +324,15 @@ class BaseLanguageTranslationExpert:
                             "task_name": "translation_analysis",
                             "target_language": self.language_name,
                             "direct_translation": "Error analyzing translation",
-                            "semantic_shift": "Error in analysis",
-                            "pronunciation_difficulty": "Unknown due to error",
+                            "semantic_shift": ERROR_IN_ANALYSIS,
+                            "pronunciation_difficulty": UNKNOWN_DUE_TO_ERROR,
                             "phonetic_similarity_undesirable": False,
-                            "phonetic_retention": "Unknown due to error",
-                            "cultural_acceptability": "Unknown due to error",
+                            "phonetic_retention": UNKNOWN_DUE_TO_ERROR,
+                            "cultural_acceptability": UNKNOWN_DUE_TO_ERROR,
                             "adaptation_needed": False,
                             "proposed_adaptation": "N/A - Error in analysis",
-                            "brand_essence_preserved": "Unknown due to error",
-                            "global_consistency_vs_localization": "Unknown due to error",
+                            "brand_essence_preserved": UNKNOWN_DUE_TO_ERROR,
+                            "global_consistency_vs_localization": UNKNOWN_DUE_TO_ERROR,
                             "notes": f"Error in analysis: {str(parse_error)}",
                             "rank": 5.0
                         }
@@ -340,11 +344,11 @@ class BaseLanguageTranslationExpert:
                         "brand_name": brand_name,
                         "task_name": "translation_analysis",
                         "target_language": self.language_name,
-                        "direct_translation": "Error in analysis",
-                        "semantic_shift": "Error in analysis",
-                        "pronunciation_difficulty": "Unknown due to error",
-                        "phonetic_retention": "Unknown due to error",
-                        "global_consistency_vs_localization": "Unknown due to error",
+                        "direct_translation": ERROR_IN_ANALYSIS,
+                        "semantic_shift": ERROR_IN_ANALYSIS,
+                        "pronunciation_difficulty": UNKNOWN_DUE_TO_ERROR,
+                        "phonetic_retention": UNKNOWN_DUE_TO_ERROR,
+                        "global_consistency_vs_localization": UNKNOWN_DUE_TO_ERROR,
                         "notes": f"Error during analysis: {str(e)}",
                         "rank": 5.0
                     }
@@ -367,11 +371,11 @@ class BaseLanguageTranslationExpert:
                 "brand_name": brand_name,
                 "task_name": "translation_analysis",
                 "target_language": self.language_name,
-                "direct_translation": "Error in analysis",
-                "semantic_shift": "Error in analysis",
-                "pronunciation_difficulty": "Unknown due to error",
-                "phonetic_retention": "Unknown due to error",
-                "global_consistency_vs_localization": "Unknown due to error",
+                "direct_translation": ERROR_IN_ANALYSIS,
+                "semantic_shift": ERROR_IN_ANALYSIS,
+                "pronunciation_difficulty": UNKNOWN_DUE_TO_ERROR,
+                "phonetic_retention": UNKNOWN_DUE_TO_ERROR,
+                "global_consistency_vs_localization": UNKNOWN_DUE_TO_ERROR,
                 "notes": f"Unexpected error in analysis: {str(e)}",
                 "rank": 5.0
             }

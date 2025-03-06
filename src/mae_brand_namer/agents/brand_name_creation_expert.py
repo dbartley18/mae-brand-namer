@@ -189,11 +189,6 @@ class BrandNameCreationExpert:
                 # Move the normalize function outside the loop to make it accessible for checking existing names
                 self._normalize_name = _normalize_name
                 
-                # Generate up to twice the requested names to ensure we have enough after filtering duplicates
-                max_generation_attempts = num_names_per_category * len(categories) * 2
-                generation_attempts = 0
-                duplicate_count = 0
-                
                 # Iterate through each naming category
                 for category in categories:
                     logger.info(

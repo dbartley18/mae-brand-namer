@@ -62,7 +62,7 @@ class Settings(BaseSettings):
             from langchain_core.tracers import LangChainTracer
             try:
                 return [LangChainTracer(project_name=self.langchain_project)]
-            except:
+            except Exception as e:
                 return None
         return None
     

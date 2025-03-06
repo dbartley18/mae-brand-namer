@@ -1456,8 +1456,8 @@ async def process_market_research(state: BrandNameGenerationState, agent: Market
                 if hasattr(state, "industry_focus"):
                     brand_context["industry_focus"] = state.industry_focus
                 
-                market_research = await agent.analyze_market_potential(
-                    run_id=state.run_id,
+            market_research = await agent.analyze_market_potential(
+                run_id=state.run_id,
                     brand_names=shortlisted_names,
                     brand_context=brand_context
                 )
@@ -1655,7 +1655,7 @@ async def process_seo_analysis(state: BrandNameGenerationState, agent: SEOOnline
                         "brand_name": brand_name,
                         **analysis
                     })
-                except Exception as e:
+    except Exception as e:
                     logger.error(f"Error analyzing SEO for {brand_name}: {str(e)}")
                     seo_analyses.append({
                         "brand_name": brand_name,

@@ -85,7 +85,17 @@ class SurveySimulationExpert:
             ResponseSchema(name="raw_qualitative_feedback", description="JSON object with detailed feedback from different personas"),
             ResponseSchema(name="final_survey_recommendation", description="Final recommendation based on survey results"),
             ResponseSchema(name="strategic_ranking", description="Overall strategic ranking (1=best)"),
-            ResponseSchema(name="individual_personas", description="Array of individual persona responses with demographic details and feedback"),
+            ResponseSchema(
+                name="individual_personas", 
+                description="""Array of EXACTLY 100 individual persona responses, each with demographic details and feedback. 
+                    Format: [
+                        {"persona_id": "1", "segment": "...", "age_group": "...", "gender": "...", "income_level": "...", ...},
+                        {"persona_id": "2", "segment": "...", "age_group": "...", "gender": "...", "income_level": "...", ...},
+                        ...
+                    ]
+                    IMPORTANT: You MUST generate EXACTLY 100 unique, non-random personas. Each one will be saved in the database as a separate row.
+                """
+            ),
             
             # Company-related fields
             ResponseSchema(name="industry", description="Industry the brand operates in"),
@@ -155,11 +165,12 @@ class SurveySimulationExpert:
             # Load prompt templates
             self.system_prompt = load_prompt(str(prompt_dir / "system.yaml"))
             self.simulation_prompt = load_prompt(str(prompt_dir / "simulation.yaml"))
+            self.single_persona_prompt = load_prompt(str(prompt_dir / "single_persona.yaml"))
             
             # Get format instructions from the output parser
             self.format_instructions = self.output_parser.get_format_instructions()
             
-            # Create the prompt template
+            # Create the main prompt template for full survey simulation
             system_message = SystemMessage(content=self.system_prompt.template)
             human_template = self.simulation_prompt.template
             
@@ -168,14 +179,18 @@ class SurveySimulationExpert:
                 ("human", human_template)
             ])
             
-            # Log information about the loaded prompt
-            logger.info(f"Prompt expects these variables: {self.prompt_template.input_variables}")
-            logger.info("Survey Simulation Expert initialized with prompt template")
+            # Create the single persona template using the loaded prompt
+            self.single_persona_template = ChatPromptTemplate.from_messages([
+                ("system", self.system_prompt.template),
+                ("human", self.single_persona_prompt.template)
+            ])
             
-            logger.info("Successfully loaded survey simulation prompt templates")
+            logger.info("Successfully loaded all prompt templates")
+            
         except Exception as e:
-            logger.error(f"Error loading prompt templates: {str(e)}")
-            raise
+            error_msg = f"Error loading prompt templates: {str(e)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
     async def simulate_survey(
         self,
@@ -186,7 +201,7 @@ class SurveySimulationExpert:
         brand_values: List[str] = None,
         competitive_analysis: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """Simulate a survey for a brand name with 100 individual persona responses.
+        """Simulate a survey for a brand name, generating individual persona responses one at a time.
         
         Args:
             run_id: The run ID for the workflow
@@ -197,7 +212,7 @@ class SurveySimulationExpert:
             competitive_analysis: Competitive analysis data
             
         Returns:
-            Dict containing survey simulation results with 100 individual persona responses
+            Dict containing survey simulation results with individual persona responses
         """
         try:
             logger.info(f"Simulating survey for brand name: {brand_name} (run: {run_id})")
@@ -222,75 +237,352 @@ class SurveySimulationExpert:
             if competitive_analysis:
                 formatted_competitive_analysis = json.dumps(competitive_analysis, indent=2)
             
-            # Get format instructions from the output parser
-            format_instructions = self.output_parser.get_format_instructions()
+            # First, get the overall survey results
+            logger.info(f"Generating overall survey results for {brand_name}")
+            overall_results = await self._generate_overall_survey_results(
+                brand_name,
+                formatted_brand_context,
+                formatted_target_audience,
+                formatted_brand_values,
+                formatted_competitive_analysis
+            )
             
-            # Create the prompt with all inputs
-            prompt_inputs = {
-                "format_instructions": format_instructions,
-                "brand_name": brand_name,
-                "brand_context": formatted_brand_context,
-                "target_audience": formatted_target_audience,
-                "brand_values": formatted_brand_values,
-                "competitive_analysis": formatted_competitive_analysis,
-                "generate_individual_personas": True,
-                "num_personas": 100
-            }
+            # Normalize the overall results
+            normalized_results = self._normalize_survey_output(overall_results)
             
-            # Format the prompt
-            prompt = self.prompt_template.format_prompt(**prompt_inputs)
+            # Now generate individual personas one by one
+            logger.info(f"Generating individual personas for {brand_name}")
+            individual_personas = []
+            num_personas = 100
             
-            # Log the prompt for debugging
-            logger.debug(f"Survey simulation prompt for {brand_name}: {prompt.to_string()}")
+            # Create individual persona response schema
+            persona_schema = [
+                ResponseSchema(name="persona_id", description="Unique identifier for this persona"),
+                ResponseSchema(name="segment", description="Which segment of the target audience this persona belongs to"),
+                ResponseSchema(name="age_group", description="Age range (e.g., 25-34)"),
+                ResponseSchema(name="gender", description="Gender"),
+                ResponseSchema(name="income_level", description="Income level"),
+                ResponseSchema(name="job_title", description="Job title"),
+                ResponseSchema(name="scores", description="Dictionary of perception scores (1-10)"),
+                ResponseSchema(name="emotional_associations", description="List of emotional associations with the brand"),
+                ResponseSchema(name="functional_associations", description="List of functional associations with the brand"),
+                ResponseSchema(name="qualitative_feedback", description="Qualitative feedback on the brand name"),
+                ResponseSchema(name="purchase_intent", description="Whether they would purchase (Yes/No/Maybe)"),
+            ]
             
-            # Invoke the LLM
-            response = await self.llm.ainvoke(prompt.to_messages())
+            persona_parser = StructuredOutputParser.from_response_schemas(persona_schema)
+            persona_format_instructions = persona_parser.get_format_instructions()
             
-            # Log the response for debugging
-            logger.debug(f"Survey simulation response for {brand_name}: {response.content}")
+            # Generate personas one by one
+            success_count = 0
+            for i in range(num_personas):
+                try:
+                    persona_id = f"{brand_name.replace(' ', '')}-{i+1:03d}"
+                    
+                    # Use the single persona template with focused format instructions
+                    persona_inputs = {
+                        "format_instructions": persona_format_instructions,
+                        "brand_name": brand_name,
+                        "brand_context": formatted_brand_context,
+                        "target_audience": formatted_target_audience,
+                        "brand_values": formatted_brand_values,
+                        "persona_number": i + 1,
+                        "total_personas": num_personas,
+                        "persona_id": persona_id
+                    }
+                    
+                    # Format the single persona prompt
+                    formatted_prompt = self.single_persona_template.format_prompt(**persona_inputs)
+                    
+                    # Call the LLM
+                    logger.info(f"Generating persona {i+1}/{num_personas} for {brand_name}")
+                    persona_response = await self.llm.ainvoke(formatted_prompt.to_messages())
+                    persona_content = persona_response.content
+                    
+                    # Try to parse the persona
+                    try:
+                        # Clean up the response - look for JSON object
+                        json_start = persona_content.find('{')
+                        json_end = persona_content.rfind('}') + 1
+                        
+                        if json_start >= 0 and json_end > json_start:
+                            json_content = persona_content[json_start:json_end]
+                            persona = json.loads(json_content)
+                        else:
+                            # If no JSON found, use the whole content
+                            persona = json.loads(persona_content)
+                        
+                        # Ensure persona_id is present
+                        if "persona_id" not in persona:
+                            persona["persona_id"] = persona_id
+                        
+                        # Store this persona
+                        if self.supabase:
+                            await self._store_single_persona(run_id, normalized_results, persona)
+                        
+                        # Add to our list
+                        individual_personas.append(persona)
+                        success_count += 1
+                        logger.info(f"Successfully generated persona {i+1}/{num_personas} for {brand_name}")
+                    
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse persona {i+1}: {str(e)}")
+                        logger.debug(f"Persona content: {persona_content[:500]}...")
+                        
+                        # Try a fallback approach with regex
+                        try:
+                            # Extract key fields with regex
+                            fallback_persona = {
+                                "persona_id": persona_id,
+                                "segment": self._extract_field(persona_content, "segment"),
+                                "job_title": self._extract_field(persona_content, "job_title"),
+                                "age_group": self._extract_field(persona_content, "age_group"),
+                                "gender": self._extract_field(persona_content, "gender"),
+                                "qualitative_feedback": self._extract_field(persona_content, "qualitative_feedback"),
+                                "purchase_intent": self._extract_field(persona_content, "purchase_intent")
+                            }
+                            
+                            # Store this fallback persona
+                            if self.supabase:
+                                await self._store_single_persona(run_id, normalized_results, fallback_persona)
+                            
+                            # Add to our list
+                            individual_personas.append(fallback_persona)
+                            success_count += 1
+                            logger.info(f"Used fallback parsing for persona {i+1}/{num_personas}")
+                        
+                        except Exception as fallback_error:
+                            logger.error(f"Fallback parsing also failed for persona {i+1}: {str(fallback_error)}")
+                except Exception as persona_error:
+                    logger.error(f"Error generating persona {i+1}: {str(persona_error)}")
             
-            # Parse the response
-            try:
-                output = self.output_parser.parse(response.content)
-                logger.info(f"Successfully parsed survey simulation for {brand_name}")
-            except Exception as parse_error:
-                logger.warning(f"Error parsing survey simulation for {brand_name}: {str(parse_error)}")
-                logger.warning("Attempting manual extraction...")
-                output = self._manual_extract_fields(response.content)
-            
-            # Normalize the output
-            normalized_output = self._normalize_survey_output(output)
-            
-            # Check if individual_personas were generated by the LLM
-            if not normalized_output.get("individual_personas"):
-                logger.warning(f"LLM did not generate individual personas for {brand_name}. Using fallback method.")
-                # Only use the fallback method if the LLM didn't generate personas
-                normalized_output["individual_personas"] = self._generate_individual_personas(
-                    brand_name, 
-                    normalized_output, 
-                    formatted_target_audience
-                )
-            else:
-                persona_count = len(normalized_output["individual_personas"])
-                logger.info(f"LLM successfully generated {persona_count} personas for {brand_name}")
+            # Add the personas to the results
+            normalized_results["individual_personas"] = individual_personas
             
             # Create the final results
             simulation_results = {
                 "brand_name": brand_name,
                 "run_id": run_id,
                 "timestamp": datetime.now().isoformat(),
-                **normalized_output
+                **normalized_results,
+                "success_count": success_count,
+                "total_personas": num_personas
             }
             
-            # Store in Supabase
-            await self._store_in_supabase(run_id, simulation_results)
-            
+            logger.info(f"Successfully generated {success_count}/{num_personas} personas for {brand_name}")
             return simulation_results
             
         except Exception as e:
             error_msg = f"Error simulating survey for brand name '{brand_name}': {str(e)}"
             logger.error(error_msg)
             raise ValueError(error_msg)
+
+    def _extract_field(self, content: str, field_name: str) -> str:
+        """Extract a field from text content using regex."""
+        pattern = fr'"{field_name}"\s*:\s*"(.+?)"'
+        match = re.search(pattern, content)
+        if match:
+            return match.group(1)
+        
+        # Try without quotes
+        pattern = fr'"{field_name}"\s*:\s*(.+?)(?:,|\n|}}'
+        match = re.search(pattern, content)
+        if match:
+            return match.group(1).strip().strip('"')
+        
+        return f"Not available"
+    
+    async def _generate_overall_survey_results(
+        self,
+        brand_name: str,
+        brand_context: str,
+        target_audience: str,
+        brand_values: str,
+        competitive_analysis: str
+    ) -> Dict[str, Any]:
+        """Generate the overall survey results without individual personas."""
+        
+        # Define output schemas for the overall results
+        overall_schemas = [
+            ResponseSchema(name="brand_name", description="The brand name being evaluated"),
+            ResponseSchema(name="persona_segment", description="Array of target audience segments analyzed"),
+            ResponseSchema(name="brand_promise_perception_score", description="How well the name conveys brand promise (0-10 scale)"),
+            ResponseSchema(name="personality_fit_score", description="Alignment with brand personality (0-10 scale)"),
+            ResponseSchema(name="emotional_association", description="Array of key emotional responses evoked by the name"),
+            ResponseSchema(name="functional_association", description="Array of practical/functional associations with the name"),
+            ResponseSchema(name="competitive_differentiation_score", description="Distinctiveness from competitors (0-10 scale)"),
+            ResponseSchema(name="psychometric_sentiment_mapping", description="JSON mapping emotional dimensions to scores"),
+            ResponseSchema(name="competitor_benchmarking_score", description="Performance vs competitors (0-10 scale)"),
+            ResponseSchema(name="simulated_market_adoption_score", description="Predicted market acceptance (0-10 scale)"),
+            ResponseSchema(name="qualitative_feedback_summary", description="Summary of qualitative feedback"),
+            ResponseSchema(name="final_survey_recommendation", description="Final recommendation based on survey results"),
+            ResponseSchema(name="strategic_ranking", description="Overall strategic ranking (1=best)")
+        ]
+        
+        # Create output parser for overall results
+        overall_parser = StructuredOutputParser.from_response_schemas(overall_schemas)
+        format_instructions = overall_parser.get_format_instructions()
+        
+        # Use existing prompt templates with a modification for overall results only
+        prompt_inputs = {
+            "format_instructions": format_instructions,
+            "brand_name": brand_name,
+            "brand_context": brand_context,
+            "target_audience": target_audience,
+            "brand_values": brand_values,
+            "competitive_analysis": competitive_analysis,
+            "generate_individual_personas": False,  # Don't generate individual personas in this call
+            "num_personas": 0  # No personas needed
+        }
+        
+        # Add a note about generating only overall results
+        prompt_note = """
+        IMPORTANT: In this call, generate ONLY the overall survey results and metrics. 
+        DO NOT generate any individual personas. Focus on creating aggregate metrics and insights
+        that summarize how the target audience would perceive this brand name.
+        """
+        
+        # Use the existing templates from _load_prompts()
+        overall_results_prompt = ChatPromptTemplate.from_messages([
+            ("system", self.system_prompt.template),
+            ("human", self.simulation_prompt.template + prompt_note)
+        ])
+        
+        # Format the prompt
+        formatted_prompt = overall_results_prompt.format_prompt(**prompt_inputs)
+        
+        # Call the LLM
+        logger.info(f"Generating overall survey results for {brand_name}")
+        overall_response = await self.llm.ainvoke(formatted_prompt.to_messages())
+        
+        # Try to parse the overall results
+        try:
+            overall_results = overall_parser.parse(overall_response.content)
+            logger.info(f"Successfully parsed overall survey results for {brand_name}")
+            return overall_results
+        except Exception as e:
+            logger.warning(f"Error parsing overall survey results: {str(e)}")
+            logger.warning("Attempting manual extraction...")
+            return self._manual_extract_fields(overall_response.content)
+    
+    async def _store_single_persona(self, run_id: str, overall_results: Dict[str, Any], persona: Dict[str, Any]) -> None:
+        """Store a single persona in Supabase.
+        
+        Args:
+            run_id: The run ID for the workflow
+            overall_results: The overall survey results
+            persona: A single persona to store
+        """
+        if not self.supabase:
+            logger.warning("Supabase not available, skipping storage")
+            return
+        
+        try:
+            brand_name = overall_results.get("brand_name", "Unknown")
+            
+            # Create the base data with overall results
+            base_data = {
+                "run_id": run_id,
+                "brand_name": brand_name,
+                "persona_segment": overall_results.get("persona_segment", []),
+                "brand_promise_perception_score": overall_results.get("brand_promise_perception_score", 5.0),
+                "personality_fit_score": overall_results.get("personality_fit_score", 5.0),
+                "emotional_association": overall_results.get("emotional_association", ["Neutral"]),
+                "functional_association": overall_results.get("functional_association", ["Generic"]),
+                "competitive_differentiation_score": overall_results.get("competitive_differentiation_score", 5.0),
+                "psychometric_sentiment_mapping": overall_results.get("psychometric_sentiment_mapping", {}),
+                "competitor_benchmarking_score": overall_results.get("competitor_benchmarking_score", 5.0),
+                "simulated_market_adoption_score": overall_results.get("simulated_market_adoption_score", 5.0),
+                "qualitative_feedback_summary": overall_results.get("qualitative_feedback_summary", "Not provided"),
+                "raw_qualitative_feedback": overall_results.get("raw_qualitative_feedback", {}),
+                "final_survey_recommendation": overall_results.get("final_survey_recommendation", "Not provided"),
+                "strategic_ranking": overall_results.get("strategic_ranking", 5),
+                
+                # Company-related fields - use defaults from overall results
+                "industry": overall_results.get("industry", None),
+                "company_size_employees": overall_results.get("company_size_employees", None),
+                "company_size_revenue": overall_results.get("company_size_revenue", None),
+                "market_share": overall_results.get("market_share", None),
+                "company_structure": overall_results.get("company_structure", None),
+                "geographic_location": overall_results.get("geographic_location", None),
+                "technology_stack": overall_results.get("technology_stack", None),
+                "company_growth_stage": overall_results.get("company_growth_stage", None),
+                "company_culture": overall_results.get("company_culture", None),
+                "financial_stability": overall_results.get("financial_stability", None),
+                "supply_chain": overall_results.get("supply_chain", None),
+                "legal_regulatory_environment": overall_results.get("legal_regulatory_environment", None),
+                
+                # Persona-related fields - will use defaults initially
+                "job_title": overall_results.get("job_title", None),
+                "seniority": overall_results.get("seniority", None),
+                "years_of_experience": overall_results.get("years_of_experience", None),
+                "department": overall_results.get("department", None),
+                "education_level": overall_results.get("education_level", None),
+                "goals_and_challenges": overall_results.get("goals_and_challenges", None),
+                "values_and_priorities": overall_results.get("values_and_priorities", None),
+                "decision_making_style": overall_results.get("decision_making_style", None),
+                "information_sources": overall_results.get("information_sources", None),
+                "communication_preferences": overall_results.get("communication_preferences", None),
+                "pain_points": overall_results.get("pain_points", None),
+                "technological_literacy": overall_results.get("technological_literacy", None),
+                "attitude_towards_risk": overall_results.get("attitude_towards_risk", None),
+                "purchasing_behavior": overall_results.get("purchasing_behavior", None),
+                "online_behavior": overall_results.get("online_behavior", None),
+                "interaction_with_brand": overall_results.get("interaction_with_brand", None),
+                "professional_associations": overall_results.get("professional_associations", None),
+                "technical_skills": overall_results.get("technical_skills", None),
+                "language": overall_results.get("language", None),
+                "learning_style": overall_results.get("learning_style", None),
+                "networking_habits": overall_results.get("networking_habits", None),
+                "professional_aspirations": overall_results.get("professional_aspirations", None),
+                "influence_within_company": overall_results.get("influence_within_company", None),
+                "channel_preferences": overall_results.get("channel_preferences", None),
+                "event_attendance": overall_results.get("event_attendance", None),
+                "content_consumption_habits": overall_results.get("content_consumption_habits", None),
+                "vendor_relationship_preferences": overall_results.get("vendor_relationship_preferences", None)
+            }
+            
+            # Update with persona-specific fields
+            for key, value in persona.items():
+                if key == "segment":
+                    # Convert to list if it's a string
+                    if isinstance(value, str):
+                        base_data["persona_segment"] = [value]
+                    else:
+                        base_data["persona_segment"] = value
+                elif key == "emotional_associations":
+                    base_data["emotional_association"] = value
+                elif key == "functional_associations":
+                    base_data["functional_association"] = value
+                elif key == "qualitative_feedback":
+                    base_data["qualitative_feedback_summary"] = value
+                elif key == "scores" and isinstance(value, dict):
+                    # Handle individual scores
+                    for score_key, score_value in value.items():
+                        if score_key in base_data:
+                            try:
+                                base_data[score_key] = float(score_value)
+                            except (ValueError, TypeError):
+                                # Keep the default
+                                pass
+                else:
+                    # Use the persona value for all other fields
+                    if key in base_data:
+                        base_data[key] = value
+            
+            # Execute the insert with retries
+            await self.supabase.execute_with_retry(
+                operation="insert",
+                table="survey_simulation",
+                data=base_data
+            )
+            
+            logger.info(f"Successfully stored persona {persona.get('persona_id', 'unknown')} for {brand_name}")
+            
+        except Exception as e:
+            error_msg = f"Error storing persona in Supabase: {str(e)}"
+            logger.error(error_msg)
+            # Log error but don't re-raise to prevent workflow disruption
 
     def _manual_extract_fields(self, content: str) -> Dict[str, Any]:
         """Manually extract fields from the response if structured parsing fails."""
@@ -382,14 +674,66 @@ class SurveySimulationExpert:
         else:
             result["strategic_ranking"] = 5
         
-        # Try to extract individual_personas
-        personas_match = re.search(r'"individual_personas"\s*:\s*(\[.*?\])', content, re.DOTALL)
-        if personas_match:
+        # Try multiple approaches to extract individual_personas
+        try:
+            # First approach: try to find the entire individual_personas array and parse it
+            personas_match = re.search(r'"individual_personas"\s*:\s*(\[.*\])', content, re.DOTALL)
+            if personas_match:
+                personas_text = personas_match.group(1)
+                # Clean up the JSON before parsing
+                cleaned_json = personas_text.replace("'", '"')
+                # Sometimes multi-line strings cause issues, attempt to normalize newlines in strings
+                cleaned_json = re.sub(r'"\s*\n\s*"', ' ', cleaned_json)
+                try:
+                    result["individual_personas"] = json.loads(cleaned_json)
+                    logger.info(f"Successfully extracted {len(result['individual_personas'])} personas using regex + json parsing")
+                    return result
+                except json.JSONDecodeError as e:
+                    logger.warning(f"JSON parsing error for individual_personas: {e}")
+                    # Continue to next approach if this fails
+            
+            # Second approach: Look for valid JSON objects in the text
+            logger.info("Attempting to find individual persona objects in the text")
+            # Look for JSON-like objects that match our persona pattern
+            persona_pattern = r'\{\s*"persona_id"\s*:\s*"[^"]+"\s*,.*?\}'
+            persona_matches = re.findall(persona_pattern, content, re.DOTALL)
+            
+            if persona_matches:
+                personas = []
+                for match in persona_matches:
+                    try:
+                        # Replace single quotes with double quotes for JSON compatibility
+                        cleaned_match = match.replace("'", '"')
+                        # Try to parse each persona object
+                        persona = json.loads(cleaned_match)
+                        personas.append(persona)
+                    except json.JSONDecodeError:
+                        # Skip invalid JSON objects
+                        pass
+                
+                if personas:
+                    logger.info(f"Extracted {len(personas)} individual personas using pattern matching")
+                    result["individual_personas"] = personas
+                    return result
+            
+            # Third approach: If the content is already valid JSON, try parsing it directly
             try:
-                result["individual_personas"] = json.loads(personas_match.group(1).replace("'", '"'))
-            except:
-                result["individual_personas"] = []
-        else:
+                # If the entire response is valid JSON, parse it
+                full_json = json.loads(content)
+                if "individual_personas" in full_json and isinstance(full_json["individual_personas"], list):
+                    logger.info(f"Extracted {len(full_json['individual_personas'])} personas from full JSON")
+                    result["individual_personas"] = full_json["individual_personas"]
+                    return result
+            except json.JSONDecodeError:
+                # Not a valid JSON, continue to fallback
+                pass
+            
+            # If we get here, we couldn't extract individual_personas
+            logger.warning("Could not extract individual_personas using any method, using empty list")
+            result["individual_personas"] = []
+            
+        except Exception as e:
+            logger.error(f"Error while trying to extract individual_personas: {str(e)}")
             result["individual_personas"] = []
         
         return result
@@ -417,16 +761,17 @@ class SurveySimulationExpert:
         for field in numeric_fields:
             if field in output:
                 try:
-                    normalized[field] = float(output[field])
-                    normalized[field] = max(0.0, min(10.0, normalized[field]))
+                    value = float(output[field])
+                    normalized[field] = max(0, min(10, value))  # Clamp to 0-10 range
                 except (ValueError, TypeError):
-                    normalized[field] = 5.0
+                    normalized[field] = 5.0  # Default mid-range value
             else:
-                normalized[field] = 5.0
+                normalized[field] = 5.0  # Default mid-range value
         
-        # Additional numeric fields that could have other ranges
+        # Ensure additional numeric fields (may be None)
         additional_numeric_fields = [
-            "company_size_employees", "company_size_revenue", "market_share", "years_of_experience"
+            "years_of_experience", "company_size_employees", "company_size_revenue",
+            "market_share"
         ]
         for field in additional_numeric_fields:
             if field in output:
@@ -493,204 +838,8 @@ class SurveySimulationExpert:
         else:
             normalized["strategic_ranking"] = 5
         
-        # Handle individual_personas field
-        if "individual_personas" in output:
-            if isinstance(output["individual_personas"], list):
-                normalized["individual_personas"] = output["individual_personas"]
-            elif isinstance(output["individual_personas"], str):
-                try:
-                    # Try to parse as JSON
-                    normalized["individual_personas"] = json.loads(output["individual_personas"])
-                except json.JSONDecodeError:
-                    # If parsing fails, set to empty list
-                    normalized["individual_personas"] = []
-            else:
-                normalized["individual_personas"] = []
-        else:
-            normalized["individual_personas"] = []
+        # Handle individual_personas field - no parsing needed in one-by-one mode
+        # Just initialize to empty list - we'll add personas later
+        normalized["individual_personas"] = []
         
-        return normalized
-
-    def _generate_individual_personas(self, brand_name: str, survey_data: Dict[str, Any], target_audience: str) -> List[Dict[str, Any]]:
-        """Generate 100 individual persona responses based on the aggregated survey data.
-        
-        This is only used as a fallback if the LLM doesn't generate individual personas.
-        In such cases, we'll create placeholder personas with minimal data that can be
-        displayed in the UI, but we don't attempt to generate realistic personas as that
-        is the LLM's job.
-        
-        Args:
-            brand_name: The brand name being evaluated
-            survey_data: The aggregated survey data
-            target_audience: The target audience description
-            
-        Returns:
-            List of placeholder persona responses
-        """
-        # Parse target audience into segments
-        audience_segments = [segment.strip() for segment in target_audience.split(',')]
-        if not audience_segments or audience_segments[0] == "General consumers":
-            audience_segments = ["General Consumer"]
-        
-        # Get base scores from survey data
-        base_scores = {
-            "brand_promise_perception_score": survey_data.get("brand_promise_perception_score", 5.0),
-            "personality_fit_score": survey_data.get("personality_fit_score", 5.0),
-            "competitive_differentiation_score": survey_data.get("competitive_differentiation_score", 5.0),
-            "competitor_benchmarking_score": survey_data.get("competitor_benchmarking_score", 5.0),
-            "simulated_market_adoption_score": survey_data.get("simulated_market_adoption_score", 5.0)
-        }
-        
-        # Get emotional and functional associations
-        emotional_associations = survey_data.get("emotional_association", ["Neutral"])
-        functional_associations = survey_data.get("functional_association", ["Generic"])
-        
-        # Create placeholder personas - only used if LLM fails to generate them
-        individual_personas = []
-        for i in range(10):  # Only create 10 placeholders as a fallback
-            segment = audience_segments[i % len(audience_segments)]
-            
-            # Create basic placeholder persona
-            persona = {
-                "persona_id": i + 1,
-                "segment": segment,
-                "age_group": "25-34",
-                "gender": "Not specified",
-                "income_level": "Medium",
-                "education_level": "Bachelor's",
-                "job_title": f"{segment} Professional",
-                "seniority": "Mid-level",
-                "years_of_experience": 5,
-                "department": "General",
-                "goals_and_challenges": "Typical industry goals and challenges",
-                "values_and_priorities": "Industry-standard values",
-                "decision_making_style": "Balanced",
-                "information_sources": "Industry publications",
-                "communication_preferences": "Email",
-                "pain_points": "Common industry pain points",
-                "technological_literacy": "Intermediate",
-                "attitude_towards_risk": "Moderate",
-                "purchasing_behavior": "Researches before purchasing",
-                "online_behavior": "Regular online user",
-                "interaction_with_brand": "Potential customer",
-                "professional_associations": "Industry association",
-                "technical_skills": "Industry-relevant skills",
-                "language": "English",
-                "learning_style": "Visual",
-                "networking_habits": "Regular networking",
-                "professional_aspirations": "Career advancement",
-                "influence_within_company": "Some influence",
-                "channel_preferences": "Email and social media",
-                "event_attendance": "Industry conferences",
-                "content_consumption_habits": "Articles and videos",
-                "vendor_relationship_preferences": "Professional relationship",
-                "industry": survey_data.get("industry", "Technology"),
-                "company_size_employees": 250,
-                "company_size_revenue": 5.0,
-                "market_share": 5.0,
-                "company_structure": "Hierarchical",
-                "geographic_location": "Urban",
-                "technology_stack": "Standard industry technology",
-                "company_growth_stage": "Growth",
-                "company_culture": "Professional",
-                "financial_stability": "Stable",
-                "supply_chain": "Standard",
-                "legal_regulatory_environment": "Standard regulations",
-                "scores": base_scores,
-                "emotional_associations": emotional_associations[:1],
-                "functional_associations": functional_associations[:1],
-                "qualitative_feedback": f"This persona would likely view the brand name '{brand_name}' as acceptable but not outstanding.",
-                "purchase_intent": "Maybe"
-            }
-            
-            individual_personas.append(persona)
-        
-        logger.warning(f"Using {len(individual_personas)} placeholder personas as LLM did not generate individual personas")
-        return individual_personas
-
-    async def _store_in_supabase(self, run_id: str, simulation_results: Dict[str, Any]) -> None:
-        """Store survey simulation results in Supabase.
-        
-        Args:
-            run_id: The run ID for the workflow
-            simulation_results: The survey simulation results
-        """
-        try:
-            logger.info(f"Storing survey simulation for brand name: {simulation_results.get('brand_name', 'Unknown')} (run: {run_id})")
-            
-            # Prepare data for insertion
-            data_to_insert = {
-                "run_id": run_id,
-                "brand_name": simulation_results.get("brand_name", "Unknown"),
-                "persona_segment": simulation_results.get("persona_segment", []),
-                "brand_promise_perception_score": simulation_results.get("brand_promise_perception_score", 5.0),
-                "personality_fit_score": simulation_results.get("personality_fit_score", 5.0),
-                "emotional_association": simulation_results.get("emotional_association", ["Neutral"]),
-                "functional_association": simulation_results.get("functional_association", ["Generic"]),
-                "competitive_differentiation_score": simulation_results.get("competitive_differentiation_score", 5.0),
-                "psychometric_sentiment_mapping": simulation_results.get("psychometric_sentiment_mapping", {}),
-                "competitor_benchmarking_score": simulation_results.get("competitor_benchmarking_score", 5.0),
-                "simulated_market_adoption_score": simulation_results.get("simulated_market_adoption_score", 5.0),
-                "qualitative_feedback_summary": simulation_results.get("qualitative_feedback_summary", "Not provided"),
-                "raw_qualitative_feedback": simulation_results.get("raw_qualitative_feedback", {}),
-                "final_survey_recommendation": simulation_results.get("final_survey_recommendation", "Not provided"),
-                "strategic_ranking": simulation_results.get("strategic_ranking", 5),
-                "individual_personas": simulation_results.get("individual_personas", []),
-                
-                # Company-related fields
-                "industry": simulation_results.get("industry", None),
-                "company_size_employees": simulation_results.get("company_size_employees", None),
-                "company_size_revenue": simulation_results.get("company_size_revenue", None),
-                "market_share": simulation_results.get("market_share", None),
-                "company_structure": simulation_results.get("company_structure", None),
-                "geographic_location": simulation_results.get("geographic_location", None),
-                "technology_stack": simulation_results.get("technology_stack", None),
-                "company_growth_stage": simulation_results.get("company_growth_stage", None),
-                "company_culture": simulation_results.get("company_culture", None),
-                "financial_stability": simulation_results.get("financial_stability", None),
-                "supply_chain": simulation_results.get("supply_chain", None),
-                "legal_regulatory_environment": simulation_results.get("legal_regulatory_environment", None),
-                
-                # Persona-related fields
-                "job_title": simulation_results.get("job_title", None),
-                "seniority": simulation_results.get("seniority", None),
-                "years_of_experience": simulation_results.get("years_of_experience", None),
-                "department": simulation_results.get("department", None),
-                "education_level": simulation_results.get("education_level", None),
-                "goals_and_challenges": simulation_results.get("goals_and_challenges", None),
-                "values_and_priorities": simulation_results.get("values_and_priorities", None),
-                "decision_making_style": simulation_results.get("decision_making_style", None),
-                "information_sources": simulation_results.get("information_sources", None),
-                "communication_preferences": simulation_results.get("communication_preferences", None),
-                "pain_points": simulation_results.get("pain_points", None),
-                "technological_literacy": simulation_results.get("technological_literacy", None),
-                "attitude_towards_risk": simulation_results.get("attitude_towards_risk", None),
-                "purchasing_behavior": simulation_results.get("purchasing_behavior", None),
-                "online_behavior": simulation_results.get("online_behavior", None),
-                "interaction_with_brand": simulation_results.get("interaction_with_brand", None),
-                "professional_associations": simulation_results.get("professional_associations", None),
-                "technical_skills": simulation_results.get("technical_skills", None),
-                "language": simulation_results.get("language", None),
-                "learning_style": simulation_results.get("learning_style", None),
-                "networking_habits": simulation_results.get("networking_habits", None),
-                "professional_aspirations": simulation_results.get("professional_aspirations", None),
-                "influence_within_company": simulation_results.get("influence_within_company", None),
-                "channel_preferences": simulation_results.get("channel_preferences", None),
-                "event_attendance": simulation_results.get("event_attendance", None),
-                "content_consumption_habits": simulation_results.get("content_consumption_habits", None),
-                "vendor_relationship_preferences": simulation_results.get("vendor_relationship_preferences", None)
-            }
-            
-            # Execute the insert with retries
-            await self.supabase.execute_with_retry(
-                operation="insert",
-                table="survey_simulation",
-                data=data_to_insert
-            )
-            
-            logger.info(f"Successfully stored survey simulation for {simulation_results['brand_name']} (run: {run_id})")
-            
-        except Exception as e:
-            error_msg = f"Error storing survey simulation in Supabase: {str(e)}"
-            logger.error(error_msg)
-            # Log error but don't re-raise to prevent workflow disruption 
+        return normalized 

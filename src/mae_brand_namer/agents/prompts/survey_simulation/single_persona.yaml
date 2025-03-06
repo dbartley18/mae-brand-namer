@@ -1,0 +1,128 @@
+_type: prompt
+input_variables: ["format_instructions", "brand_name", "brand_context", "target_audience", "brand_values", "persona_number", "total_personas", "persona_id"]
+template: |
+  Generate ONE detailed persona for this brand name:
+    
+  Brand Name: {brand_name}
+  Brand Context: {brand_context}
+  Target Audience: {target_audience}
+  Brand Values: {brand_values}
+  
+  This is persona #{persona_number} of {total_personas}.
+  
+  The persona should have this ID: {persona_id}
+  
+  IMPORTANT: Generate only ONE detailed persona. Make it realistic and representative 
+  of the target audience. Focus on creating a detailed, authentic persona that would
+  actually interact with this brand in the real world.
+  
+  When generating this individual persona (Synthetic Persona--not a fake persona), you must create a realistic, detailed persona based on the target audience and industry context. 
+  DO NOT generate a random persona. The persona should be a realistic representation of an actual customer or stakeholder who would 
+  interact with this brand. The persona should have realistic demographic details, professional background, attitudes, and behaviors 
+  based on your knowledge of real-world customer segments for this type of brand.
+  
+  Simulate this persona's responses across these dimensions:
+  
+  1. Initial Response
+     - First impressions
+     - Emotional reactions
+     - Memorability assessment
+     - Pronunciation comfort
+     - Visual appeal rating
+     - Attention capture
+     - Immediate associations
+  
+  2. Brand Perception
+     - Value alignment
+     - Quality associations
+     - Price positioning
+     - Brand personality fit
+     - Trust indicators
+     - Credibility factors
+     - Innovation perception
+  
+  3. Market Potential
+     - Purchase intent
+     - Recommendation likelihood
+     - Brand loyalty potential
+     - Usage scenarios
+     - Repeat purchase probability
+     - Price sensitivity
+     - Market share potential
+  
+  4. Demographic Analysis
+     - Consider factors like age, gender, income, education, geographic location, cultural background, lifestyle
+  
+  5. Competitive Position
+     - Market differentiation
+     - Competitor comparison
+     - Category fit
+     - Value proposition clarity
+     - Competitive advantage
+     - Market gap alignment
+  
+  For this persona, create a detailed, realistic profile of what an actual customer in this market would look like. Consider their:
+  - Actual professional background common in this target market
+  - Realistic demographic attributes for this industry and product type
+  - Specific job role, seniority level, and educational background realistic for this market
+  - Authentic goals, challenges, and pain points faced by real customers in this space
+  - Genuine communication preferences and purchasing behavior patterns for this demographic
+  - Realistic company size, structure, and technology stack for this market segment
+  
+  Your output for this one persona must include ALL of the following fields:
+  - persona_id: {persona_id}
+  - segment: The audience segment they belong to
+  - age_group: Their age group
+  - gender: Their gender
+  - income_level: Their income level
+  - education_level: Their education level
+  - job_title: Their job title
+  - seniority: Their seniority level
+  - years_of_experience: Years of professional experience
+  - department: Their department
+  - goals_and_challenges: Their professional goals and challenges
+  - values_and_priorities: Their core values and priorities
+  - decision_making_style: Their approach to decision making
+  - information_sources: Their primary sources of information
+  - communication_preferences: Their preferred communication channels
+  - pain_points: Their primary pain points
+  - technological_literacy: Their level of comfort with technology
+  - attitude_towards_risk: Their risk tolerance level
+  - purchasing_behavior: Their purchasing habits
+  - online_behavior: Their online activity patterns
+  - interaction_with_brand: How they typically interact with brands
+  - professional_associations: Their professional groups or associations
+  - technical_skills: Their key technical skills
+  - language: Their primary language
+  - learning_style: Their preferred way of learning
+  - networking_habits: Their approach to networking
+  - professional_aspirations: Their career goals
+  - influence_within_company: Their influence in decision making
+  - channel_preferences: Their preferred marketing channels
+  - event_attendance: Types of events they attend
+  - content_consumption_habits: How they consume content
+  - vendor_relationship_preferences: Their preferred vendor relationship style
+  - industry: Their industry
+  - company_size_employees: Size of their company
+  - company_size_revenue: Revenue of their company
+  - market_share: Their company's market share
+  - company_structure: Structure of their company
+  - geographic_location: Their location
+  - technology_stack: Technology used at their company
+  - company_growth_stage: Growth stage of their company
+  - company_culture: Culture of their company
+  - financial_stability: Financial stability of their company
+  - supply_chain: Supply chain of their company
+  - legal_regulatory_environment: Regulatory environment of their company
+  - scores: Object containing their individual scores for various metrics (each on a 1-10 scale):
+      * initial_response: Score for their first impression
+      * brand_perception: Score for their perception of the brand
+      * market_potential: Score for the perceived market potential
+      * competitive_position: Score for the competitive position
+  - emotional_associations: Array of emotional associations they have with the brand name
+  - functional_associations: Array of functional associations they have with the brand name
+  - qualitative_feedback: Their personal feedback about the brand name
+  - purchase_intent: Whether they would purchase from this brand (Yes/No/Maybe)
+  
+  Follow these format instructions for the single persona:
+  {format_instructions} 

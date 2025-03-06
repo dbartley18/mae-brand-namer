@@ -24,7 +24,7 @@ python test_llm_call.py
 
 If successful, you should see output similar to:
 
-```
+```text
 Calling _context_based_shortlisting method...
 Context-based shortlisting selected names: Lumina, Zenith, Nexus
 Shortlisted 3 brand names:
@@ -58,9 +58,10 @@ If the test fails, check:
 ## Recent Changes and Fixed Issues
 
 Recent changes to the codebase included:
+
 - Updating field types in the state model from float to Any for visual_branding_potential
 - Modifying the process_evaluation function to handle string values
 - Ensuring proper imports for HumanMessage and SystemMessage
 - Maintaining consistency between the model definition and actual usage
 
-All these changes have been verified to work correctly with the LLM. 
+All these changes have been verified to work correctly with the LLM.
