@@ -12,101 +12,123 @@ template: |
   
   The persona should have this ID: {persona_id}
   
-  IMPORTANT TWO-STEP APPROACH:
-  1. FIRST, create a detailed, realistic persona with demographic and firmographic details.
-  2. THEN, answer the survey questions AS this persona would respond to the brand name.
+  CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE EXACTLY:
   
-  Think about each question holistically, as if the persona is actually taking the survey. The persona should have a consistent 
-  perspective based on their background, values, and needs.
+  1. GENERATE COMPLETE DATA - NEVER LEAVE ANY FIELD EMPTY:
+     - You MUST fill in EVERY SINGLE FIELD below with realistic, detailed content
+     - NO field can be empty, NULL, "N/A", or generic
+     - Do NOT use placeholder or default text - all content must be unique and specific to this persona
+     - If you do not provide complete data for ALL fields, the survey will be rejected
   
-  Your persona should include ALL of the following fields aligned with our updated schema:
+  2. TWO-STEP APPROACH - STRICTLY REQUIRED:
+     - FIRST, create a detailed, realistic persona with demographic and firmographic details
+     - THEN, answer the survey questions AS this persona would respond to the brand name
+     - Each response must be consistent with the persona's background, industry, and perspective
   
-  REQUIRED FIELDS (MUST HAVE VALUES):
+  3. ULTRA-DETAILED RESPONSES REQUIRED:
+     - Every field must contain rich, specific, and substantive information
+     - For text fields: minimum 2-3 sentences with specific details (never generic)
+     - For qualitative feedback: minimum 4-5 sentences with concrete opinions and examples
+     - Include specific examples, terminology, and insights relevant to the persona's industry
+  
+  4. ABSOLUTE AUTHENTICITY:
+     - Create genuinely realistic personas based on real-world roles, industries, and behaviors
+     - Use professional terminology appropriate to their specific industry and role
+     - Provide nuanced perspectives that match their seniority, experience, and background
+     - Responses should read like they come from a real human in a focus group setting
+  
+  Remember: This persona MUST have detailed information for EVERY SINGLE field below. The response should be so realistic that it would be indistinguishable from a real survey participant.
+  
+  REQUIRED FIELDS - EVERY FIELD BELOW MUST BE COMPLETED WITH RICH, DETAILED INFORMATION:
+  
+  CORE IDENTITY FIELDS (MANDATORY - ULTRA-DETAILED):
   - persona_id: "{persona_id}"
-  - persona_segment: A single string describing which segment of the target audience this persona belongs to
-  - emotional_association: A single string describing the emotional associations with the brand name
-  - psychometric_sentiment_mapping: JSON object mapping emotional dimensions to scores
-  - qualitative_feedback_summary: Detailed feedback about the brand name from this persona
-  - raw_qualitative_feedback: JSON object with detailed feedback
-  - final_survey_recommendation: Final recommendation based on this persona's perspective
-  - strategic_ranking: Overall ranking from 1-10 (as integer)
+  - persona_segment: A detailed, specific segment description (minimum 7-10 words)
+  - emotional_association: Detailed emotional response to the brand name (minimum 5-6 specific emotions with explanation)
+  - psychometric_sentiment_mapping: JSON object mapping AT LEAST 7-8 emotional dimensions to scores with explanations
+  - qualitative_feedback_summary: Highly detailed feedback about the brand name (minimum 4-5 substantive sentences with specific opinions)
+  - raw_qualitative_feedback: Rich JSON object with at least 5-6 detailed feedback categories, each with paragraph-length responses
+  - final_survey_recommendation: Comprehensive recommendation with clear reasoning (minimum 4-5 sentences)
+  - strategic_ranking: Integer ranking (1-10) with extensive explanation for the score (minimum 3-4 sentences)
   
-  DEMOGRAPHIC FIELDS:
-  - job_title: Their job title
-  - seniority: Their seniority level
-  - years_of_experience: Years of professional experience (numeric)
-  - department: Their department
-  - education_level: Their education level
-  - industry: Their industry
-  - industry_sub_vertical: More specific industry category
-  - generation_age_range: Their generation or age range
+  DEMOGRAPHIC FIELDS (MANDATORY - ULTRA-SPECIFIC):
+  - job_title: Precise, industry-specific job title (never generic)
+  - seniority: Detailed seniority level with years in position
+  - years_of_experience: Specific number (numeric)
+  - department: Specific department name with detail about the team structure
+  - education_level: Detailed education history including degree, major, and notable institutions
+  - industry: Precise industry sector with sub-discipline
+  - industry_sub_vertical: Highly specific industry category (minimum 5-7 words)
+  - generation_age_range: Specific age range and generational cohort with context
   
-  COMPANY FIELDS:
-  - company_size_employees: Size of their company (text)
-  - company_revenue: Revenue of their company (numeric)
-  - market_share: Their company's market share (text)
-  - company_structure: Structure of their company
-  - company_culture_values: Culture and values of their company
-  - company_focus: Main focus of their company
-  - company_maturity: Maturity stage of their company
-  - geographic_location: Their location
-  - technology_stack: Technology used at their company
-  - company_growth_stage: Growth stage of their company
+  COMPANY FIELDS (MANDATORY - ULTRA-DETAILED):
+  - company_size_employees: Specific employee count range with context for company scale
+  - company_revenue: Exact revenue figure or precise range (numeric)
+  - market_share: Detailed market position with percentage and competitive context
+  - company_structure: Comprehensive description of organizational structure (minimum 3-4 sentences)
+  - company_culture_values: Detailed culture and values with specific examples (minimum 3-4 sentences)
+  - company_focus: Precise focus areas and priorities with industry context (minimum 3-4 specific elements)
+  - company_maturity: Detailed maturity stage with specific characteristics (minimum 3-4 sentences)
+  - geographic_location: Precise location details (city/region/country) with multiple office locations if relevant
+  - technology_stack: Comprehensive list of specific technologies (minimum 5-7 named products/platforms)
+  - company_growth_stage: Detailed growth stage with specific metrics and context (minimum 3-4 sentences)
   
-  PROFESSIONAL CHARACTERISTICS:
-  - goals_and_challenges: Their professional goals and challenges
-  - values_and_priorities: Their core values and priorities
-  - decision_making_style: Their approach to decision making
-  - decision_maker: Whether they are a decision maker (boolean)
-  - budget_authority: Their budget authority level
-  - information_sources: Their primary sources of information
-  - pain_points: Their primary pain points
-  - technological_literacy: Their level of comfort with technology
-  - attitude_towards_risk: Their risk tolerance level
-  - reports_to: Who they report to in the organization
-  - buying_group_structure: Structure of their buying group
-  - influence_within_company: Their level of influence
-  - professional_associations: Their professional groups or associations
-  - technical_skills: Their key technical skills
-  - networking_habits: Their approach to networking
-  - professional_aspirations: Their career goals
-  - professional_development_interests: Areas they want to develop
-  - key_performance_indicators: KPIs they track
+  PROFESSIONAL CHARACTERISTICS (MANDATORY - ULTRA-SPECIFIC):
+  - goals_and_challenges: Comprehensive professional goals and challenges (minimum 3-4 of each with specific details)
+  - values_and_priorities: Detailed core values and priorities (minimum 4-5 specific items with explanations)
+  - decision_making_style: Comprehensive approach to decision making with examples (minimum 3-4 sentences)
+  - decision_maker: Boolean with extensive context about decision authority (minimum 3-4 sentences)
+  - budget_authority: Precise budget authority with specific amounts and approval processes
+  - information_sources: Detailed primary sources of information (minimum 5-6 specific named sources)
+  - pain_points: Comprehensive primary pain points (minimum 4-5 specific items with detailed context)
+  - technological_literacy: Detailed technology comfort level with specific tools and platforms (minimum 3-4 sentences)
+  - attitude_towards_risk: Comprehensive risk tolerance description with specific examples (minimum 3-4 sentences)
+  - reports_to: Detailed reporting structure with specific roles and relationship dynamics
+  - buying_group_structure: Comprehensive buying group structure with roles and influences (minimum 3-4 sentences)
+  - influence_within_company: Detailed influence level with specific examples and areas of impact (minimum 3-4 sentences)
+  - professional_associations: Specific professional groups or associations (minimum 3-4 named organizations)
+  - technical_skills: Comprehensive technical skills list (minimum 6-8 specific named skills with proficiency levels)
+  - networking_habits: Detailed networking approach with specific activities and frequency (minimum 3-4 sentences)
+  - professional_aspirations: Comprehensive career goals with short and long-term specifics (minimum 3-4 sentences)
+  - professional_development_interests: Detailed development areas (minimum 4-5 specific skills or knowledge areas)
+  - key_performance_indicators: Comprehensive KPIs with specific metrics (minimum 4-5 detailed KPIs)
   
-  BEHAVIORAL CHARACTERISTICS:
-  - purchasing_behavior: Their purchasing habits
-  - online_behavior: Their online activity patterns
-  - interaction_with_brand: How they typically interact with brands
-  - event_attendance: Types of events they attend
-  - content_consumption_habits: How they consume content
-  - vendor_relationship_preferences: Their preferred vendor relationship style
-  - preferred_vendor_size: Size of vendors they prefer to work with
-  - innovation_adoption: How quickly they adopt innovations
-  - social_media_usage: How they use social media
-  - channel_preferences_brand_interaction: Preferred channels for brand interaction
-  - business_chemistry: Their business personality type
-  - work_life_balance_priorities: Their priorities for work-life balance
-  - frustrations_annoyances: What frustrates them
-  - personal_aspirations_life_goals: Their personal goals
-  - motivations: What motivates them
-  - current_brand_relationships: JSON object describing relationships with other brands
-  - product_adoption_lifecycle_stage: Where they fall in adoption lifecycle
-  - purchase_triggers_events: JSON object with events that trigger purchases
-  - success_metrics_product_service: How they measure success
-  - barriers_to_adoption: What prevents them from adopting new products/services
+  BEHAVIORAL CHARACTERISTICS (MANDATORY - ULTRA-DETAILED):
+  - purchasing_behavior: Comprehensive purchasing process with specific stages and considerations (minimum 4-5 sentences)
+  - online_behavior: Detailed online activity patterns with specific platforms and frequency (minimum 4-5 sentences)
+  - interaction_with_brand: Comprehensive brand interaction approach with specific channels and touchpoints (minimum 4-5 sentences)
+  - event_attendance: Detailed event participation with specific named events and frequency (minimum 4-5 specific events)
+  - content_consumption_habits: Comprehensive content consumption patterns with specific formats and sources (minimum 4-5 sentences)
+  - vendor_relationship_preferences: Detailed vendor relationship approach with specific expectations (minimum 3-4 sentences)
+  - preferred_vendor_size: Specific vendor size preference with reasoning (minimum 2-3 sentences)
+  - innovation_adoption: Detailed innovation adoption pattern with specific examples (minimum 3-4 sentences)
+  - social_media_usage: Comprehensive social media behavior with specific platforms and usage patterns (minimum 4-5 platforms with frequency)
+  - channel_preferences_brand_interaction: Detailed channel preferences with specific ranked channels (minimum 5-6 channels)
+  - business_chemistry: Comprehensive business personality type with specific traits and behaviors (minimum 3-4 sentences)
+  - work_life_balance_priorities: Detailed work-life priorities with specific examples (minimum 4-5 priorities)
+  - frustrations_annoyances: Comprehensive frustrations with specific examples (minimum 5-6 detailed items)
+  - personal_aspirations_life_goals: Detailed personal goals with specific aspirations (minimum 4-5 sentences)
+  - motivations: Comprehensive motivational factors with specific examples (minimum 5-6 detailed motivators)
+  - current_brand_relationships: Rich JSON object with at least 5-6 specific named brands and detailed relationship descriptions
+  - product_adoption_lifecycle_stage: Detailed adoption position with specific behavioral characteristics (minimum 3-4 sentences)
+  - purchase_triggers_events: Comprehensive JSON object with at least 5-6 specific triggers and detailed evaluation criteria
+  - success_metrics_product_service: Detailed success measurement approach with specific metrics (minimum 5-6 detailed metrics)
+  - barriers_to_adoption: Comprehensive adoption barriers with specific examples (minimum 5-6 detailed barriers)
   
-  SURVEY SCORES (NUMERIC 1-10):
-  - brand_promise_perception_score: How well the name conveys brand promise
-  - personality_fit_score: Alignment with brand personality
-  - competitive_differentiation_score: Distinctiveness from competitors
-  - competitor_benchmarking_score: Performance vs competitors
-  - simulated_market_adoption_score: Predicted market acceptance
-  - confidence_score_persona_accuracy: How confident you are in this persona's accuracy
+  SURVEY SCORES (MANDATORY - WITH DETAILED RATIONALES):
+  - brand_promise_perception_score: Score (1-10) with extensive explanation (minimum 4-5 sentences with specific reasons)
+  - personality_fit_score: Score (1-10) with detailed explanation (minimum 4-5 sentences with specific elements)
+  - competitive_differentiation_score: Score (1-10) with comprehensive explanation (minimum 4-5 sentences with comparisons)
+  - competitor_benchmarking_score: Score (1-10) with detailed benchmarking analysis (minimum 4-5 sentences with named competitors)
+  - simulated_market_adoption_score: Score (1-10) with detailed market prediction (minimum 4-5 sentences with specific factors)
+  - confidence_score_persona_accuracy: Score (1-10) with explanation
   
-  METADATA:
-  - behavioral_tags_keywords: Array of keywords describing this persona's behavior
-  - data_sources_persona_creation: JSON object describing data sources used
-  - persona_archetype_type: Type of archetype this persona represents
+  METADATA (MANDATORY - ULTRA-DETAILED):
+  - behavioral_tags_keywords: Array of at least 8-10 specific and descriptive behavioral keywords
+  - data_sources_persona_creation: JSON object with at least 5-6 detailed data sources and methodologies
+  - persona_archetype_type: Comprehensive archetype description with detailed characteristics (minimum 3-4 sentences)
+  
+  FINAL REMINDER: This must be an EXCEPTIONALLY realistic persona with COMPLETE information for EVERY field. Nothing can be generic, default, or missing. Every response must read like it came from a real person in a detailed focus group setting.
   
   Return the persona in JSON format following these instructions:
   {format_instructions} 
