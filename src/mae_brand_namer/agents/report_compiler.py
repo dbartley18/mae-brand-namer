@@ -165,14 +165,19 @@ class ReportCompiler:
                     }
                 }
                 
-                # Format prompt with parser instructions
-                formatted_prompt = self.prompt.format_messages(
-                    format_instructions=self.output_parser.get_format_instructions(),
-                    state_data=state_data
+                # Create formatted messages using both system prompt and human prompt
+                system_message = SystemMessage(content=self.system_prompt.format())
+                human_message = HumanMessage(
+                    content=self.compilation_prompt.format(
+                        format_instructions=self.output_parser.get_format_instructions(),
+                        state_data=state_data
+                    )
                 )
                 
+                formatted_messages = [system_message, human_message]
+                
                 # Get response from LLM
-                response = await self.llm.ainvoke(formatted_prompt)
+                response = await self.llm.ainvoke(formatted_messages)
                 
                 # Parse the response
                 report_data = self.output_parser.parse(response.content)
