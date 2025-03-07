@@ -12,7 +12,7 @@ from supabase import create_client, Client
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate, load_prompt
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-from langchain.callbacks import tracing_enabled
+from langchain_core.tracers.context import tracing_v2_enabled
 from langchain_core.tracers import LangChainTracer
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from docx import Document
@@ -119,12 +119,7 @@ class ReportCompiler:
             ValueError: If report compilation fails
         """
         try:
-            with tracing_enabled(
-                tags={
-                    "agent": "ReportCompiler",
-                    "run_id": run_id
-                }
-            ):
+            with tracing_v2_enabled():
                 # Fetch all analysis results from Supabase
                 brand_contexts = await self._fetch_analysis("brand_context", run_id)
                 name_generations = await self._fetch_analysis("brand_name_generation", run_id)
@@ -429,20 +424,19 @@ class ReportCompiler:
                 # Default ordering by brand_name if it exists
                 order = "brand_name.asc"
             
-            # Use execute_with_retry with select operation
-            response = await self.supabase.execute_with_retry(
-                operation="select",
-                table=analysis_type,
-                data={
-                    "select": "*",
-                    "run_id": run_id,
-                    "order": order
-                }
-            )
+            # Build and execute query using proper Supabase query builder
+            query = self.supabase.table(analysis_type).select("*").eq("run_id", run_id)
             
-            if response:
-                logger.info(f"Successfully fetched {len(response)} {analysis_type} analyses for run_id: {run_id}")
-                return response
+            # Add ordering if specified
+            if order:
+                query = query.order(order)
+            
+            # Execute the query
+            response = await query.execute()
+            
+            if response and response.data:
+                logger.info(f"Successfully fetched {len(response.data)} {analysis_type} analyses for run_id: {run_id}")
+                return response.data
             else:
                 logger.warning(f"No {analysis_type} analyses found for run_id: {run_id}")
                 return []
@@ -465,19 +459,12 @@ class ReportCompiler:
         This should return exactly one record since there's one workflow per run_id.
         """
         try:
-            # Use execute_with_retry with select operation
-            response = await self.supabase.execute_with_retry(
-                operation="select",
-                table="workflow_runs",
-                data={
-                    "select": "*",
-                    "run_id": run_id  # Filter by run_id
-                }
-            )
+            # Build and execute query using proper Supabase query builder
+            response = await self.supabase.table("workflow_runs").select("*").eq("run_id", run_id).execute()
             
-            if response and len(response) > 0:
+            if response and response.data and len(response.data) > 0:
                 logger.info(f"Successfully fetched workflow data for run_id: {run_id}")
-                return response[0]  # Return the first (and should be only) record
+                return response.data[0]  # Return the first (and should be only) record
             else:
                 logger.warning(f"No workflow data found for run_id: {run_id}")
                 return {}
