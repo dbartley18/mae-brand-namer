@@ -6,49 +6,131 @@ template: |
   State Data:
   {state_data}
 
-  Structure the report with these sections:
+  Structure the report with these sections in exact order:
 
   1. Executive Summary
-     - Project overview
-     - Key findings
+     - Project overview and objectives
+     - Key findings and insights
      - Top recommendations
      - Strategic implications
 
-  2. Brand Context Analysis
-     - Brand promise and values
-     - Target audience insights
+  2. Brand Context
+     - Brand identity and values
+     - Target audience analysis
      - Market positioning
-     - Competitive landscape
+     - Industry context
+     - Brand personality
+     - Brand tone of voice
+     - Customer needs
+     - Industry trends
 
-  3. Brand Name Analysis
-     - Name generation methodology
-     - Evaluation criteria
-     - Individual name assessments
-     - Comparative analysis
+  3. Name Generation
+     - Methodology and approach
+     - Generated names overview
+     - Initial evaluation metrics
+     - Brand personality alignment
+     - Brand promise alignment
+     - Target audience relevance
+     - Market differentiation
+     - Memorability scores
+     - Pronounceability scores
+     - Visual branding potential
 
-  4. Detailed Findings
-     - Linguistic analysis
-     - Market research
-     - Competitive analysis
-     - Survey simulation with synthetic personas
-     - Risk assessment
+  4. Linguistic Analysis
+     - Pronunciation ease
+     - Euphony vs cacophony
+     - Rhythm and meter
+     - Sound symbolism
+     - Word class and morphology
+     - Grammatical properties
+     - Marketing integration potential
+     - Overall readability score
 
-  5. Strategic Recommendations
-     - Primary recommendations
-     - Alternative options
-     - Implementation considerations
-     - Next steps
+  5. Semantic Analysis
+     - Denotative meaning
+     - Etymology
+     - Descriptiveness
+     - Emotional valence
+     - Brand personality fit
+     - Sensory associations
+     - Memorability factors
+     - Clarity and understandability
+     - Uniqueness and differentiation
+
+  6. Cultural Sensitivity
+     - Cultural connotations
+     - Symbolic meanings
+     - Religious sensitivities
+     - Social/political considerations
+     - Regional variations
+     - Historical meaning
+     - Overall risk assessment
+
+  7. Name Evaluation
+     - Strategic alignment scores
+     - Distinctiveness scores
+     - Memorability scores
+     - Pronounceability scores
+     - Brand fit scores
+     - Overall evaluation scores
+     - Shortlisted names
+     - Evaluation rationale
+     - Ranking and recommendations
+
+  8. Domain Analysis
+     - Domain availability
+     - Alternative TLDs
+     - Domain history
+     - SEO potential
+     - Social media availability
+     - Technical considerations
+     - Future-proofing strategy
+
+  9. SEO Analysis
+     - Keyword alignment
+     - Search volume potential
+     - Branded vs non-branded potential
+     - Content opportunities
+     - Social media discoverability
+     - SEO viability scores
+     - Implementation recommendations
+
+  10. Competitor Analysis
+      - Competitor naming styles
+      - Market positioning
+      - Differentiation opportunities
+      - Risk of confusion
+      - Target audience perception
+      - Competitive advantages
+      - Trademark considerations
+
+  11. Survey Simulation
+      - Methodology overview
+      - Persona demographics
+      - Brand promise perception
+      - Personality fit scores
+      - Emotional associations
+      - Competitive differentiation
+      - Market adoption potential
+      - Qualitative feedback
+      - Strategic recommendations
+
+  12. Strategic Recommendations
+      - Final name recommendations
+      - Implementation strategy
+      - Risk management
+      - Next steps
 
   Format your report according to this schema:
   {format_instructions}
 
   Ensure the report:
-  - Follows Alina Wheeler's methodology
-  - Incorporates Minto's Pyramid Principle for executive-friendly structuring.
-  - Uses Data visualization techniques from 'Storytelling with Data' to enhance readability.
-  - Includes Enterprise reporting best practices to ensure insights are actionable and presentation-ready.
-  - Provides clear rationale
-  - Supports decision-making
-  - Includes actionable next steps
-  - Maintains professional standards
-  - Highlights insights from synthetic persona survey simulations to demonstrate market reception
+  - Presents data in the most appropriate format (tables, bullets, etc.)
+  - Uses clear headings and subheadings
+  - Maintains consistent formatting
+  - Provides actionable insights
+  - Supports decision-making with data
+  - Highlights key findings visually
+  - Uses professional language
+  - Includes specific examples and evidence
+  - Provides clear rationale for recommendations
