@@ -253,15 +253,39 @@ class SurveySimulationExpert:
             formatted_competitive_analysis = "No competitive analysis available"
             if competitive_analysis:
                 formatted_competitive_analysis = json.dumps(competitive_analysis, indent=2)
+
+            # Track used companies to ensure diversity
+            used_companies = set()
             
+            # Check existing companies already used in this run
+            try:
+                response = await self.supabase.execute_with_retry(
+                    operation="select",
+                    table="survey_simulation",
+                    data={
+                        "select": "persona_data->>'company_name'",
+                        "run_id": run_id
+                    }
+                )
+                if response:
+                    for item in response:
+                        if item and "company_name" in item:
+                            used_companies.add(item["company_name"].lower())
+                    logger.info(f"Found {len(used_companies)} existing companies for run_id: {run_id}")
+            except Exception as e:
+                logger.warning(f"Error checking existing companies: {str(e)}")
+
+            # Format used companies for prompt
+            def format_used_companies(companies):
+                if not companies:
+                    return "None yet"
+                return "\n".join([f"- {company}" for company in sorted(companies)])
+
             # Generate individual personas one by one
             logger.info(f"Generating individual personas for {brand_name}")
             individual_personas = []
             num_personas = 5  # Generate 5 personas per brand name
-            success_count = 0
-            
-            # Track used companies to ensure diversity
-            used_companies = set()
+            success_count = 5
             
             for i in range(num_personas):
                 try:
@@ -280,7 +304,7 @@ class SurveySimulationExpert:
                     
                     # Track the company used
                     if "company_name" in persona:
-                        used_companies.add(persona["company_name"])
+                        used_companies.add(persona["company_name"].lower())
                         logger.info(f"Added company to tracking: {persona['company_name']} (total unique companies: {len(used_companies)})")
                     
                     # Store this persona as its own row
@@ -867,6 +891,12 @@ class SurveySimulationExpert:
         Returns:
             Dict containing the persona's survey response with run_id added
         """
+        # Format used companies for prompt
+        def format_used_companies(companies):
+            if not companies:
+                return "None yet"
+            return "\n".join([f"- {company}" for company in sorted(companies)])
+
         # Format the prompt with inputs
         prompt_inputs = {
             "format_instructions": self.format_instructions,
@@ -877,7 +907,8 @@ class SurveySimulationExpert:
             "competitive_analysis": competitive_analysis,
             "persona_number": persona_number,
             "total_personas": total_personas,
-            "persona_id": f"{brand_name.replace(' ', '')}-{persona_number:03d}"
+            "persona_id": f"{brand_name.replace(' ', '')}-{persona_number:03d}",
+            "used_companies": format_used_companies(used_companies)
         }
         
         # Use the single persona template

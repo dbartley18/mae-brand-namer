@@ -75,10 +75,11 @@ class ReportCompiler:
             # Initialize LLM
             self.llm = ChatGoogleGenerativeAI(
                 model=settings.model_name,
-                temperature=0.2,
-                google_api_key=settings.google_api_key,
+                temperature=0.3,
+                google_api_key=settings.gemini_api_key,
                 convert_system_message_to_human=True
             )
+            logger.info("Successfully initialized ChatGoogleGenerativeAI for Report Compiler")
             
             # Set up the prompt template
             system_message = SystemMessage(content=self.system_prompt.format())
@@ -87,6 +88,7 @@ class ReportCompiler:
                 system_message,
                 HumanMessage(content=human_template)
             ])
+            logger.info("Successfully set up prompt template")
             
         except Exception as e:
             logger.error(
@@ -124,35 +126,48 @@ class ReportCompiler:
                 }
             ):
                 # Fetch all analysis results from Supabase
-                brand_context = await self._fetch_analysis("brand_context", run_id)
-                name_generation = await self._fetch_analysis("brand_name_generation", run_id)
-                linguistic_analysis = await self._fetch_analysis("linguistic_analysis", run_id)
-                semantic_analysis = await self._fetch_analysis("semantic_analysis", run_id)
-                cultural_analysis = await self._fetch_analysis("cultural_sensitivity_analysis", run_id)
-                name_evaluation = await self._fetch_analysis("brand_name_evaluation", run_id)
-                domain_analysis = await self._fetch_analysis("domain_analysis", run_id)
-                seo_analysis = await self._fetch_analysis("seo_online_discoverability", run_id)
-                competitor_analysis = await self._fetch_analysis("competitor_analysis", run_id)
-                survey_simulation = await self._fetch_analysis("survey_simulation", run_id)
+                brand_contexts = await self._fetch_analysis("brand_context", run_id)
+                name_generations = await self._fetch_analysis("brand_name_generation", run_id)
+                linguistic_analyses = await self._fetch_analysis("linguistic_analysis", run_id)
+                semantic_analyses = await self._fetch_analysis("semantic_analysis", run_id)
+                cultural_analyses = await self._fetch_analysis("cultural_sensitivity_analysis", run_id)
+                name_evaluations = await self._fetch_analysis("brand_name_evaluation", run_id)
+                domain_analyses = await self._fetch_analysis("domain_analysis", run_id)
+                seo_analyses = await self._fetch_analysis("seo_online_discoverability", run_id)
+                competitor_analyses = await self._fetch_analysis("competitor_analysis", run_id)
+                survey_simulations = await self._fetch_analysis("survey_simulation", run_id)
                 
                 # Get the original user prompt from the workflow_runs table
                 workflow_data = await self._fetch_workflow_data(run_id)
                 user_prompt = workflow_data.get("user_prompt", "")
                 
-                # Prepare state data for the prompt
+                # Prepare state data for the prompt, organizing lists of analyses
                 state_data = {
                     "run_id": run_id,
                     "user_prompt": user_prompt,
-                    "brand_context": brand_context,
-                    "name_generation": name_generation,
-                    "linguistic_analysis": linguistic_analysis,
-                    "semantic_analysis": semantic_analysis,
-                    "cultural_analysis": cultural_analysis,
-                    "name_evaluation": name_evaluation,
-                    "domain_analysis": domain_analysis,
-                    "seo_analysis": seo_analysis,
-                    "competitor_analysis": competitor_analysis,
-                    "survey_simulation": survey_simulation
+                    "brand_context": brand_contexts[0] if brand_contexts else {},  # Should only be one
+                    "name_generation": {
+                        "all_names": name_generations,
+                        "by_category": self._group_by_field(name_generations, "naming_category")
+                    },
+                    "brand_analyses": self._organize_brand_analyses(
+                        brand_names=[ng["brand_name"] for ng in name_generations],
+                        linguistic=linguistic_analyses,
+                        semantic=semantic_analyses,
+                        cultural=cultural_analyses,
+                        evaluation=name_evaluations,
+                        domain=domain_analyses,
+                        seo=seo_analyses
+                    ),
+                    "competitor_analysis": {
+                        "all_analyses": competitor_analyses,
+                        "by_brand": self._group_by_field(competitor_analyses, "brand_name")
+                    },
+                    "survey_simulation": {
+                        "all_responses": survey_simulations,
+                        "by_brand": self._group_by_field(survey_simulations, "brand_name"),
+                        "by_persona": self._group_by_field(survey_simulations, "persona_segment")
+                    }
                 }
                 
                 # Format prompt with parser instructions
@@ -172,7 +187,19 @@ class ReportCompiler:
                     "run_id": run_id,
                     "user_prompt": user_prompt,
                     "timestamp": datetime.now().isoformat(),
-                    "version": "1.0"
+                    "version": "1.0",
+                    "analysis_counts": {
+                        "brand_contexts": len(brand_contexts),
+                        "name_generations": len(name_generations),
+                        "linguistic_analyses": len(linguistic_analyses),
+                        "semantic_analyses": len(semantic_analyses),
+                        "cultural_analyses": len(cultural_analyses),
+                        "name_evaluations": len(name_evaluations),
+                        "domain_analyses": len(domain_analyses),
+                        "seo_analyses": len(seo_analyses),
+                        "competitor_analyses": len(competitor_analyses),
+                        "survey_simulations": len(survey_simulations)
+                    }
                 }
                 
                 # Format the report sections
@@ -367,9 +394,41 @@ class ReportCompiler:
                 os.unlink(doc_path)
             raise
 
-    async def _fetch_analysis(self, analysis_type: str, run_id: str) -> Dict[str, Any]:
-        """Fetch analysis results from Supabase."""
+    async def _fetch_analysis(self, analysis_type: str, run_id: str) -> List[Dict[str, Any]]:
+        """
+        Fetch ALL analysis results from Supabase for a given run_id.
+        
+        Args:
+            analysis_type (str): The type of analysis (table name) to fetch from
+            run_id (str): The unique identifier for this workflow run
+            
+        Returns:
+            List[Dict[str, Any]]: List of all analysis results for this run_id, ordered appropriately
+        """
         try:
+            logger.info(f"Fetching all {analysis_type} analyses for run_id: {run_id}")
+            
+            # Define the order based on table type
+            order = None
+            if analysis_type == "brand_name_generation":
+                # Order by naming_category and rank
+                order = "naming_category.asc,rank.asc"
+            elif analysis_type == "brand_name_evaluation":
+                # Order by overall_score (descending) and shortlist_status
+                order = "overall_score.desc,shortlist_status.desc"
+            elif analysis_type == "survey_simulation":
+                # Order by brand_name and strategic_ranking
+                order = "brand_name.asc,strategic_ranking.asc"
+            elif analysis_type == "competitor_analysis":
+                # Order by competitor_name
+                order = "competitor_name.asc"
+            elif "rank" in analysis_type:
+                # For tables with rank field (linguistic, semantic, cultural, domain)
+                order = "brand_name.asc,rank.asc"
+            else:
+                # Default ordering by brand_name if it exists
+                order = "brand_name.asc"
+            
             # Use execute_with_retry with select operation
             response = await self.supabase.execute_with_retry(
                 operation="select",
@@ -377,23 +436,34 @@ class ReportCompiler:
                 data={
                     "select": "*",
                     "run_id": run_id,
-                    "limit": 1  # Get the most recent analysis
+                    "order": order
                 }
             )
-            return response[0] if response else {}
+            
+            if response:
+                logger.info(f"Successfully fetched {len(response)} {analysis_type} analyses for run_id: {run_id}")
+                return response
+            else:
+                logger.warning(f"No {analysis_type} analyses found for run_id: {run_id}")
+                return []
+                
         except Exception as e:
             logger.warning(
-                f"Error fetching {analysis_type} analysis",
+                f"Error fetching {analysis_type} analyses",
                 extra={
                     "error_type": type(e).__name__,
                     "error_message": str(e),
-                    "run_id": run_id
+                    "run_id": run_id,
+                    "table": analysis_type
                 }
             )
-            return {}
+            return []
 
     async def _fetch_workflow_data(self, run_id: str) -> Dict[str, Any]:
-        """Fetch workflow data including user prompt from workflow_runs table."""
+        """
+        Fetch workflow data including user prompt from workflow_runs table.
+        This should return exactly one record since there's one workflow per run_id.
+        """
         try:
             # Use execute_with_retry with select operation
             response = await self.supabase.execute_with_retry(
@@ -401,11 +471,16 @@ class ReportCompiler:
                 table="workflow_runs",
                 data={
                     "select": "*",
-                    "run_id": run_id,
-                    "limit": 1
+                    "run_id": run_id  # Filter by run_id
                 }
             )
-            return response[0] if response else {}
+            
+            if response and len(response) > 0:
+                logger.info(f"Successfully fetched workflow data for run_id: {run_id}")
+                return response[0]  # Return the first (and should be only) record
+            else:
+                logger.warning(f"No workflow data found for run_id: {run_id}")
+                return {}
         except Exception as e:
             logger.warning(
                 f"Error fetching workflow data",
@@ -537,47 +612,25 @@ class ReportCompiler:
             })
         return details
 
-    async def _format_report_sections(
-        self,
-        report_data: Dict[str, Any],
-        state_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Format report sections with proper structure and styling."""
-        formatted_report = {
-            "metadata": {
-                "run_id": state_data["run_id"],
-                "timestamp": datetime.now().isoformat(),
-                "version": "1.0"
-            },
-            "sections": []
-        }
-        
-        # Order sections according to workflow
-        section_order = [
-            "executive_summary",
-            "brand_context",
-            "name_generation",
-            "linguistic_analysis",
-            "semantic_analysis",
-            "cultural_sensitivity",
-            "name_evaluation",
-            "domain_analysis",
-            "seo_analysis",
-            "competitor_analysis",
-            "survey_simulation",
-            "recommendations"
-        ]
-        
-        for section in section_order:
-            section_data = report_data.get(section, {})
-            if not section_data:
-                continue
-                
-            formatted_section = {
-                "title": section.replace("_", " ").title(),
-                "content": self._format_section_content(section, section_data, state_data.get(section, {}))
+    def _group_by_field(self, data: List[Dict[str, Any]], field: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Group a list of dictionaries by a specified field."""
+        groups = {}
+        for item in data:
+            if item[field] not in groups:
+                groups[item[field]] = []
+            groups[item[field]].append(item)
+        return groups
+
+    def _organize_brand_analyses(self, brand_names: List[str], linguistic: List[Dict[str, Any]], semantic: List[Dict[str, Any]], cultural: List[Dict[str, Any]], evaluation: List[Dict[str, Any]], domain: List[Dict[str, Any]], seo: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Organize brand analyses by brand name."""
+        organized_analyses = {}
+        for brand_name in brand_names:
+            organized_analyses[brand_name] = {
+                "linguistic_analysis": [item for item in linguistic if item["brand_name"] == brand_name],
+                "semantic_analysis": [item for item in semantic if item["brand_name"] == brand_name],
+                "cultural_sensitivity_analysis": [item for item in cultural if item["brand_name"] == brand_name],
+                "brand_name_evaluation": [item for item in evaluation if item["brand_name"] == brand_name],
+                "domain_analysis": [item for item in domain if item["brand_name"] == brand_name],
+                "seo_online_discoverability": [item for item in seo if item["brand_name"] == brand_name]
             }
-            
-            formatted_report["sections"].append(formatted_section)
-        
-        return formatted_report 
+        return organized_analyses 
