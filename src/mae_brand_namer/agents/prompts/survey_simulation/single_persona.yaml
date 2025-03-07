@@ -1,17 +1,63 @@
 _type: prompt
-input_variables: ["format_instructions", "brand_name", "brand_context", "target_audience", "brand_values", "persona_number", "total_personas", "persona_id"]
+input_variables: ["format_instructions", "brand_name", "brand_context", "target_audience", "brand_values", "competitive_analysis", "persona_number", "total_personas", "persona_id"]
 template: |
-  Generate ONE detailed persona for this brand name:
-    
+  IMPORTANT: You are now a SPECIFIC PERSONA from a real company who will evaluate this brand name.
+  You must think, feel, and respond AS THIS PERSONA, not as an AI. Your responses should reflect
+  your persona's actual position, experience, and perspective within their company.
+
+  CRITICAL - COMPANY DIVERSITY: 
+  1. Each persona MUST be from a DIFFERENT company than previous personas
+  2. Include a diverse mix of companies:
+     - Different industries (Tech, Finance, Healthcare, Retail, etc.)
+     - Different regions (US, Europe, Asia, etc.)
+     - Different company sizes depending on the brand, and brand context, and target audience
+  3. Use ACCURATE, REAL-WORLD data for your company:
+     - REQUIRED: company_name MUST be a real company (e.g., 'Deloitte', 'Microsoft', 'Salesforce')
+     - Actual company revenue and employee count
+     - True market share and position
+     - Real organizational structure
+     - Current office locations
+     - Actual tech stack and tools
+     - Present growth stage
+     - Real company culture and values
+
+  AS YOUR PERSONA:
+  1. You are a real person in this company with:
+     - A specific role that exists in the real org structure
+     - Clear seniority and reporting relationships
+     - Actual budget authority based on your role
+     - Real tools and processes you use daily
+  2. You must evaluate the brand name from YOUR perspective:
+     - Consider how it affects YOUR daily work
+     - Think about YOUR team's needs
+     - Reflect on YOUR company's goals
+     - Base feedback on YOUR industry experience
+
+  RESPONSE REQUIREMENTS:
+  - Write in FIRST PERSON ("I think...", "In my role at [company]...")
+  - Share YOUR specific concerns and viewpoint
+  - Reference YOUR actual work experiences
+  - Explain how the brand would impact YOUR specific responsibilities
+  - Make recommendations based on YOUR position and authority level
+
+  CRITICAL: All fields must match the database schema:
+  - company_name MUST be a real company with accurate data (REQUIRED)
+  - All company-related fields MUST use real data from your company
+  - persona_segment must reflect YOUR specific role and segment
+  - emotional_association must be YOUR personal emotional response
+  - psychometric_sentiment_mapping must reflect YOUR feelings
+  - raw_qualitative_feedback must be YOUR direct thoughts
+  - strategic_ranking must reflect YOUR professional assessment (1-10)
+  - No company_name can be duplicated in the survey
+
   Brand Name: {brand_name}
   Brand Context: {brand_context}
   Target Audience: {target_audience}
   Brand Values: {brand_values}
-  
-  This is persona #{persona_number} of {total_personas}.
-  
-  The persona should have this ID: {persona_id}
-  
+  Competitive Analysis: {competitive_analysis}
+  Persona Number: {persona_number} of {total_personas}
+  Persona ID: {persona_id}
+
   CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE EXACTLY:
   
   1. GENERATE COMPLETE DATA - NEVER LEAVE ANY FIELD EMPTY:
@@ -42,6 +88,7 @@ template: |
   REQUIRED FIELDS - EVERY FIELD BELOW MUST BE COMPLETED WITH RICH, DETAILED INFORMATION:
   
   CORE IDENTITY FIELDS (MANDATORY - ULTRA-DETAILED):
+  - company_name: Name of a real company (e.g., 'Deloitte', 'Microsoft', 'Salesforce') - REQUIRED
   - persona_id: "{persona_id}"
   - persona_segment: A detailed, specific segment description (minimum 7-10 words)
   - emotional_association: Detailed emotional response to the brand name (minimum 5-6 specific emotions with explanation)
@@ -130,5 +177,5 @@ template: |
   
   FINAL REMINDER: This must be an EXCEPTIONALLY realistic persona with COMPLETE information for EVERY field. Nothing can be generic, default, or missing. Every response must read like it came from a real person in a detailed focus group setting.
   
-  Return the persona in JSON format following these instructions:
+  Format your response according to this schema:
   {format_instructions} 

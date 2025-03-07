@@ -27,20 +27,20 @@ logger = get_logger(__name__)
 class SurveySimulationExpert:
     """Expert in simulating market research surveys for brand name evaluation using synthetic personas."""
     
-    def __init__(self, dependencies: Dependencies = None):
+    def __init__(self, dependencies: Dependencies = None, supabase: SupabaseManager = None):
         """
         Initialize the SurveySimulationExpert with necessary dependencies.
 
         Args:
             dependencies (Dependencies, optional): Dependencies injection container.
+            supabase (SupabaseManager, optional): Supabase manager instance.
         """
         # Set up dependencies
         if dependencies:
             self.supabase = dependencies.supabase
             self.langsmith = dependencies.langsmith
         else:
-            self.dependencies = Dependencies()
-            self.supabase = self.dependencies.supabase
+            self.supabase = supabase or SupabaseManager()
             self.langsmith = None
         
         # Agent identity
@@ -72,8 +72,8 @@ class SurveySimulationExpert:
         # Define output schemas for structured parsing
         self.output_schemas = [
             # Required NOT NULL fields
-            ResponseSchema(name="run_id", description="Unique identifier for this survey run"),
             ResponseSchema(name="brand_name", description="The brand name being evaluated"),
+            ResponseSchema(name="company_name", description="Name of the company where the persona works (e.g., 'Deloitte', 'Microsoft'). Must be a real company with accurate data."),
             ResponseSchema(name="persona_segment", description="Target audience segment as a single detailed text description"),
             ResponseSchema(name="emotional_association", description="Emotional responses as a single concatenated text description"),
             ResponseSchema(name="psychometric_sentiment_mapping", description="JSON mapping emotional dimensions to scores"),
@@ -221,7 +221,7 @@ class SurveySimulationExpert:
         """Simulate a survey for a brand name, generating individual persona responses one at a time.
         
         Args:
-            run_id: The run ID for the workflow
+            run_id: The run ID for the workflow (format: mae_YYYYMMDD_HHMMSS_uuid)
             brand_name: The brand name to evaluate
             brand_context: Context about the brand
             target_audience: Target audience segments
@@ -229,7 +229,7 @@ class SurveySimulationExpert:
             competitive_analysis: Competitive analysis data
             
         Returns:
-            Dict containing survey simulation results with individual persona responses
+            Dict containing survey simulation results with individual personas
         """
         try:
             logger.info(f"Simulating survey for brand name: {brand_name} (run: {run_id})")
@@ -257,33 +257,55 @@ class SurveySimulationExpert:
             # Generate individual personas one by one
             logger.info(f"Generating individual personas for {brand_name}")
             individual_personas = []
-            num_personas = 50  # Generate 50 personas per brand name
+            num_personas = 5  # Generate 5 personas per brand name
             success_count = 0
+            
+            # Track used companies to ensure diversity
+            used_companies = set()
             
             for i in range(num_personas):
                 try:
                     # Generate a single persona response
                     persona = await self._generate_persona_response(
+                        run_id=run_id,
                         brand_name=brand_name,
                         brand_context=formatted_brand_context,
                         target_audience=formatted_target_audience,
                         brand_values=formatted_brand_values,
                         competitive_analysis=formatted_competitive_analysis,
                         persona_number=i + 1,
-                        total_personas=num_personas
+                        total_personas=num_personas,
+                        used_companies=used_companies  # Pass the set of used companies
                     )
                     
-                    # Store this persona
+                    # Track the company used
+                    if "company_name" in persona:
+                        used_companies.add(persona["company_name"])
+                        logger.info(f"Added company to tracking: {persona['company_name']} (total unique companies: {len(used_companies)})")
+                    
+                    # Store this persona as its own row
                     if self.supabase:
-                        await self._store_single_persona(run_id, {"brand_name": brand_name}, persona)
+                        try:
+                            # Each persona gets stored with the passed run_id
+                            await self._store_single_persona(run_id, persona)
+                            success_count += 1
+                            logger.info(f"Successfully stored persona {i+1}/{num_personas} for {brand_name} from {persona.get('company_name', 'unknown company')}")
+                        except Exception as store_error:
+                            logger.error(f"Error storing persona {i+1}: {str(store_error)}")
+                    else:
+                        logger.error("Supabase client not initialized - cannot store personas")
                     
                     # Add to our list
                     individual_personas.append(persona)
-                    success_count += 1
-                    logger.info(f"Successfully generated persona {i+1}/{num_personas} for {brand_name}")
+                    logger.info(f"Successfully generated persona {i+1}/{num_personas} for {brand_name} from {persona.get('company_name', 'unknown company')}")
                     
                 except Exception as persona_error:
                     logger.error(f"Error generating persona {i+1}: {str(persona_error)}")
+            
+            # Log company diversity stats
+            logger.info(f"Company diversity stats for {brand_name}:")
+            logger.info(f"Total unique companies: {len(used_companies)}")
+            logger.info(f"Companies used: {sorted(list(used_companies))}")
             
             # Create the final results
             simulation_results = {
@@ -292,7 +314,9 @@ class SurveySimulationExpert:
                 "timestamp": datetime.now().isoformat(),
                 "individual_personas": individual_personas,
                 "success_count": success_count,
-                "total_personas": num_personas
+                "total_personas": num_personas,
+                "unique_companies": len(used_companies),
+                "companies_used": sorted(list(used_companies))
             }
             
             logger.info(f"Successfully generated {success_count}/{num_personas} personas for {brand_name}")
@@ -337,20 +361,52 @@ class SurveySimulationExpert:
         
         # Create the prompt for generating a single persona's response
         prompt_note = """
-        IMPORTANT: Generate a SINGLE, REALISTIC persona who will evaluate this brand name.
-        The persona must be based on real-world data. For example:
-        - If they work at a specific company, use real company data (revenue, size, etc.)
-        - Their role, department, and seniority should match real organizational structures
-        - Their responses should reflect their specific position and perspective
-        
-        CRITICAL: Ensure all fields match the required format and database schema:
-        - All responses must be from this specific persona's perspective
-        - persona_segment must be a detailed TEXT description of their segment
-        - emotional_association must be TEXT describing their emotional response
-        - psychometric_sentiment_mapping must be a valid JSON object
-        - raw_qualitative_feedback must be a valid JSON object
-        - strategic_ranking must be an INTEGER between 1 and 10
-        - All other fields must be provided and match the database schema types
+        IMPORTANT: You are now a SPECIFIC PERSONA from a real company who will evaluate this brand name.
+        You must think, feel, and respond AS THIS PERSONA, not as an AI. Your responses should reflect
+        your persona's actual position, experience, and perspective within their company.
+
+        CRITICAL - COMPANY DIVERSITY: 
+        1. Each persona MUST be from a DIFFERENT company than previous personas
+        2. Include a diverse mix of:
+           - Different industries (Tech, Finance, Healthcare, Retail, etc.)
+           - Different regions (US, Europe, Asia, etc.)
+           - Different company sizes depending on the brand, and brand context, and target audience
+        3. Use ACCURATE, REAL-WORLD data for your company:
+           - Actual company revenue and employee count
+           - True market share and position
+           - Real organizational structure
+           - Current office locations
+           - Actual tech stack and tools
+           - Present growth stage
+           - Real company culture and values
+
+        AS YOUR PERSONA:
+        1. You are a real person in this company with:
+           - A specific role that exists in the real org structure
+           - Clear seniority and reporting relationships
+           - Actual budget authority based on your role
+           - Real tools and processes you use daily
+        2. You must evaluate the brand name from YOUR perspective:
+           - Consider how it affects YOUR daily work
+           - Think about YOUR team's needs
+           - Reflect on YOUR company's goals
+           - Base feedback on YOUR industry experience
+
+        RESPONSE REQUIREMENTS:
+        - Write in FIRST PERSON ("I think...", "In my role at [company]...")
+        - Share YOUR specific concerns and viewpoint
+        - Reference YOUR actual work experiences
+        - Explain how the brand would impact YOUR specific responsibilities
+        - Make recommendations based on YOUR position and authority level
+
+        CRITICAL: All fields must match the database schema:
+        - company_name MUST be a real company with accurate data
+        - All company-related fields MUST use real data from your company
+        - persona_segment must reflect YOUR specific role and segment
+        - emotional_association must be YOUR personal emotional response
+        - psychometric_sentiment_mapping must reflect YOUR feelings
+        - raw_qualitative_feedback must be YOUR direct thoughts
+        - strategic_ranking must reflect YOUR professional assessment (1-10)
         """
         
         # Use the existing templates from _load_prompts()
@@ -386,43 +442,139 @@ class SurveySimulationExpert:
             logger.warning("Attempting manual extraction...")
             return self._manual_extract_fields(response.content)
     
-    async def _store_single_persona(self, run_id: str, overall_results: Dict[str, Any], persona: Dict[str, Any]) -> None:
+    async def _store_single_persona(self, run_id: str, persona: Dict[str, Any]) -> None:
         """Store a single persona with complete field validation."""
         if not self.supabase:
-            logger.warning("Supabase not available, skipping storage")
-            return
+            logger.error("Supabase client not initialized - cannot store persona")
+            raise ValueError("Supabase client not initialized")
         
         try:
-            # Create base data structure
-            base_data = {
-                "run_id": run_id,
-                "brand_name": overall_results.get("brand_name", "Unknown"),
-                "timestamp": datetime.now().isoformat()
-            }
+            logger.info(f"Preparing to store persona for run_id {run_id}")
+            
+            # Ensure run_id is set correctly from the passed parameter
+            persona["run_id"] = run_id
+            
+            # Log the persona data before normalization
+            logger.debug(f"Raw persona data: {json.dumps(persona, indent=2)}")
             
             # Normalize all fields
-            normalized_data = self._normalize_survey_output({**overall_results, **persona})
-            base_data.update(normalized_data)
+            normalized_data = self._normalize_survey_output(persona)
             
-            # Final validation before storage
+            # Log the normalized data
+            logger.debug(f"Normalized data: {json.dumps(normalized_data, indent=2)}")
+            
+            # All fields are required (even if they can be null in the database)
             required_fields = [
-                "persona_segment", "emotional_association", "psychometric_sentiment_mapping",
-                "qualitative_feedback_summary", "raw_qualitative_feedback",
-                "final_survey_recommendation", "strategic_ranking"
+                # Primary fields
+                "run_id",
+                "brand_name",
+                "company_name",
+                "persona_segment",
+                "emotional_association",
+                "psychometric_sentiment_mapping",
+                "qualitative_feedback_summary",
+                "raw_qualitative_feedback",
+                "final_survey_recommendation",
+                "strategic_ranking",
+                
+                # Numeric scores
+                "brand_promise_perception_score",
+                "personality_fit_score",
+                "competitive_differentiation_score",
+                "competitor_benchmarking_score",
+                "simulated_market_adoption_score",
+                "years_of_experience",
+                "company_revenue",
+                "confidence_score_persona_accuracy",
+                
+                # Company information
+                "industry",
+                "company_size_employees",
+                "market_share",
+                "company_structure",
+                "geographic_location",
+                "technology_stack",
+                "company_growth_stage",
+                "company_focus",
+                "company_maturity",
+                "company_culture_values",
+                
+                # Professional details
+                "job_title",
+                "seniority",
+                "department",
+                "education_level",
+                "goals_and_challenges",
+                "values_and_priorities",
+                "decision_making_style",
+                "information_sources",
+                "pain_points",
+                "technological_literacy",
+                "attitude_towards_risk",
+                "purchasing_behavior",
+                "online_behavior",
+                "interaction_with_brand",
+                "professional_associations",
+                "technical_skills",
+                "networking_habits",
+                "professional_aspirations",
+                "influence_within_company",
+                "event_attendance",
+                "content_consumption_habits",
+                "vendor_relationship_preferences",
+                
+                # Business characteristics
+                "business_chemistry",
+                "reports_to",
+                "buying_group_structure",
+                "decision_maker",
+                "budget_authority",
+                "preferred_vendor_size",
+                "innovation_adoption",
+                "key_performance_indicators",
+                "professional_development_interests",
+                
+                # Personal characteristics
+                "social_media_usage",
+                "work_life_balance_priorities",
+                "frustrations_annoyances",
+                "personal_aspirations_life_goals",
+                "motivations",
+                
+                # JSON and array fields
+                "current_brand_relationships",
+                "purchase_triggers_events",
+                "data_sources_persona_creation",
+                "behavioral_tags_keywords",
+                
+                # Additional fields
+                "product_adoption_lifecycle_stage",
+                "success_metrics_product_service",
+                "channel_preferences_brand_interaction",
+                "barriers_to_adoption",
+                "generation_age_range",
+                "industry_sub_vertical",
+                "persona_archetype_type"
             ]
             
-            missing_fields = [field for field in required_fields if not base_data.get(field)]
+            # Check for missing fields
+            missing_fields = [field for field in required_fields if field not in normalized_data or normalized_data[field] is None]
             if missing_fields:
-                raise ValueError(f"Missing required fields: {missing_fields}")
+                error_msg = f"Missing required fields: {missing_fields}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
             
-            # Store in database
-            await self.supabase.execute_with_retry(
-                operation="insert",
-                table="survey_simulation",
-                data=base_data
-            )
+            logger.info(f"Attempting to store persona in Supabase (run_id: {run_id}, company: {normalized_data.get('company_name')})")
             
-            logger.info(f"Successfully stored complete persona for {base_data['brand_name']}")
+            # Store in database as a single row
+            try:
+                result = await self.supabase.table("survey_simulation").insert(normalized_data).execute()
+                logger.info(f"Successfully stored persona in Supabase: {result}")
+            except Exception as supabase_error:
+                logger.error(f"Supabase storage error: {str(supabase_error)}")
+                raise
+            
+            logger.info(f"Successfully stored persona for {normalized_data['brand_name']} with run_id {run_id}")
             
         except Exception as e:
             error_msg = f"Error storing persona: {str(e)}"
@@ -616,9 +768,10 @@ class SurveySimulationExpert:
                     return {"value": output[field]}
             return output[field] if isinstance(output[field], dict) else {"value": str(output[field])}
 
-        # Required NOT NULL fields
-        normalized["run_id"] = output["run_id"]
+        # Required NOT NULL fields - run_id is handled by the caller
+        normalized["run_id"] = output["run_id"]  # Pass through the run_id from the caller
         normalized["brand_name"] = output["brand_name"]
+        normalized["company_name"] = ensure_text_field("company_name")
         normalized["persona_segment"] = ensure_text_field("persona_segment")
         normalized["emotional_association"] = ensure_text_field("emotional_association")
         normalized["psychometric_sentiment_mapping"] = ensure_jsonb_field("psychometric_sentiment_mapping")
@@ -684,13 +837,15 @@ class SurveySimulationExpert:
 
     async def _generate_persona_response(
         self,
+        run_id: str,
         brand_name: str,
         brand_context: str,
         target_audience: str,
         brand_values: str,
         competitive_analysis: str,
         persona_number: int = 1,
-        total_personas: int = 50
+        total_personas: int = 5,
+        used_companies: set = None
     ) -> Dict[str, Any]:
         """Generate a single persona's survey response.
         
@@ -699,6 +854,7 @@ class SurveySimulationExpert:
         responds from their specific perspective.
         
         Args:
+            run_id: The run ID for the workflow (passed from the caller)
             brand_name: The brand name to evaluate
             brand_context: Context about the brand
             target_audience: Target audience description
@@ -706,31 +862,14 @@ class SurveySimulationExpert:
             competitive_analysis: Competitive analysis data
             persona_number: Current persona number being generated
             total_personas: Total number of personas to generate
+            used_companies: Set of companies already used in the survey
+            
+        Returns:
+            Dict containing the persona's survey response with run_id added
         """
-        # Use the complete schema from __init__ that matches our database
-        format_instructions = self.output_parser.get_format_instructions()
-        
-        # Create the prompt for generating a single persona's response
-        prompt_note = """
-        IMPORTANT: Generate a SINGLE, REALISTIC persona who will evaluate this brand name.
-        The persona must be based on real-world data. For example:
-        - If they work at a specific company, use real company data (revenue, size, etc.)
-        - Their role, department, and seniority should match real organizational structures
-        - Their responses should reflect their specific position and perspective
-        
-        CRITICAL: Ensure all fields match the required format and database schema:
-        - All responses must be from this specific persona's perspective
-        - persona_segment must be a detailed TEXT description of their segment
-        - emotional_association must be TEXT describing their emotional response
-        - psychometric_sentiment_mapping must be a valid JSON object
-        - raw_qualitative_feedback must be a valid JSON object
-        - strategic_ranking must be an INTEGER between 1 and 10
-        - All other fields must be provided and match the database schema types
-        """
-        
         # Format the prompt with inputs
         prompt_inputs = {
-            "format_instructions": format_instructions,
+            "format_instructions": self.format_instructions,
             "brand_name": brand_name,
             "brand_context": brand_context,
             "target_audience": target_audience,
@@ -751,10 +890,15 @@ class SurveySimulationExpert:
         try:
             # Parse the response using our complete schema parser
             persona_response = self.output_parser.parse(response.content)
+            # Add the run_id from the parameter
+            persona_response["run_id"] = run_id
             logger.info(f"Successfully parsed persona response for {brand_name}")
             return persona_response
             
         except Exception as e:
             logger.warning(f"Error parsing persona response: {str(e)}")
             logger.warning("Attempting manual extraction...")
-            return self._manual_extract_fields(response.content) 
+            result = self._manual_extract_fields(response.content)
+            # Add the run_id from the parameter
+            result["run_id"] = run_id
+            return result 
