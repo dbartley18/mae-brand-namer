@@ -120,52 +120,65 @@ class ReportCompiler:
         """
         try:
             with tracing_v2_enabled():
-                # Fetch all analysis results from Supabase
-                brand_contexts = await self._fetch_analysis("brand_context", run_id)
-                name_generations = await self._fetch_analysis("brand_name_generation", run_id)
-                linguistic_analyses = await self._fetch_analysis("linguistic_analysis", run_id)
-                semantic_analyses = await self._fetch_analysis("semantic_analysis", run_id)
-                cultural_analyses = await self._fetch_analysis("cultural_sensitivity_analysis", run_id)
-                name_evaluations = await self._fetch_analysis("brand_name_evaluation", run_id)
-                domain_analyses = await self._fetch_analysis("domain_analysis", run_id)
-                seo_analyses = await self._fetch_analysis("seo_online_discoverability", run_id)
-                competitor_analyses = await self._fetch_analysis("competitor_analysis", run_id)
-                survey_simulations = await self._fetch_analysis("survey_simulation", run_id)
-                
                 # Get the original user prompt from the workflow_runs table
                 workflow_data = await self._fetch_workflow_data(run_id)
                 user_prompt = workflow_data.get("user_prompt", "")
                 
-                # Prepare state data for the prompt, organizing lists of analyses
+                # Fetch brand context first (1:1 with run_id)
+                brand_contexts = await self._fetch_analysis("brand_context", run_id)
+                
+                # Fetch brand name generation data to get list of all brand names
+                name_generations = await self._fetch_analysis("brand_name_generation", run_id)
+                
+                # Get evaluations to identify shortlisted names
+                evaluations = await self._fetch_analysis("brand_name_evaluation", run_id)
+                shortlisted_names = [e["brand_name"] for e in evaluations if e.get("shortlist_status", False)]
+                
+                # Fetch initial analyses (performed on all names)
+                linguistic_analyses = await self._fetch_analysis("linguistic_analysis", run_id)
+                semantic_analyses = await self._fetch_analysis("semantic_analysis", run_id)
+                cultural_analyses = await self._fetch_analysis("cultural_sensitivity_analysis", run_id)
+                
+                # Fetch analyses only performed on shortlisted names
+                translation_analyses = await self._fetch_analysis("translation_analysis", run_id)
+                domain_analyses = await self._fetch_analysis("domain_analysis", run_id)
+                seo_analyses = await self._fetch_analysis("seo_online_discoverability", run_id)
+                competitor_analyses = await self._fetch_analysis("competitor_analysis", run_id)
+                market_research = await self._fetch_analysis("market_research", run_id)
+                survey_simulations = await self._fetch_analysis("survey_simulation", run_id)
+                
+                # Prepare state data for the prompt
                 state_data = {
                     "run_id": run_id,
                     "user_prompt": user_prompt,
                     "brand_context": brand_contexts[0] if brand_contexts else {},  # Should only be one
+                    
+                    # Initial brand name data
                     "name_generation": {
                         "all_names": name_generations,
                         "by_category": self._group_by_field(name_generations, "naming_category")
                     },
+                    
+                    # Organize analyses by brand name
                     "brand_analyses": self._organize_brand_analyses(
                         brand_names=[ng["brand_name"] for ng in name_generations],
                         linguistic=linguistic_analyses,
                         semantic=semantic_analyses,
                         cultural=cultural_analyses,
-                        evaluation=name_evaluations,
+                        evaluation=evaluations,
+                        translation=translation_analyses,
                         domain=domain_analyses,
-                        seo=seo_analyses
+                        seo=seo_analyses,
+                        market_research=market_research,
+                        competitor=competitor_analyses,
+                        survey=survey_simulations
                     ),
-                    "competitor_analysis": {
-                        "all_analyses": competitor_analyses,
-                        "by_brand": self._group_by_field(competitor_analyses, "brand_name")
-                    },
-                    "survey_simulation": {
-                        "all_responses": survey_simulations,
-                        "by_brand": self._group_by_field(survey_simulations, "brand_name"),
-                        "by_persona": self._group_by_field(survey_simulations, "persona_segment")
-                    }
+                    
+                    # Track which names were shortlisted
+                    "shortlisted_names": shortlisted_names
                 }
                 
-                # Create formatted messages using both system prompt and human prompt
+                # Create formatted messages
                 system_message = SystemMessage(content=self.system_prompt.format())
                 human_message = HumanMessage(
                     content=self.compilation_prompt.format(
@@ -182,7 +195,7 @@ class ReportCompiler:
                 # Parse the response
                 report_data = self.output_parser.parse(response.content)
                 
-                # Add metadata including user prompt
+                # Add metadata
                 report_data["metadata"] = {
                     "run_id": run_id,
                     "user_prompt": user_prompt,
@@ -194,9 +207,11 @@ class ReportCompiler:
                         "linguistic_analyses": len(linguistic_analyses),
                         "semantic_analyses": len(semantic_analyses),
                         "cultural_analyses": len(cultural_analyses),
-                        "name_evaluations": len(name_evaluations),
+                        "name_evaluations": len(evaluations),
+                        "translation_analyses": len(translation_analyses),
                         "domain_analyses": len(domain_analyses),
                         "seo_analyses": len(seo_analyses),
+                        "market_research": len(market_research),
                         "competitor_analyses": len(competitor_analyses),
                         "survey_simulations": len(survey_simulations)
                     }
@@ -396,90 +411,51 @@ class ReportCompiler:
 
     async def _fetch_analysis(self, analysis_type: str, run_id: str) -> List[Dict[str, Any]]:
         """
-        Fetch ALL analysis results from Supabase for a given run_id.
+        Fetch analysis results from Supabase.
         
         Args:
-            analysis_type (str): The type of analysis (table name) to fetch from
-            run_id (str): The unique identifier for this workflow run
+            analysis_type (str): Type of analysis to fetch
+            run_id (str): Unique identifier for the workflow run
             
         Returns:
-            List[Dict[str, Any]]: List of all analysis results for this run_id, ordered appropriately
+            List[Dict[str, Any]]: List of analysis results
         """
         try:
-            logger.info(f"Fetching all {analysis_type} analyses for run_id: {run_id}")
-            
-            # Define the order based on table type
-            order = None
-            if analysis_type == "brand_name_generation":
-                # Order by naming_category and rank
-                order = "naming_category.asc,rank.asc"
-            elif analysis_type == "brand_name_evaluation":
-                # Order by overall_score (descending) and shortlist_status
-                order = "overall_score.desc,shortlist_status.desc"
-            elif analysis_type == "survey_simulation":
-                # Order by brand_name and strategic_ranking
-                order = "brand_name.asc,strategic_ranking.asc"
-            elif analysis_type == "competitor_analysis":
-                # Order by competitor_name
-                order = "competitor_name.asc"
-            elif "rank" in analysis_type:
-                # For tables with rank field (linguistic, semantic, cultural, domain)
-                order = "brand_name.asc,rank.asc"
+            # For brand_context, only filter by run_id as it's a 1:1 relationship
+            if analysis_type == "brand_context":
+                response = self.supabase.client.table(analysis_type).select("*").eq("run_id", run_id)
             else:
-                # Default ordering by brand_name if it exists
-                order = "brand_name.asc"
+                # For all other tables, filter by run_id
+                response = self.supabase.client.table(analysis_type).select("*").eq("run_id", run_id)
             
-            # Build and execute query using proper Supabase query builder
-            query = self.supabase.table(analysis_type).select("*").eq("run_id", run_id)
+            # Await the execute() call
+            result = await response.execute()
+            return result.data if result and hasattr(result, 'data') else []
             
-            # Add ordering if specified
-            if order:
-                query = query.order(order)
-            
-            # Execute the query
-            response = await query.execute()
-            
-            if response and response.data:
-                logger.info(f"Successfully fetched {len(response.data)} {analysis_type} analyses for run_id: {run_id}")
-                return response.data
-            else:
-                logger.warning(f"No {analysis_type} analyses found for run_id: {run_id}")
-                return []
-                
-        except Exception as e:
-            logger.warning(
-                f"Error fetching {analysis_type} analyses",
+        except APIError as e:
+            logger.error(
+                f"Error fetching {analysis_type} analysis",
                 extra={
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
                     "run_id": run_id,
-                    "table": analysis_type
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
                 }
             )
             return []
 
     async def _fetch_workflow_data(self, run_id: str) -> Dict[str, Any]:
-        """
-        Fetch workflow data including user prompt from workflow_runs table.
-        This should return exactly one record since there's one workflow per run_id.
-        """
+        """Fetch workflow data from Supabase."""
         try:
-            # Build and execute query using proper Supabase query builder
-            response = await self.supabase.table("workflow_runs").select("*").eq("run_id", run_id).execute()
-            
-            if response and response.data and len(response.data) > 0:
-                logger.info(f"Successfully fetched workflow data for run_id: {run_id}")
-                return response.data[0]  # Return the first (and should be only) record
-            else:
-                logger.warning(f"No workflow data found for run_id: {run_id}")
-                return {}
-        except Exception as e:
-            logger.warning(
-                f"Error fetching workflow data",
+            response = self.supabase.client.table("workflow_runs").select("*").eq("run_id", run_id)
+            result = await response.execute()
+            return result.data[0] if result and result.data else {}
+        except APIError as e:
+            logger.error(
+                "Error fetching workflow data",
                 extra={
+                    "run_id": run_id,
                     "error_type": type(e).__name__,
-                    "error_message": str(e),
-                    "run_id": run_id
+                    "error_message": str(e)
                 }
             )
             return {}
@@ -613,16 +589,98 @@ class ReportCompiler:
             groups[item[field]].append(item)
         return groups
 
-    def _organize_brand_analyses(self, brand_names: List[str], linguistic: List[Dict[str, Any]], semantic: List[Dict[str, Any]], cultural: List[Dict[str, Any]], evaluation: List[Dict[str, Any]], domain: List[Dict[str, Any]], seo: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-        """Organize brand analyses by brand name."""
-        organized_analyses = {}
-        for brand_name in brand_names:
-            organized_analyses[brand_name] = {
-                "linguistic_analysis": [item for item in linguistic if item["brand_name"] == brand_name],
-                "semantic_analysis": [item for item in semantic if item["brand_name"] == brand_name],
-                "cultural_sensitivity_analysis": [item for item in cultural if item["brand_name"] == brand_name],
-                "brand_name_evaluation": [item for item in evaluation if item["brand_name"] == brand_name],
-                "domain_analysis": [item for item in domain if item["brand_name"] == brand_name],
-                "seo_online_discoverability": [item for item in seo if item["brand_name"] == brand_name]
+    def _organize_brand_analyses(
+        self,
+        brand_names: List[str],
+        linguistic: List[Dict[str, Any]],
+        semantic: List[Dict[str, Any]],
+        cultural: List[Dict[str, Any]],
+        evaluation: List[Dict[str, Any]],
+        translation: List[Dict[str, Any]],
+        domain: List[Dict[str, Any]],
+        seo: List[Dict[str, Any]],
+        market_research: List[Dict[str, Any]],
+        competitor: List[Dict[str, Any]],
+        survey: List[Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Organize all brand-specific analyses by brand name.
+        
+        Args:
+            brand_names (List[str]): List of all brand names
+            linguistic (List[Dict[str, Any]]): Linguistic analysis results
+            semantic (List[Dict[str, Any]]): Semantic analysis results
+            cultural (List[Dict[str, Any]]): Cultural sensitivity analysis results
+            evaluation (List[Dict[str, Any]]): Brand name evaluation results
+            translation (List[Dict[str, Any]]): Translation analysis results (only for shortlisted names)
+            domain (List[Dict[str, Any]]): Domain analysis results (only for shortlisted names)
+            seo (List[Dict[str, Any]]): SEO analysis results (only for shortlisted names)
+            market_research (List[Dict[str, Any]]): Market research results (only for shortlisted names)
+            competitor (List[Dict[str, Any]]): Competitor analysis results (only for shortlisted names)
+            survey (List[Dict[str, Any]]): Survey simulation results (only for shortlisted names)
+            
+        Returns:
+            Dict[str, Dict[str, Any]]: Analyses organized by brand name
+        """
+        organized = {}
+        
+        # Create lookups for analyses that are only run on shortlisted names
+        translation_by_name = {t["brand_name"]: t for t in translation}
+        domain_by_name = {d["brand_name"]: d for d in domain}
+        seo_by_name = {s["brand_name"]: s for s in seo}
+        market_research_by_name = {m["brand_name"]: m for m in market_research}
+        competitor_by_name = {}
+        survey_by_name = {}
+        
+        # Group competitor and survey analyses by brand name since they can have multiple entries per brand
+        for c in competitor:
+            if c["brand_name"] not in competitor_by_name:
+                competitor_by_name[c["brand_name"]] = []
+            competitor_by_name[c["brand_name"]].append(c)
+            
+        # Group survey results by brand name, using the correct columns from schema
+        for s in survey:
+            brand_name = s["brand_name"]
+            if brand_name not in survey_by_name:
+                survey_by_name[brand_name] = []
+            
+            # Create a clean survey result using only existing columns from schema
+            survey_result = {
+                "brand_name": brand_name,
+                "persona_segment": s.get("persona_segment", ""),
+                "emotional_association": s.get("emotional_association", ""),
+                "qualitative_feedback_summary": s.get("qualitative_feedback_summary", ""),
+                "raw_qualitative_feedback": s.get("raw_qualitative_feedback", {}),
+                "psychometric_sentiment_mapping": s.get("psychometric_sentiment_mapping", {}),
+                "final_survey_recommendation": s.get("final_survey_recommendation", ""),
+                "strategic_ranking": s.get("strategic_ranking", 0),
+                "simulated_market_adoption_score": s.get("simulated_market_adoption_score", 0.0),
+                "personality_fit_score": s.get("personality_fit_score", 0.0)
             }
-        return organized_analyses 
+            survey_by_name[brand_name].append(survey_result)
+        
+        for brand_name in brand_names:
+            # Get evaluation data first to determine if name is shortlisted
+            eval_data = next((e for e in evaluation if e["brand_name"] == brand_name), {})
+            is_shortlisted = eval_data.get("shortlist_status", False)
+            
+            # Initialize brand analysis data with initial analyses (performed on all names)
+            brand_data = {
+                "is_shortlisted": is_shortlisted,
+                "linguistic_analysis": next((l for l in linguistic if l["brand_name"] == brand_name), {}),
+                "semantic_analysis": next((s for s in semantic if s["brand_name"] == brand_name), {}),
+                "cultural_analysis": next((c for c in cultural if c["brand_name"] == brand_name), {}),
+                "evaluation": eval_data,
+                
+                # Include analyses that are only run on shortlisted names (no filtering needed)
+                "translation_analysis": translation_by_name.get(brand_name, {}),
+                "domain_analysis": domain_by_name.get(brand_name, {}),
+                "seo_analysis": seo_by_name.get(brand_name, {}),
+                "market_research": market_research_by_name.get(brand_name, {}),
+                "competitor_analysis": competitor_by_name.get(brand_name, []),
+                "survey_results": survey_by_name.get(brand_name, [])
+            }
+            
+            organized[brand_name] = brand_data
+        
+        return organized 
