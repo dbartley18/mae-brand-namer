@@ -263,13 +263,13 @@ class SurveySimulationExpert:
                     operation="select",
                     table="survey_simulation",
                     data={
-                        "select": "persona_data->>'company_name'",
+                        "select": "company_name",
                         "run_id": run_id
                     }
                 )
                 if response:
                     for item in response:
-                        if item and "company_name" in item:
+                        if item and "company_name" in item and item["company_name"]:
                             used_companies.add(item["company_name"].lower())
                     logger.info(f"Found {len(used_companies)} existing companies for run_id: {run_id}")
             except Exception as e:

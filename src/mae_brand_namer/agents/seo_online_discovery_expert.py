@@ -205,12 +205,20 @@ class SEOOnlineDiscoveryExpert:
                 # The domain_analysis variable is expected by the template but may not be available
                 domain_analysis = brand_context.get("domain_analysis", {})
                 
+                # Ensure brand_context is properly formatted for the prompt
+                formatted_brand_context = {
+                    "industry_focus": brand_context.get("industry_focus", ""),
+                    "target_audience": brand_context.get("target_audience", ""),
+                    "brand_personality": brand_context.get("brand_personality", ""),
+                    "brand_values": brand_context.get("brand_values", "")
+                }
+                
                 human_message = HumanMessage(
                     content=self.human_prompt.format(
                         format_instructions=self.output_parser.get_format_instructions(),
                         brand_name=brand_name,
-                        brand_context=json.dumps(brand_context),
-                        domain_analysis=json.dumps(domain_analysis)
+                        brand_context=json.dumps(formatted_brand_context, ensure_ascii=False),
+                        domain_analysis=json.dumps(domain_analysis, ensure_ascii=False)
                     )
                 )
                 
@@ -219,40 +227,58 @@ class SEOOnlineDiscoveryExpert:
                 # Get response from LLM
                 response = await self.llm.ainvoke(formatted_messages)
                 
-                # Parse and validate response
-                analysis = self.output_parser.parse(response.content)
+                try:
+                    # Parse and validate response
+                    analysis = self.output_parser.parse(response.content)
+                except Exception as parse_error:
+                    logger.error(
+                        "Failed to parse LLM response",
+                        extra={
+                            "error": str(parse_error),
+                            "response_content": response.content
+                        }
+                    )
+                    # Provide default values for required fields
+                    analysis = {
+                        "keyword_alignment": "Moderate",
+                        "search_volume": 0.0,
+                        "keyword_competition": "Moderate",
+                        "branded_keyword_potential": "Moderate",
+                        "non_branded_keyword_potential": "Moderate",
+                        "exact_match_search_results": 0,
+                        "competitor_domain_strength": "Moderate",
+                        "name_length_searchability": "Medium",
+                        "unusual_spelling_impact": False,
+                        "negative_keyword_associations": "None identified",
+                        "negative_search_results": False,
+                        "content_marketing_opportunities": "Standard opportunities available",
+                        "social_media_availability": {},
+                        "social_media_discoverability": "Moderate",
+                        "seo_recommendations": ["Implement standard SEO best practices"],
+                        "seo_viability_score": 5.0
+                    }
                 
-                # Enforce field boundaries to ensure experts stay in their lanes
+                # Ensure social_media_availability is a dict
+                if not isinstance(analysis.get("social_media_availability"), dict):
+                    analysis["social_media_availability"] = {}
                 
-                # Ensure branded_keyword_potential focuses on search behavior
-                if "branded_keyword_potential" in analysis:
-                    branded_text = analysis["branded_keyword_potential"]
-                    if any(term in branded_text.lower() for term in ["domain", "url", "tld", "subdomain"]):
-                        # Redirect focus to search behavior
-                        analysis["branded_keyword_potential"] = f"Potential for '{brand_name}' as a branded search term"
-                
-                # Ensure non_branded_keyword_potential focuses on search behavior
-                if "non_branded_keyword_potential" in analysis:
-                    non_branded_text = analysis["non_branded_keyword_potential"]
-                    if any(term in non_branded_text.lower() for term in ["domain", "url", "tld", "subdomain"]):
-                        # Redirect focus to search behavior
-                        keywords = [word for word in brand_name.lower().split() if len(word) > 3]
-                        if keywords:
-                            analysis["non_branded_keyword_potential"] = f"Potential for generic terms like: {', '.join(keywords)}"
+                # Ensure seo_recommendations is a list
+                if not isinstance(analysis.get("seo_recommendations"), list):
+                    try:
+                        recommendations = json.loads(analysis.get("seo_recommendations", "[]"))
+                        if isinstance(recommendations, list):
+                            analysis["seo_recommendations"] = recommendations
                         else:
-                            analysis["non_branded_keyword_potential"] = "Limited potential for non-branded keyword advantage"
+                            analysis["seo_recommendations"] = [str(recommendations)]
+                    except json.JSONDecodeError:
+                        analysis["seo_recommendations"] = [str(analysis.get("seo_recommendations", ""))]
                 
                 # Check social media availability using Username Hunter API
                 social_media_available, platform_details, discoverability_rating = await self.check_social_media_availability(brand_name)
                 
                 # Update analysis with social media availability data
-                analysis["social_media_availability"] = social_media_available
+                analysis["social_media_availability"] = platform_details
                 analysis["social_media_discoverability"] = discoverability_rating
-                analysis["social_media_platform_details"] = platform_details  # Additional data for context
-                
-                # Ensure social_media_discoverability focuses on findability, not just availability
-                if analysis["social_media_discoverability"] in ["Available", "Not Available", "Partially Available"]:
-                    analysis["social_media_discoverability"] = discoverability_rating
                 
                 # Store results
                 await self._store_analysis(run_id, brand_name, analysis)
@@ -346,6 +372,18 @@ class SEOOnlineDiscoveryExpert:
                     # If not JSON, create a single-item array
                     seo_recommendations = [seo_recommendations]
             
+            # Convert social media availability dictionary to boolean
+            social_media_data = analysis.get("social_media_availability", {})
+            if isinstance(social_media_data, dict):
+                # Consider it available if any platform is marked as available
+                social_media_available = any(
+                    platform.get("available", False) if isinstance(platform, dict) else 
+                    (str(platform).lower() == "available")
+                    for platform in social_media_data.values()
+                )
+            else:
+                social_media_available = False
+            
             # Prepare data for storage based on the database schema
             data = {
                 "run_id": run_id,
@@ -370,7 +408,7 @@ class SEOOnlineDiscoveryExpert:
                 "unusual_spelling_impact": unusual_spelling_impact,
                 
                 # Social media aspects (actual availability verified by API)
-                "social_media_availability": analysis.get("social_media_availability", False),
+                "social_media_availability": social_media_available,
                 "social_media_discoverability": social_discoverability,
                 
                 # Content strategy
