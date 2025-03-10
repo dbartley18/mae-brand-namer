@@ -215,10 +215,10 @@ class ReportCompiler:
         human_message = HumanMessage(content=self.compilation_prompt.format(**state_data))
         system_message = SystemMessage(content=self.system_prompt.format())
         messages = [system_message, human_message]
-
+        
         # Generate report using LLM
-        response = await self.llm.agenerate_text(messages)
-
+        response = await self.llm.ainvoke(messages)
+        
         # Format report sections
         formatted_report = await self._format_report_sections(response, state_data)
 
@@ -381,9 +381,11 @@ class ReportCompiler:
             # Calculate file size
             file_size = os.path.getsize(doc_path) // 1024  # Size in KB
 
-            # Store metadata in report_compilation table - separate query building from execution
-            query = self.supabase.table("report_compilation").insert(
-                {
+            # Store metadata in report_compilation table using execute_with_retry
+            await self.supabase.execute_with_retry(
+                operation="insert",
+                table="report_compilation",
+                data={
                     "run_id": run_id,
                     "report_url": report_url,
                     "version": 1,
@@ -393,7 +395,6 @@ class ReportCompiler:
                     "notes": "Comprehensive brand naming analysis report",
                 }
             )
-            await query.execute()
 
             # Clean up temporary file
             os.unlink(doc_path)
@@ -412,32 +413,33 @@ class ReportCompiler:
     async def _fetch_analysis(self, analysis_type: str, run_id: str) -> List[Dict[str, Any]]:
         """
         Fetch analysis data from the database for a specific analysis type and run ID.
-
+        
         Args:
             analysis_type (str): The type of analysis to fetch
             run_id (str): The run ID to filter by
-
+            
         Returns:
             List[Dict[str, Any]]: List of analysis results
-
+            
         Raises:
             ValueError: If required fields are missing from the analysis results
         """
         try:
-            # Build query based on analysis type
-            query = self.supabase.table(analysis_type)
-
-            # Select all fields and filter by run_id
-            query = query.select("*").eq("run_id", run_id)
-
-            # Execute query - await the execution
-            response = await query.execute()
-
-            if not response.data:
+            # Use execute_with_retry instead of building and executing the query directly
+            response = await self.supabase.execute_with_retry(
+                operation="select",
+                table=analysis_type,
+                data={
+                    "select": "*",
+                    "run_id": f"eq.{run_id}"
+                }
+            )
+            
+            if not response:
                 return []
-
+            
             # Validate required fields based on analysis type
-            for row in response.data:
+            for row in response:
                 if analysis_type == "brand_context":
                     required_fields = [
                         "brand_promise",
@@ -640,26 +642,36 @@ class ReportCompiler:
                         extra={
                             "analysis_type": analysis_type,
                             "missing_fields": missing_fields,
-                            "run_id": run_id,
-                        },
+                            "run_id": run_id
+                        }
                     )
 
-            return response.data
+            return response
         except Exception as e:
             logger.error(
                 f"Error fetching {analysis_type} analysis",
-                extra={"analysis_type": analysis_type, "run_id": run_id, "error": str(e)},
+                extra={
+                    "analysis_type": analysis_type,
+                    "run_id": run_id,
+                    "error": str(e)
+                }
             )
             raise
 
     async def _fetch_workflow_data(self, run_id: str) -> Dict[str, Any]:
         """Fetch workflow data from Supabase."""
         try:
-            # Build query and await execution in two separate steps
-            query = self.supabase.client.table("workflow_runs").select("*").eq("run_id", run_id)
-            result = await query.execute()
-
-            return result.data[0] if result and result.data else {}
+            # Use execute_with_retry instead of building and executing the query directly
+            result = await self.supabase.execute_with_retry(
+                operation="select",
+                table="workflow_runs",
+                data={
+                    "select": "*",
+                    "run_id": f"eq.{run_id}"
+                }
+            )
+            
+            return result[0] if result else {}
         except APIError as e:
             logger.error(
                 "Error fetching workflow data",
@@ -668,7 +680,7 @@ class ReportCompiler:
             return {}
 
     async def _format_report_sections(
-        self, report_data: Dict[str, Any], state_data: Dict[str, Any]
+        self, response: AIMessage, state_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Format report sections with proper structure and styling."""
         formatted_report = {
@@ -679,6 +691,18 @@ class ReportCompiler:
             },
             "sections": [],
         }
+
+        # Parse the response content from AIMessage
+        try:
+            # Parse the response from the LLM
+            report_data = self.output_parser.parse(response.content)
+        except Exception as e:
+            logger.error(f"Error parsing LLM response: {str(e)}")
+            # Provide a minimal report on parsing failure
+            report_data = {
+                "executive_summary": {"summary": "Error generating report. Please try again."},
+                "recommendations": {"summary": "No recommendations available due to report generation error."}
+            }
 
         # Order sections according to workflow
         section_order = [
