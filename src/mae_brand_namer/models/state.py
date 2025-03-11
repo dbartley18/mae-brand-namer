@@ -443,6 +443,9 @@ class BrandNameGenerationState(Serializable, BaseModel):
     # Report fields
     report: Optional[Dict[str, Any]] = Field(default=None, description="Generated executive report")
     
+    # Report compilation fields
+    compiled_report: Optional[Dict[str, Any]] = Field(default=None, description="Compiled report with organized data and report URL")
+    
     model_config = ConfigDict(arbitrary_types_allowed=True)
     
     def dict(self, *args, **kwargs):

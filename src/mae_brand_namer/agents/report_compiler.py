@@ -3,12 +3,21 @@
 # Standard library imports
 import os
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import tempfile
 import re
 import json
 import asyncio
+import uuid
+
+# Import S3 libraries
+try:
+    import boto3
+    from botocore.client import Config
+except ImportError:
+    boto3 = None
+    Config = None
 
 # Third-party imports
 from supabase import create_client, Client
@@ -1147,14 +1156,15 @@ class ReportCompiler:
         Returns:
             str: URL to the stored report
         """
+        # Define timestamp outside try block so it's available in except block
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Define object_key here so it's available in all blocks
+        object_key = f"{run_id}/{timestamp}_report.docx"
+        
         try:
-            # Import boto3 for S3 operations
-            import boto3
-            from botocore.client import Config
-            
-            # Prepare S3 upload parameters
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            object_key = f"{run_id}/{timestamp}_report.docx"
+            # Check if boto3 is available
+            if boto3 is None:
+                raise ImportError("boto3 library is not installed. Please install with 'pip install boto3'")
             
             # Get S3 settings from environment
             bucket_name = settings.s3_bucket
@@ -1162,6 +1172,16 @@ class ReportCompiler:
             s3_region = settings.s3_region
             s3_access_key = settings.s3_access_key
             s3_secret_key = settings.s3_secret_key
+            
+            # Validate required settings
+            if not all([s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key]):
+                missing = []
+                if not s3_endpoint: missing.append("S3_ENDPOINT")
+                if not s3_region: missing.append("S3_REGION")
+                if not bucket_name: missing.append("S3_BUCKET")
+                if not s3_access_key: missing.append("S3_ACCESS_KEY")
+                if not s3_secret_key: missing.append("S3_SECRET_KEY")
+                raise ValueError(f"Missing required S3 settings: {', '.join(missing)}")
             
             file_size = os.path.getsize(doc_path) // 1024  # Size in KB
             
@@ -1262,6 +1282,22 @@ class ReportCompiler:
             
             return report_url
             
+        except ImportError as e:
+            logger.error(
+                "Error importing boto3 - cannot use S3 storage",
+                extra={
+                    "run_id": run_id,
+                    "error_message": str(e)
+                }
+            )
+            # Fall back to storing locally
+            local_path = f"./reports/{object_key}"
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            import shutil
+            shutil.copy(doc_path, local_path)
+            logger.info(f"Saved report locally at {local_path}")
+            return f"file://{os.path.abspath(local_path)}"
+            
         except Exception as e:
             logger.error(
                 "Error storing report via Supabase Storage S3",
@@ -1274,7 +1310,7 @@ class ReportCompiler:
             )
             
             # If we failed to store in S3, keep the local file as a backup
-            local_backup_path = f"./reports/{run_id}_{timestamp}_report.docx"
+            local_backup_path = f"./reports/{object_key}"
             try:
                 import shutil
                 os.makedirs(os.path.dirname(local_backup_path), exist_ok=True)
