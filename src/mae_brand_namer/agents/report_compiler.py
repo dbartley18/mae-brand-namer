@@ -6,6 +6,8 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
+import re
+import json
 
 # Third-party imports
 from supabase import create_client, Client
@@ -109,6 +111,12 @@ class ReportCompiler:
                 temperature=0.3,
                 google_api_key=settings.gemini_api_key,
                 convert_system_message_to_human=True,
+                generation_config={
+                    "max_output_tokens": 8192,
+                    "temperature": 0.3,
+                    "top_p": 0.95,
+                    "top_k": 40
+                },
             )
             logger.info("Successfully initialized ChatGoogleGenerativeAI for Report Compiler")
 
@@ -127,6 +135,197 @@ class ReportCompiler:
             )
             raise
 
+    async def _log_batch_process(
+        self, 
+        run_id: str, 
+        batch_id: str, 
+        batch_sections: List[str], 
+        status: str, 
+        start_time: datetime, 
+        end_time: Optional[datetime] = None,
+        error_message: Optional[str] = None,
+        section_token_counts: Optional[Dict[str, int]] = None,
+        retry_count: int = 0
+    ) -> None:
+        """
+        Log batch processing status to the process_logs table.
+        
+        Args:
+            run_id: Unique identifier for the workflow run
+            batch_id: Identifier for this specific batch (e.g., "batch_1_executive_summary")
+            batch_sections: List of section names in this batch
+            status: Current status (started, completed, failed)
+            start_time: When this batch processing started
+            end_time: When this batch processing ended (None if not completed)
+            error_message: Error details if status is 'failed'
+            section_token_counts: Token usage per section if available
+            retry_count: Number of retries for this batch
+        """
+        if end_time is None and status in ("completed", "failed"):
+            end_time = datetime.now(timezone.utc)
+            
+        duration_sec = None
+        if start_time and end_time:
+            duration_sec = (end_time - start_time).total_seconds()
+        
+        # Calculate completion percentage based on sections processed
+        all_sections = set()
+        for sections in self.report_sections:
+            all_sections.update(sections)
+        completion_percentage = (len(batch_sections) / len(all_sections)) * 100
+        
+        # Prepare section status JSON
+        section_status = {}
+        for section in batch_sections:
+            section_status[section] = "completed" if status == "completed" else "pending"
+            
+        try:
+            # Insert or update log entry
+            query = """
+                INSERT INTO process_logs (
+                    run_id, agent_type, task_name, status, start_time, end_time,
+                    duration_sec, error_message, retry_count, last_retry_at,
+                    retry_status, batch_id, batch_sections, section_token_counts,
+                    completion_percentage, section_status
+                )
+                VALUES (
+                    :run_id, 'ReportCompiler', :task_name, :status, :start_time, :end_time,
+                    :duration_sec, :error_message, :retry_count, :last_retry_at,
+                    :retry_status, :batch_id, :batch_sections, :section_token_counts,
+                    :completion_percentage, :section_status
+                )
+                ON CONFLICT (run_id, agent_type, task_name, batch_id) 
+                DO UPDATE SET
+                    status = EXCLUDED.status,
+                    end_time = EXCLUDED.end_time,
+                    duration_sec = EXCLUDED.duration_sec,
+                    error_message = EXCLUDED.error_message,
+                    last_updated = now(),
+                    retry_count = CASE 
+                        WHEN EXCLUDED.retry_count > process_logs.retry_count 
+                        THEN EXCLUDED.retry_count 
+                        ELSE process_logs.retry_count 
+                    END,
+                    last_retry_at = CASE 
+                        WHEN EXCLUDED.retry_count > process_logs.retry_count 
+                        THEN EXCLUDED.last_retry_at 
+                        ELSE process_logs.last_retry_at 
+                    END,
+                    retry_status = EXCLUDED.retry_status,
+                    section_token_counts = EXCLUDED.section_token_counts,
+                    completion_percentage = EXCLUDED.completion_percentage,
+                    section_status = EXCLUDED.section_status
+            """
+            
+            # Convert section arrays to proper format for database
+            batch_sections_str = "{" + ",".join(batch_sections) + "}"
+            
+            params = {
+                "run_id": run_id,
+                "task_name": f"report_compilation_{batch_id}",
+                "status": status,
+                "start_time": start_time,
+                "end_time": end_time,
+                "duration_sec": duration_sec,
+                "error_message": error_message,
+                "retry_count": retry_count,
+                "last_retry_at": datetime.now(timezone.utc) if retry_count > 0 else None,
+                "retry_status": "retrying" if retry_count > 0 and status != "completed" else "completed",
+                "batch_id": batch_id,
+                "batch_sections": batch_sections_str,
+                "section_token_counts": json.dumps(section_token_counts) if section_token_counts else None,
+                "completion_percentage": completion_percentage,
+                "section_status": json.dumps(section_status)
+            }
+            
+            if self.supabase:
+                await self.supabase.execute_query(query, params)
+                
+        except Exception as e:
+            logger.error(
+                "Error logging batch process",
+                extra={
+                    "error": str(e),
+                    "run_id": run_id,
+                    "batch_id": batch_id
+                }
+            )
+
+    async def _log_overall_process(
+        self, 
+        run_id: str, 
+        status: str, 
+        start_time: datetime,
+        end_time: Optional[datetime] = None,
+        error_message: Optional[str] = None,
+        output_size_kb: Optional[float] = None,
+        token_count: Optional[int] = None
+    ) -> None:
+        """
+        Log overall report compilation process status.
+        
+        Args:
+            run_id: Unique identifier for the workflow run
+            status: Current status (started, completed, failed)
+            start_time: When the overall process started
+            end_time: When the overall process ended
+            error_message: Error details if status is 'failed'
+            output_size_kb: Size of the generated report in KB
+            token_count: Total token count for the report
+        """
+        if end_time is None and status in ("completed", "failed"):
+            end_time = datetime.now(timezone.utc)
+            
+        duration_sec = None
+        if start_time and end_time:
+            duration_sec = (end_time - start_time).total_seconds()
+            
+        try:
+            # Insert or update log entry for overall process
+            query = """
+                INSERT INTO process_logs (
+                    run_id, agent_type, task_name, status, start_time, end_time,
+                    duration_sec, error_message, output_size_kb, token_count
+                )
+                VALUES (
+                    :run_id, 'ReportCompiler', 'report_compilation', :status, :start_time, :end_time,
+                    :duration_sec, :error_message, :output_size_kb, :token_count
+                )
+                ON CONFLICT (run_id, agent_type, task_name) 
+                WHERE batch_id IS NULL
+                DO UPDATE SET
+                    status = EXCLUDED.status,
+                    end_time = EXCLUDED.end_time,
+                    duration_sec = EXCLUDED.duration_sec,
+                    error_message = EXCLUDED.error_message,
+                    last_updated = now(),
+                    output_size_kb = EXCLUDED.output_size_kb,
+                    token_count = EXCLUDED.token_count
+            """
+            
+            params = {
+                "run_id": run_id,
+                "status": status,
+                "start_time": start_time,
+                "end_time": end_time,
+                "duration_sec": duration_sec,
+                "error_message": error_message,
+                "output_size_kb": output_size_kb,
+                "token_count": token_count
+            }
+            
+            if self.supabase:
+                await self.supabase.execute_query(query, params)
+                
+        except Exception as e:
+            logger.error(
+                "Error logging overall process",
+                extra={
+                    "error": str(e),
+                    "run_id": run_id
+                }
+            )
+
     async def compile_report(
         self, run_id: str, state: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -143,122 +342,355 @@ class ReportCompiler:
         Raises:
             ValueError: If required data is missing
         """
-        # Make a copy of the state to modify
-        state_copy = {} if state is None else state.copy()
+        # Start timing and logging
+        process_start_time = datetime.now(timezone.utc)
+        await self._log_overall_process(run_id, "started", process_start_time)
         
-        # Fetch brand context
-        brand_contexts = await self._fetch_analysis("brand_context", run_id)
-        if not brand_contexts:
-            raise ValueError("No brand context found for run_id")
-        brand_context = brand_contexts[0]  # Use first context
-        
-        # Fetch name generations
-        name_generations = await self._fetch_analysis("brand_name_generation", run_id)
-        if not name_generations:
-            raise ValueError("No brand names generated for run_id")
-        
-        # Get list of brand names
-        brand_names = [ng["brand_name"] for ng in name_generations]
-        
-        # Fetch all analyses
-        evaluations = await self._fetch_analysis("brand_name_evaluation", run_id)
-        competitor_analyses = await self._fetch_analysis("competitor_analysis", run_id)
-        cultural_analyses = await self._fetch_analysis("cultural_sensitivity_analysis", run_id)
-        domain_analyses = await self._fetch_analysis("domain_analysis", run_id)
-        market_research = await self._fetch_analysis("market_research", run_id)
-        semantic_analyses = await self._fetch_analysis("semantic_analysis", run_id)
-        seo_analyses = await self._fetch_analysis("seo_online_discoverability", run_id)
-        survey_simulations = await self._fetch_analysis("survey_simulation", run_id)
-        
-        # Organize brand analyses
-        brand_analyses = self._organize_brand_analyses(
-            brand_names=brand_names,
-            brand_name_generations=name_generations,
-            brand_name_evaluations=evaluations,
-            competitor_analyses=competitor_analyses,
-            cultural_sensitivity_analyses=cultural_analyses,
-            domain_analyses=domain_analyses,
-            market_research_analyses=market_research,
-            semantic_analyses=semantic_analyses,
-            seo_analyses=seo_analyses,
-            survey_simulations=survey_simulations,
-        )
-        
-        # Prepare state data for report generation
-        state_data = {
-            # Brand context
-            "brand_identity_brief": brand_context.get("brand_identity_brief"),
-            "brand_mission": brand_context.get("brand_mission"),
-            "brand_personality": brand_context.get("brand_personality"),
-            "brand_promise": brand_context.get("brand_promise"),
-            "brand_purpose": brand_context.get("brand_purpose"),
-            "brand_tone_of_voice": brand_context.get("brand_tone_of_voice"),
-            "brand_values": brand_context.get("brand_values"),
-            "competitive_landscape": brand_context.get("competitive_landscape"),
-            "customer_needs": brand_context.get("customer_needs"),
-            "industry_focus": brand_context.get("industry_focus"),
-            "industry_trends": brand_context.get("industry_trends"),
-            "market_positioning": brand_context.get("market_positioning"),
-            "target_audience": brand_context.get("target_audience"),
-            
-            # Brand analyses organized by name
-            "brand_analyses": brand_analyses,
-            
-            # Metadata
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "total_names_analyzed": len(brand_names),
-            "shortlisted_names": [
-                name
-                for name in brand_names
-                if brand_analyses[name]["evaluation"].get("shortlist_status")
-            ],
-        }
-        
-        # Format messages for LLM
-        # Create the messages using the compilation prompt - pass state_data to match the prompt's expected variable
-        human_message = HumanMessage(content=self.compilation_prompt.format(
-            state_data=state_data,
-            format_instructions=self.output_parser.get_format_instructions()
-        ))
-        system_message = SystemMessage(content=self.system_prompt.format())
-        messages = [system_message, human_message]
-        
-        # Generate report using LLM
-        response = await self.llm.ainvoke(messages)
-        
-        # Parse the response
-        content = response.content if hasattr(response, 'content') else str(response)
         try:
-            llm_report_data = self.output_parser.parse(content)
-        except Exception as e:
-            # Provide a minimal report on parsing failure
-            llm_report_data = {
-                "executive_summary": {"summary": "Error generating report. Please try again."},
-                "recommendations": {"summary": "No recommendations available due to report generation error."}
+            # Make a copy of the state to modify
+            state_copy = {} if state is None else state.copy()
+            
+            # Fetch brand context
+            brand_contexts = await self._fetch_analysis("brand_context", run_id)
+            if not brand_contexts:
+                error_msg = "No brand context found for run_id"
+                await self._log_overall_process(run_id, "failed", process_start_time, error_message=error_msg)
+                raise ValueError(error_msg)
+            brand_context = brand_contexts[0]  # Use first context
+            
+            # Fetch name generations
+            name_generations = await self._fetch_analysis("brand_name_generation", run_id)
+            if not name_generations:
+                error_msg = "No brand names generated for run_id"
+                await self._log_overall_process(run_id, "failed", process_start_time, error_message=error_msg)
+                raise ValueError(error_msg)
+            
+            # Get list of brand names
+            brand_names = [ng["brand_name"] for ng in name_generations]
+            
+            # Fetch all analyses
+            evaluations = await self._fetch_analysis("brand_name_evaluation", run_id)
+            competitor_analyses = await self._fetch_analysis("competitor_analysis", run_id)
+            cultural_analyses = await self._fetch_analysis("cultural_sensitivity_analysis", run_id)
+            domain_analyses = await self._fetch_analysis("domain_analysis", run_id)
+            market_research = await self._fetch_analysis("market_research", run_id)
+            semantic_analyses = await self._fetch_analysis("semantic_analysis", run_id)
+            seo_analyses = await self._fetch_analysis("seo_online_discoverability", run_id)
+            survey_simulations = await self._fetch_analysis("survey_simulation", run_id)
+            
+            # Organize brand analyses
+            brand_analyses = self._organize_brand_analyses(
+                brand_names=brand_names,
+                brand_name_generations=name_generations,
+                brand_name_evaluations=evaluations,
+                competitor_analyses=competitor_analyses,
+                cultural_sensitivity_analyses=cultural_analyses,
+                domain_analyses=domain_analyses,
+                market_research_analyses=market_research,
+                semantic_analyses=semantic_analyses,
+                seo_analyses=seo_analyses,
+                survey_simulations=survey_simulations,
+            )
+            
+            # Prepare state data for report generation
+            state_data = {
+                # Brand context
+                "brand_identity_brief": brand_context.get("brand_identity_brief"),
+                "brand_mission": brand_context.get("brand_mission"),
+                "brand_personality": brand_context.get("brand_personality"),
+                "brand_promise": brand_context.get("brand_promise"),
+                "brand_purpose": brand_context.get("brand_purpose"),
+                "brand_tone_of_voice": brand_context.get("brand_tone_of_voice"),
+                "brand_values": brand_context.get("brand_values"),
+                "competitive_landscape": brand_context.get("competitive_landscape"),
+                "customer_needs": brand_context.get("customer_needs"),
+                "industry_focus": brand_context.get("industry_focus"),
+                "industry_trends": brand_context.get("industry_trends"),
+                "market_positioning": brand_context.get("market_positioning"),
+                "target_audience": brand_context.get("target_audience"),
+                
+                # Brand analyses organized by name
+                "brand_analyses": brand_analyses,
+                
+                # Metadata
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "total_names_analyzed": len(brand_names),
+                "shortlisted_names": [
+                    name
+                    for name in brand_names
+                    if brand_analyses[name]["evaluation"].get("shortlist_status")
+                ],
             }
-        
-        # Format report sections
-        formatted_report = self._format_report_sections(llm_report_data)
-        
-        # Generate document
-        doc_path = await self._generate_document(formatted_report, run_id)
-        
-        # Store report and get URL
-        report_url = await self._store_report(run_id, doc_path, formatted_report)
-        
-        # Update the state with the report data following the pattern from brand_naming.py
-        state_copy["report"] = {
-            "content": formatted_report,
-            "url": report_url,
-            "run_id": run_id,
-            "timestamp": state_data["timestamp"],
-            "total_names": state_data["total_names_analyzed"],
-            "shortlisted_names": len(state_data["shortlisted_names"])
-        }
-        
-        # Return the updated state directly (not wrapped in another dict)
-        return state_copy
-    
+            
+            # Define sections to process in sequence
+            self.report_sections = [
+                ["executive_summary", "brand_context"],
+                ["name_generation"],
+                ["linguistic_analysis"],
+                ["semantic_analysis"],
+                ["cultural_sensitivity"],
+                ["name_evaluation"],
+                ["domain_analysis", "seo_analysis", "competitor_analysis"],
+                ["survey_simulation"],
+                ["recommendations"]
+            ]
+            
+            # Process each batch of sections
+            llm_report_data = {}
+            total_token_count = 0
+            
+            for batch_index, section_batch in enumerate(self.report_sections):
+                batch_id = f"batch_{batch_index+1}_{section_batch[0]}"
+                batch_start_time = datetime.now(timezone.utc)
+                
+                # Log batch start
+                await self._log_batch_process(
+                    run_id=run_id,
+                    batch_id=batch_id,
+                    batch_sections=section_batch,
+                    status="started",
+                    start_time=batch_start_time
+                )
+                
+                # Create a focused prompt for this section batch
+                section_instructions = f"Focus on generating these specific sections: {', '.join(section_batch)}.\n"
+                section_instructions += "Provide comprehensive detail for each section while maintaining proper formatting."
+                
+                # Format messages for this batch
+                batch_human_message = HumanMessage(content=self.compilation_prompt.format(
+                    state_data=state_data,
+                    format_instructions=self.output_parser.get_format_instructions() + "\n" + section_instructions
+                ))
+                
+                batch_system_message = SystemMessage(content=self.system_prompt.format())
+                batch_messages = [batch_system_message, batch_human_message]
+                
+                # Generate this section batch
+                max_retries = 3
+                retry_count = 0
+                llm_content = None
+                batch_token_count = 0
+                
+                while retry_count < max_retries:
+                    try:
+                        # Create a temporary LLM with batch-specific generation parameters
+                        temp_llm = ChatGoogleGenerativeAI(
+                            model=settings.model_name,
+                            google_api_key=settings.gemini_api_key,
+                            convert_system_message_to_human=True,
+                            generation_config={
+                                "max_output_tokens": 8192,
+                                "temperature": 0.2,  # Lower temperature for more consistent outputs
+                                "top_p": 0.95,
+                                "top_k": 40
+                            },
+                        )
+                        
+                        # Use the temporary LLM with the adjusted parameters
+                        response = await temp_llm.ainvoke(batch_messages)
+                        
+                        llm_content = response.content if hasattr(response, 'content') else str(response)
+                        
+                        # Approximate token count (rough estimate)
+                        batch_token_count = len(llm_content.split()) // 4 * 3  # Rough estimate: words ÷ 4 × 3
+                        total_token_count += batch_token_count
+                        
+                        # Simple validation check - ensure we have content for each expected section
+                        valid_response = True
+                        missing_sections = []
+                        for section in section_batch:
+                            section_title = section.replace("_", " ").title()
+                            if section_title not in llm_content and section not in llm_content.lower().replace(" ", "_"):
+                                valid_response = False
+                                missing_sections.append(section)
+                        
+                        if valid_response:
+                            break  # Valid response received
+                        else:
+                            # If missing critical sections, try again
+                            logger.warning(
+                                f"LLM response missing critical sections, retrying",
+                                extra={
+                                    "retry_count": retry_count+1,
+                                    "max_retries": max_retries,
+                                    "missing_sections": missing_sections
+                                }
+                            )
+                            retry_count += 1
+                            # Log retry attempt
+                            await self._log_batch_process(
+                                run_id=run_id,
+                                batch_id=batch_id,
+                                batch_sections=section_batch,
+                                status="retrying",
+                                start_time=batch_start_time,
+                                retry_count=retry_count,
+                                error_message=f"Missing sections: {', '.join(missing_sections)}"
+                            )
+                            
+                    except Exception as e:
+                        logger.error(
+                            f"Error generating report batch with LLM",
+                            extra={
+                                "error": str(e),
+                                "batch_id": batch_id,
+                                "sections": section_batch
+                            }
+                        )
+                        retry_count += 1
+                        # Log retry attempt with error
+                        await self._log_batch_process(
+                            run_id=run_id,
+                            batch_id=batch_id,
+                            batch_sections=section_batch,
+                            status="retrying",
+                            start_time=batch_start_time,
+                            retry_count=retry_count,
+                            error_message=str(e)
+                        )
+                        
+                        if retry_count >= max_retries:
+                            logger.error(
+                                f"Maximum retries exceeded for LLM batch generation",
+                                extra={
+                                    "batch_id": batch_id,
+                                    "section_batch": section_batch
+                                }
+                            )
+                            # Create minimal content for the missing sections
+                            llm_content = "\n".join([f"## {section.replace('_', ' ').title()}\nError generating content." 
+                                                    for section in section_batch])
+                            
+                            # Log batch failure
+                            await self._log_batch_process(
+                                run_id=run_id,
+                                batch_id=batch_id,
+                                batch_sections=section_batch,
+                                status="failed",
+                                start_time=batch_start_time,
+                                error_message=f"Maximum retries ({max_retries}) exceeded"
+                            )
+                            break
+                
+                # Remove any non-ASCII characters that might cause issues
+                processed_content = re.sub(r'[^\x00-\x7F]+', ' ', llm_content)
+                
+                try:
+                    # Parse this batch
+                    batch_data = self.output_parser.parse(processed_content)
+                    
+                    # Create section token count mapping
+                    section_token_counts = {}
+                    for section in section_batch:
+                        if section in batch_data:
+                            # Rough estimate of tokens per section
+                            section_content = str(batch_data[section])
+                            section_token_counts[section] = len(section_content.split()) // 4 * 3
+                    
+                    # Add to overall report data
+                    for section in section_batch:
+                        if section in batch_data:
+                            llm_report_data[section] = batch_data[section]
+                        else:
+                            # If a section is missing, add placeholder
+                            logger.warning(f"Section {section} missing from LLM output")
+                            llm_report_data[section] = {"summary": f"Error generating {section} content."}
+                    
+                    # Log batch completion
+                    batch_end_time = datetime.now(timezone.utc)
+                    await self._log_batch_process(
+                        run_id=run_id,
+                        batch_id=batch_id,
+                        batch_sections=section_batch,
+                        status="completed",
+                        start_time=batch_start_time,
+                        end_time=batch_end_time,
+                        retry_count=retry_count,
+                        section_token_counts=section_token_counts
+                    )
+                    
+                except Exception as e:
+                    logger.error(
+                        f"Error parsing batch",
+                        extra={
+                            "error": str(e),
+                            "batch_id": batch_id,
+                            "section_batch": section_batch
+                        }
+                    )
+                    # Add error placeholders for each section in this batch
+                    for section in section_batch:
+                        llm_report_data[section] = {"summary": f"Error parsing {section} content."}
+                        
+                    # Log batch failure
+                    await self._log_batch_process(
+                        run_id=run_id,
+                        batch_id=batch_id,
+                        batch_sections=section_batch,
+                        status="failed",
+                        start_time=batch_start_time,
+                        error_message=f"Error parsing batch: {str(e)}"
+                    )
+            
+            # Format report sections
+            formatted_report = self._format_report_sections(llm_report_data)
+            
+            # Generate document
+            doc_path = await self._generate_document(formatted_report, run_id)
+            
+            # Store report and get URL
+            report_url = await self._store_report(run_id, doc_path, formatted_report)
+            
+            # Calculate report size in KB
+            try:
+                output_size_kb = os.path.getsize(doc_path) / 1024
+            except Exception:
+                output_size_kb = 0
+            
+            # Update the state with the report data following the pattern from brand_naming.py
+            state_copy["report"] = {
+                "content": formatted_report,
+                "url": report_url,
+                "run_id": run_id,
+                "version": 1,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+                "format": "pdf",
+                "file_size_kb": output_size_kb,
+                "notes": f"Generated with {len(self.report_sections)} batches, {total_token_count} tokens"
+            }
+            
+            # Log successful completion of the entire process
+            process_end_time = datetime.now(timezone.utc)
+            await self._log_overall_process(
+                run_id=run_id,
+                status="completed",
+                start_time=process_start_time,
+                end_time=process_end_time,
+                output_size_kb=output_size_kb,
+                token_count=total_token_count
+            )
+            
+            return state_copy
+            
+        except Exception as e:
+            # Log failure of the entire process
+            error_message = f"Report compilation failed: {str(e)}"
+            logger.error(
+                error_message,
+                extra={
+                    "error_type": type(e).__name__,
+                    "run_id": run_id
+                }
+            )
+            await self._log_overall_process(
+                run_id=run_id,
+                status="failed",
+                start_time=process_start_time,
+                error_message=error_message
+            )
+            raise
+
     def _format_report_sections(
         self, report_data: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -309,12 +741,45 @@ class ReportCompiler:
         
         # Format based on section type
         if section_type == "survey_simulation":
-            # For survey simulation, we don't need raw data anymore
+            # For survey simulation, we need to structure the table data
             formatted_content["table"] = {
                 "headers": ["Persona", "Company", "Role", "Brand Score", "Key Feedback"],
-                "rows": []  # Simplified - no attempt to access nested data
+                "rows": []  # Will be filled in _format_survey_results_table
             }
-        elif section_type in ["competitor_analysis", "domain_analysis"]:
+        elif section_type == "competitor_analysis":
+            # Format competitor analysis as structured data
+            formatted_content["summary"] = section_data.get("summary", "")
+            
+            # Create a more structured format for competitor analysis
+            # First, try to extract any table data if present
+            table_data = {}
+            for key, value in section_data.items():
+                if "table" in key.lower() or "comparison" in key.lower():
+                    table_data[key] = value
+            
+            # Then extract key points as bullet points
+            bullet_points = []
+            key_competitor_aspects = [
+                "Competitor Naming Styles", 
+                "Market Positioning",
+                "Differentiation Opportunities",
+                "Risk of Confusion",
+                "Target Audience Perception",
+                "Competitive Advantages",
+                "Trademark Considerations"
+            ]
+            
+            for aspect in key_competitor_aspects:
+                if aspect in section_data:
+                    bullet_points.append({
+                        "heading": aspect,
+                        "points": [section_data.get(aspect, "")]
+                    })
+            
+            formatted_content["bullet_points"] = bullet_points
+            formatted_content["tables"] = table_data
+            
+        elif section_type == "domain_analysis":
             # Format as bullet points with subsections
             formatted_content["bullet_points"] = self._format_bullet_points(section_data)
         else:
