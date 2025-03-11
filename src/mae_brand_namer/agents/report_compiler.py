@@ -132,31 +132,34 @@ class ReportCompiler:
     ) -> Dict[str, Any]:
         """
         Compile a comprehensive brand name analysis report.
-
+        
         Args:
             run_id (str): The unique identifier for the workflow run
-            state (Optional[Dict[str, Any]]): Optional state data (not used internally)
-
+            state (Optional[Dict[str, Any]]): State from the workflow
+            
         Returns:
-            Dict[str, Any]: The compiled report data
-
+            Dict[str, Any]: The updated workflow state with report data
+            
         Raises:
             ValueError: If required data is missing
         """
+        # Make a copy of the state to modify
+        state_copy = {} if state is None else state.copy()
+        
         # Fetch brand context
         brand_contexts = await self._fetch_analysis("brand_context", run_id)
         if not brand_contexts:
             raise ValueError("No brand context found for run_id")
         brand_context = brand_contexts[0]  # Use first context
-
+        
         # Fetch name generations
         name_generations = await self._fetch_analysis("brand_name_generation", run_id)
         if not name_generations:
             raise ValueError("No brand names generated for run_id")
-
+        
         # Get list of brand names
         brand_names = [ng["brand_name"] for ng in name_generations]
-
+        
         # Fetch all analyses
         evaluations = await self._fetch_analysis("brand_name_evaluation", run_id)
         competitor_analyses = await self._fetch_analysis("competitor_analysis", run_id)
@@ -166,7 +169,7 @@ class ReportCompiler:
         semantic_analyses = await self._fetch_analysis("semantic_analysis", run_id)
         seo_analyses = await self._fetch_analysis("seo_online_discoverability", run_id)
         survey_simulations = await self._fetch_analysis("survey_simulation", run_id)
-
+        
         # Organize brand analyses
         brand_analyses = self._organize_brand_analyses(
             brand_names=brand_names,
@@ -180,7 +183,7 @@ class ReportCompiler:
             seo_analyses=seo_analyses,
             survey_simulations=survey_simulations,
         )
-
+        
         # Prepare state data for report generation
         state_data = {
             # Brand context
@@ -197,10 +200,11 @@ class ReportCompiler:
             "industry_trends": brand_context.get("industry_trends"),
             "market_positioning": brand_context.get("market_positioning"),
             "target_audience": brand_context.get("target_audience"),
+            
             # Brand analyses organized by name
             "brand_analyses": brand_analyses,
+            
             # Metadata
-            "run_id": run_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "total_names_analyzed": len(brand_names),
             "shortlisted_names": [
@@ -209,37 +213,115 @@ class ReportCompiler:
                 if brand_analyses[name]["evaluation"].get("shortlist_status")
             ],
         }
-
+        
         # Format messages for LLM
-        # Create the messages using the compilation prompt
-        human_message = HumanMessage(content=self.compilation_prompt.format(**state_data))
+        # Create the messages using the compilation prompt - pass state_data to match the prompt's expected variable
+        human_message = HumanMessage(content=self.compilation_prompt.format(
+            state_data=state_data,
+            format_instructions=self.output_parser.get_format_instructions()
+        ))
         system_message = SystemMessage(content=self.system_prompt.format())
         messages = [system_message, human_message]
         
         # Generate report using LLM
         response = await self.llm.ainvoke(messages)
         
+        # Parse the response
+        content = response.content if hasattr(response, 'content') else str(response)
+        try:
+            llm_report_data = self.output_parser.parse(content)
+        except Exception as e:
+            # Provide a minimal report on parsing failure
+            llm_report_data = {
+                "executive_summary": {"summary": "Error generating report. Please try again."},
+                "recommendations": {"summary": "No recommendations available due to report generation error."}
+            }
+        
         # Format report sections
-        formatted_report = await self._format_report_sections(response, state_data)
-
+        formatted_report = self._format_report_sections(llm_report_data)
+        
         # Generate document
         doc_path = await self._generate_document(formatted_report, run_id)
-
+        
         # Store report and get URL
         report_url = await self._store_report(run_id, doc_path, formatted_report)
-
-        # Return final report data
-        return {
-            "state_data": state_data,
-            "report_content": formatted_report,
-            "report_url": report_url,
-            "metadata": {
-                "run_id": run_id,
-                "timestamp": state_data["timestamp"],
-                "total_names": state_data["total_names_analyzed"],
-                "shortlisted_names": len(state_data["shortlisted_names"]),
-            },
+        
+        # Update the state with the report data following the pattern from brand_naming.py
+        state_copy["report"] = {
+            "content": formatted_report,
+            "url": report_url,
+            "run_id": run_id,
+            "timestamp": state_data["timestamp"],
+            "total_names": state_data["total_names_analyzed"],
+            "shortlisted_names": len(state_data["shortlisted_names"])
         }
+        
+        # Return the updated state directly (not wrapped in another dict)
+        return state_copy
+    
+    def _format_report_sections(
+        self, report_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Format report sections with proper structure and styling."""
+        formatted_report = {
+            "metadata": {
+                "timestamp": datetime.now().isoformat(),
+                "version": "1.0",
+            },
+            "sections": [],
+        }
+        
+        # Order sections according to workflow
+        section_order = [
+            "executive_summary",
+            "brand_context",
+            "name_generation",
+            "linguistic_analysis",
+            "semantic_analysis",
+            "cultural_sensitivity",
+            "name_evaluation",
+            "domain_analysis",
+            "seo_analysis", 
+            "competitor_analysis",
+            "survey_simulation",
+            "recommendations",
+        ]
+        
+        for section in section_order:
+            section_data = report_data.get(section, {})
+            if not section_data:
+                continue
+            
+            formatted_section = {
+                "title": section.replace("_", " ").title(),
+                "content": self._format_section_content(section, section_data),
+            }
+            
+            formatted_report["sections"].append(formatted_section)
+            
+        return formatted_report
+        
+    def _format_section_content(
+        self, section_type: str, section_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Format section content with appropriate styling and structure."""
+        formatted_content = {"summary": section_data.get("summary", ""), "details": []}
+        
+        # Format based on section type
+        if section_type == "survey_simulation":
+            # For survey simulation, we don't need raw data anymore
+            formatted_content["table"] = {
+                "headers": ["Persona", "Company", "Role", "Brand Score", "Key Feedback"],
+                "rows": []  # Simplified - no attempt to access nested data
+            }
+        elif section_type in ["competitor_analysis", "domain_analysis"]:
+            # Format as bullet points with subsections
+            formatted_content["bullet_points"] = self._format_bullet_points(section_data)
+        else:
+            # Standard formatting
+            formatted_content["details"] = self._format_details(section_data)
+            
+        return formatted_content
 
     async def _generate_document(self, report: Dict[str, Any], run_id: str) -> str:
         """Generate a Word document from the report data."""
@@ -425,16 +507,18 @@ class ReportCompiler:
             ValueError: If required fields are missing from the analysis results
         """
         try:
-            # Use execute_with_retry instead of building and executing the query directly
+            # The execute_with_retry method applies the .eq() filter automatically
+            # when given a key-value pair in the data dictionary
             response = await self.supabase.execute_with_retry(
                 operation="select",
                 table=analysis_type,
                 data={
                     "select": "*",
-                    "run_id": f"eq.{run_id}"
+                    "run_id": run_id  # Will apply .eq(run_id, value) internally
                 }
             )
             
+            # response is already the data array from the response.data property
             if not response:
                 return []
             
@@ -661,115 +745,24 @@ class ReportCompiler:
     async def _fetch_workflow_data(self, run_id: str) -> Dict[str, Any]:
         """Fetch workflow data from Supabase."""
         try:
-            # Use execute_with_retry instead of building and executing the query directly
+            # execute_with_retry handles filtering with key-value pairs in the data dictionary
             result = await self.supabase.execute_with_retry(
                 operation="select",
                 table="workflow_runs",
                 data={
                     "select": "*",
-                    "run_id": f"eq.{run_id}"
+                    "run_id": run_id
                 }
             )
             
-            return result[0] if result else {}
+            # result is already the data array, not the response object
+            return result[0] if result and len(result) > 0 else {}
         except APIError as e:
             logger.error(
                 "Error fetching workflow data",
                 extra={"run_id": run_id, "error_type": type(e).__name__, "error_message": str(e)},
             )
             return {}
-
-    async def _format_report_sections(
-        self, response: AIMessage, state_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Format report sections with proper structure and styling."""
-        formatted_report = {
-            "metadata": {
-                "run_id": state_data["run_id"],
-                "timestamp": datetime.now().isoformat(),
-                "version": "1.0",
-            },
-            "sections": [],
-        }
-
-        # Parse the response content from AIMessage
-        try:
-            # Parse the response from the LLM
-            report_data = self.output_parser.parse(response.content)
-        except Exception as e:
-            logger.error(f"Error parsing LLM response: {str(e)}")
-            # Provide a minimal report on parsing failure
-            report_data = {
-                "executive_summary": {"summary": "Error generating report. Please try again."},
-                "recommendations": {"summary": "No recommendations available due to report generation error."}
-            }
-
-        # Order sections according to workflow
-        section_order = [
-            "executive_summary",
-            "brand_context",
-            "name_generation",
-            "linguistic_analysis",
-            "semantic_analysis",
-            "cultural_sensitivity",
-            "name_evaluation",
-            "domain_analysis",
-            "seo_analysis",
-            "competitor_analysis",
-            "survey_simulation",
-            "recommendations",
-        ]
-
-        for section in section_order:
-            section_data = report_data.get(section, {})
-            if not section_data:
-                continue
-
-            formatted_section = {
-                "title": section.replace("_", " ").title(),
-                "content": self._format_section_content(
-                    section, section_data, state_data.get(section, {})
-                ),
-            }
-
-            formatted_report["sections"].append(formatted_section)
-
-        return formatted_report
-
-    def _format_section_content(
-        self, section_type: str, section_data: Dict[str, Any], raw_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Format section content with appropriate styling and structure."""
-        formatted_content = {"summary": section_data.get("summary", ""), "details": []}
-
-        # Format based on section type
-        if section_type == "survey_simulation":
-            # Format survey results as a table
-            formatted_content["table"] = self._format_survey_results_table(raw_data)
-        elif section_type in ["competitor_analysis", "domain_analysis"]:
-            # Format as bullet points with subsections
-            formatted_content["bullet_points"] = self._format_bullet_points(section_data)
-        else:
-            # Standard formatting
-            formatted_content["details"] = self._format_details(section_data)
-
-        return formatted_content
-
-    def _format_survey_results_table(self, survey_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format survey simulation results as a table."""
-        return {
-            "headers": ["Persona", "Company", "Role", "Brand Score", "Key Feedback"],
-            "rows": [
-                {
-                    "persona": response.get("persona_name", ""),
-                    "company": response.get("company_name", ""),
-                    "role": response.get("role", ""),
-                    "score": response.get("brand_score", 0),
-                    "feedback": response.get("key_feedback", ""),
-                }
-                for response in survey_data.get("responses", [])
-            ],
-        }
 
     def _format_bullet_points(self, section_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Format section data as bullet points."""
