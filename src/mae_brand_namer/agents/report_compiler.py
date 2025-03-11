@@ -8,6 +8,7 @@ from pathlib import Path
 import tempfile
 import re
 import json
+import asyncio
 
 # Third-party imports
 from supabase import create_client, Client
@@ -330,14 +331,14 @@ class ReportCompiler:
         self, run_id: str, state: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Compile a comprehensive brand name analysis report.
+        Compile a comprehensive brand name analysis report using sequential section generation.
         
         Args:
             run_id (str): The unique identifier for the workflow run
-            state (Optional[Dict[str, Any]]): State from the workflow
+            state (Optional[Dict[str, Any]]): Only needed for the run_id
             
         Returns:
-            Dict[str, Any]: The updated workflow state with report data
+            Dict[str, Any]: The updated workflow state with report URL and metadata
             
         Raises:
             ValueError: If required data is missing
@@ -347,293 +348,105 @@ class ReportCompiler:
         await self._log_overall_process(run_id, "started", process_start_time)
         
         try:
-            # Make a copy of the state to modify
-            state_copy = {} if state is None else state.copy()
+            # Only initialize with necessary data - don't load everything into state
+            # We'll query Supabase directly for each section as needed
             
-            # Fetch brand context
-            brand_contexts = await self._fetch_analysis("brand_context", run_id)
-            if not brand_contexts:
-                error_msg = "No brand context found for run_id"
-                await self._log_overall_process(run_id, "failed", process_start_time, error_message=error_msg)
-                raise ValueError(error_msg)
-            brand_context = brand_contexts[0]  # Use first context
-            
-            # Fetch name generations
-            name_generations = await self._fetch_analysis("brand_name_generation", run_id)
-            if not name_generations:
-                error_msg = "No brand names generated for run_id"
-                await self._log_overall_process(run_id, "failed", process_start_time, error_message=error_msg)
-                raise ValueError(error_msg)
-            
-            # Get list of brand names
-            brand_names = [ng["brand_name"] for ng in name_generations]
-            
-            # Fetch all analyses
-            evaluations = await self._fetch_analysis("brand_name_evaluation", run_id)
-            competitor_analyses = await self._fetch_analysis("competitor_analysis", run_id)
-            cultural_analyses = await self._fetch_analysis("cultural_sensitivity_analysis", run_id)
-            domain_analyses = await self._fetch_analysis("domain_analysis", run_id)
-            market_research = await self._fetch_analysis("market_research", run_id)
-            semantic_analyses = await self._fetch_analysis("semantic_analysis", run_id)
-            seo_analyses = await self._fetch_analysis("seo_online_discoverability", run_id)
-            survey_simulations = await self._fetch_analysis("survey_simulation", run_id)
-            
-            # Organize brand analyses
-            brand_analyses = self._organize_brand_analyses(
-                brand_names=brand_names,
-                brand_name_generations=name_generations,
-                brand_name_evaluations=evaluations,
-                competitor_analyses=competitor_analyses,
-                cultural_sensitivity_analyses=cultural_analyses,
-                domain_analyses=domain_analyses,
-                market_research_analyses=market_research,
-                semantic_analyses=semantic_analyses,
-                seo_analyses=seo_analyses,
-                survey_simulations=survey_simulations,
-            )
-            
-            # Prepare state data for report generation
-            state_data = {
-                # Brand context
-                "brand_identity_brief": brand_context.get("brand_identity_brief"),
-                "brand_mission": brand_context.get("brand_mission"),
-                "brand_personality": brand_context.get("brand_personality"),
-                "brand_promise": brand_context.get("brand_promise"),
-                "brand_purpose": brand_context.get("brand_purpose"),
-                "brand_tone_of_voice": brand_context.get("brand_tone_of_voice"),
-                "brand_values": brand_context.get("brand_values"),
-                "competitive_landscape": brand_context.get("competitive_landscape"),
-                "customer_needs": brand_context.get("customer_needs"),
-                "industry_focus": brand_context.get("industry_focus"),
-                "industry_trends": brand_context.get("industry_trends"),
-                "market_positioning": brand_context.get("market_positioning"),
-                "target_audience": brand_context.get("target_audience"),
-                
-                # Brand analyses organized by name
-                "brand_analyses": brand_analyses,
-                
-                # Metadata
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "total_names_analyzed": len(brand_names),
-                "shortlisted_names": [
-                    name
-                    for name in brand_names
-                    if brand_analyses[name]["evaluation"].get("shortlist_status")
-                ],
+            # Create a minimal report structure to build on
+            # This will be filled section by section
+            report = {
+                "metadata": {
+                    "run_id": run_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "version": 1
+                },
+                "sections": []
             }
             
-            # Define sections to process in sequence
-            self.report_sections = [
-                ["executive_summary", "brand_context"],
-                ["name_generation"],
-                ["linguistic_analysis"],
-                ["semantic_analysis"],
-                ["cultural_sensitivity"],
-                ["name_evaluation"],
-                ["domain_analysis", "seo_analysis", "competitor_analysis"],
-                ["survey_simulation"],
-                ["recommendations"]
+            # Define sections to generate sequentially
+            report_sections = [
+                "executive_summary",
+                "brand_context",
+                "name_generation",
+                "linguistic_analysis",
+                "semantic_analysis",
+                "cultural_sensitivity",
+                "name_evaluation",
+                "domain_analysis", 
+                "seo_analysis", 
+                "competitor_analysis",
+                "survey_simulation",
+                "translation_analysis",
+                "recommendations"
             ]
             
-            # Process each batch of sections
-            llm_report_data = {}
+            # Process each section sequentially - one at a time
             total_token_count = 0
             
-            for batch_index, section_batch in enumerate(self.report_sections):
-                batch_id = f"batch_{batch_index+1}_{section_batch[0]}"
-                batch_start_time = datetime.now(timezone.utc)
+            # Setup for prompt templates, only load them once
+            system_message = SystemMessage(content=self.system_prompt.format())
+            
+            for section_name in report_sections:
+                section_start_time = datetime.now(timezone.utc)
                 
-                # Log batch start
-                await self._log_batch_process(
+                # Log section processing start
+                await self._log_overall_process(
                     run_id=run_id,
-                    batch_id=batch_id,
-                    batch_sections=section_batch,
-                    status="started",
-                    start_time=batch_start_time
+                    status=f"processing_section_{section_name}",
+                    start_time=section_start_time
                 )
                 
-                # Create a focused prompt for this section batch
-                section_instructions = f"Focus on generating these specific sections: {', '.join(section_batch)}.\n"
-                section_instructions += "Provide comprehensive detail for each section while maintaining proper formatting."
-                
-                # Format messages for this batch
-                batch_human_message = HumanMessage(content=self.compilation_prompt.format(
-                    state_data=state_data,
-                    format_instructions=self.output_parser.get_format_instructions() + "\n" + section_instructions
-                ))
-                
-                batch_system_message = SystemMessage(content=self.system_prompt.format())
-                batch_messages = [batch_system_message, batch_human_message]
-                
-                # Generate this section batch
-                max_retries = 3
-                retry_count = 0
-                llm_content = None
-                batch_token_count = 0
-                
-                while retry_count < max_retries:
-                    try:
-                        # Create a temporary LLM with batch-specific generation parameters
-                        temp_llm = ChatGoogleGenerativeAI(
-                            model=settings.model_name,
-                            google_api_key=settings.gemini_api_key,
-                            convert_system_message_to_human=True,
-                            generation_config={
-                                "max_output_tokens": 8192,
-                                "temperature": 0.2,  # Lower temperature for more consistent outputs
-                                "top_p": 0.95,
-                                "top_k": 40
-                            },
-                        )
-                        
-                        # Use the temporary LLM with the adjusted parameters
-                        response = await temp_llm.ainvoke(batch_messages)
-                        
-                        llm_content = response.content if hasattr(response, 'content') else str(response)
-                        
-                        # Approximate token count (rough estimate)
-                        batch_token_count = len(llm_content.split()) // 4 * 3  # Rough estimate: words ÷ 4 × 3
-                        total_token_count += batch_token_count
-                        
-                        # Simple validation check - ensure we have content for each expected section
-                        valid_response = True
-                        missing_sections = []
-                        for section in section_batch:
-                            section_title = section.replace("_", " ").title()
-                            if section_title not in llm_content and section not in llm_content.lower().replace(" ", "_"):
-                                valid_response = False
-                                missing_sections.append(section)
-                        
-                        if valid_response:
-                            break  # Valid response received
-                        else:
-                            # If missing critical sections, try again
-                            logger.warning(
-                                f"LLM response missing critical sections, retrying",
-                                extra={
-                                    "retry_count": retry_count+1,
-                                    "max_retries": max_retries,
-                                    "missing_sections": missing_sections
-                                }
-                            )
-                            retry_count += 1
-                            # Log retry attempt
-                            await self._log_batch_process(
-                                run_id=run_id,
-                                batch_id=batch_id,
-                                batch_sections=section_batch,
-                                status="retrying",
-                                start_time=batch_start_time,
-                                retry_count=retry_count,
-                                error_message=f"Missing sections: {', '.join(missing_sections)}"
-                            )
-                            
-                    except Exception as e:
-                        logger.error(
-                            f"Error generating report batch with LLM",
-                            extra={
-                                "error": str(e),
-                                "batch_id": batch_id,
-                                "sections": section_batch
-                            }
-                        )
-                        retry_count += 1
-                        # Log retry attempt with error
-                        await self._log_batch_process(
-                            run_id=run_id,
-                            batch_id=batch_id,
-                            batch_sections=section_batch,
-                            status="retrying",
-                            start_time=batch_start_time,
-                            retry_count=retry_count,
-                            error_message=str(e)
-                        )
-                        
-                        if retry_count >= max_retries:
-                            logger.error(
-                                f"Maximum retries exceeded for LLM batch generation",
-                                extra={
-                                    "batch_id": batch_id,
-                                    "section_batch": section_batch
-                                }
-                            )
-                            # Create minimal content for the missing sections
-                            llm_content = "\n".join([f"## {section.replace('_', ' ').title()}\nError generating content." 
-                                                    for section in section_batch])
-                            
-                            # Log batch failure
-                            await self._log_batch_process(
-                                run_id=run_id,
-                                batch_id=batch_id,
-                                batch_sections=section_batch,
-                                status="failed",
-                                start_time=batch_start_time,
-                                error_message=f"Maximum retries ({max_retries}) exceeded"
-                            )
-                            break
-                
-                # Remove any non-ASCII characters that might cause issues
-                processed_content = re.sub(r'[^\x00-\x7F]+', ' ', llm_content)
+                logger.info(f"Generating section: {section_name}", extra={"run_id": run_id, "section": section_name})
                 
                 try:
-                    # Parse this batch
-                    batch_data = self.output_parser.parse(processed_content)
+                    # 1. Query relevant data for this section directly from Supabase
+                    section_data = await self._fetch_section_data(run_id, section_name)
                     
-                    # Create section token count mapping
-                    section_token_counts = {}
-                    for section in section_batch:
-                        if section in batch_data:
-                            # Rough estimate of tokens per section
-                            section_content = str(batch_data[section])
-                            section_token_counts[section] = len(section_content.split()) // 4 * 3
+                    # 2. Generate this specific section using LLM
+                    section_content = await self._generate_section(run_id, section_name, section_data, system_message)
                     
-                    # Add to overall report data
-                    for section in section_batch:
-                        if section in batch_data:
-                            llm_report_data[section] = batch_data[section]
-                        else:
-                            # If a section is missing, add placeholder
-                            logger.warning(f"Section {section} missing from LLM output")
-                            llm_report_data[section] = {"summary": f"Error generating {section} content."}
-                    
-                    # Log batch completion
-                    batch_end_time = datetime.now(timezone.utc)
-                    await self._log_batch_process(
-                        run_id=run_id,
-                        batch_id=batch_id,
-                        batch_sections=section_batch,
-                        status="completed",
-                        start_time=batch_start_time,
-                        end_time=batch_end_time,
-                        retry_count=retry_count,
-                        section_token_counts=section_token_counts
-                    )
-                    
+                    # 3. Add to report incrementally
+                    if section_content:
+                        report["sections"].append({
+                            "title": section_name.replace("_", " ").title(),
+                            "content": section_content
+                        })
+                        
+                        # Track token count for reporting
+                        section_token_count = len(str(section_content).split()) // 4 * 3  # Rough estimate
+                        total_token_count += section_token_count
+                        
+                        logger.info(
+                            f"Completed section: {section_name}", 
+                            extra={
+                                "run_id": run_id, 
+                                "section": section_name,
+                                "token_count": section_token_count
+                            }
+                        )
+                    else:
+                        logger.warning(f"Empty content for section: {section_name}", extra={"run_id": run_id})
+                        report["sections"].append({
+                            "title": section_name.replace("_", " ").title(),
+                            "content": {"summary": f"Error generating {section_name} content."}
+                        })
+                
                 except Exception as e:
                     logger.error(
-                        f"Error parsing batch",
+                        f"Error generating section: {section_name}", 
                         extra={
-                            "error": str(e),
-                            "batch_id": batch_id,
-                            "section_batch": section_batch
+                            "run_id": run_id, 
+                            "section": section_name,
+                            "error": str(e)
                         }
                     )
-                    # Add error placeholders for each section in this batch
-                    for section in section_batch:
-                        llm_report_data[section] = {"summary": f"Error parsing {section} content."}
-                        
-                    # Log batch failure
-                    await self._log_batch_process(
-                        run_id=run_id,
-                        batch_id=batch_id,
-                        batch_sections=section_batch,
-                        status="failed",
-                        start_time=batch_start_time,
-                        error_message=f"Error parsing batch: {str(e)}"
-                    )
+                    # Add an error placeholder but continue with other sections
+                    report["sections"].append({
+                        "title": section_name.replace("_", " ").title(),
+                        "content": {"summary": f"Error generating {section_name} content: {str(e)}"}
+                    })
             
-            # Format report sections
-            formatted_report = self._format_report_sections(llm_report_data)
+            # Once all sections are generated, format the report
+            formatted_report = self._format_report_sections(report)
             
             # Generate document
             doc_path = await self._generate_document(formatted_report, run_id)
@@ -647,17 +460,27 @@ class ReportCompiler:
             except Exception:
                 output_size_kb = 0
             
-            # Update the state with the report data following the pattern from brand_naming.py
-            state_copy["report"] = {
-                "content": formatted_report,
-                "url": report_url,
+            # Create the minimal state to return
+            result = {
+                "report": {
+                    "url": report_url,
+                    "run_id": run_id,
+                    "version": 1,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "last_updated": datetime.now(timezone.utc).isoformat(),
+                    "format": "pdf",
+                    "file_size_kb": output_size_kb,
+                    "token_count": total_token_count,
+                    "notes": f"Generated with sequential approach, {total_token_count} tokens"
+                },
                 "run_id": run_id,
+                "report_url": report_url,
                 "version": 1,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "last_updated": datetime.now(timezone.utc).isoformat(),
-                "format": "pdf",
+                "format": "docx",
                 "file_size_kb": output_size_kb,
-                "notes": f"Generated with {len(self.report_sections)} batches, {total_token_count} tokens"
+                "notes": f"Generated with sequential approach, {total_token_count} tokens"
             }
             
             # Log successful completion of the entire process
@@ -671,7 +494,7 @@ class ReportCompiler:
                 token_count=total_token_count
             )
             
-            return state_copy
+            return result
             
         except Exception as e:
             # Log failure of the entire process
@@ -690,6 +513,408 @@ class ReportCompiler:
                 error_message=error_message
             )
             raise
+    
+    async def _fetch_section_data(self, run_id: str, section_name: str) -> Dict[str, Any]:
+        """
+        Fetch data needed for a specific report section directly from Supabase.
+        
+        Args:
+            run_id: The unique identifier for the workflow run
+            section_name: The name of the section to generate
+            
+        Returns:
+            Dict containing the data needed for this section
+        """
+        section_data = {
+            "run_id": run_id,
+            "metadata": {
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        }
+        
+        try:
+            # Fetch data based on section type
+            if section_name == "executive_summary":
+                # For executive summary, we need basic brand context and overall metrics
+                brand_contexts = await self._fetch_analysis("brand_context", run_id)
+                if brand_contexts and len(brand_contexts) > 0:
+                    section_data["brand_context"] = brand_contexts[0]
+                
+                # Get name generation count
+                name_generations = await self._fetch_analysis("brand_name_generation", run_id)
+                section_data["total_names_generated"] = len(name_generations)
+                
+                # Get shortlisted names count
+                evaluations = await self._fetch_analysis("brand_name_evaluation", run_id)
+                shortlisted = [e for e in evaluations if e.get("shortlist_status") is True]
+                section_data["shortlisted_names_count"] = len(shortlisted)
+                section_data["shortlisted_names"] = [e.get("brand_name") for e in shortlisted]
+                
+            elif section_name == "brand_context":
+                # Fetch brand context directly from the brand_context table
+                brand_contexts = await self._fetch_analysis("brand_context", run_id)
+                if brand_contexts and len(brand_contexts) > 0:
+                    # Make sure we extract the fields according to the schema
+                    context = brand_contexts[0]
+                    section_data["brand_context"] = {
+                        "brand_identity_brief": context.get("brand_identity_brief"),
+                        "brand_mission": context.get("brand_mission"),
+                        "brand_personality": context.get("brand_personality", []),
+                        "brand_promise": context.get("brand_promise"),
+                        "brand_purpose": context.get("brand_purpose"),
+                        "brand_tone_of_voice": context.get("brand_tone_of_voice"),
+                        "brand_values": context.get("brand_values", []),
+                        "competitive_landscape": context.get("competitive_landscape"),
+                        "customer_needs": context.get("customer_needs", []),
+                        "industry_focus": context.get("industry_focus"),
+                        "industry_trends": context.get("industry_trends", []),
+                        "market_positioning": context.get("market_positioning"),
+                        "target_audience": context.get("target_audience")
+                    }
+                
+            elif section_name == "name_generation":
+                # Fetch name generations from brand_name_generation table
+                generations = await self._fetch_analysis("brand_name_generation", run_id)
+                
+                # Structure the data according to schema
+                section_data["name_generations"] = [{
+                    "brand_name": gen.get("brand_name"),
+                    "brand_personality_alignment": gen.get("brand_personality_alignment"),
+                    "brand_promise_alignment": gen.get("brand_promise_alignment"),
+                    "market_differentiation": gen.get("market_differentiation"),
+                    "memorability_score": gen.get("memorability_score"),
+                    "naming_category": gen.get("naming_category"),
+                    "pronounceability_score": gen.get("pronounceability_score"),
+                    "target_audience_relevance": gen.get("target_audience_relevance"),
+                    "visual_branding_potential": gen.get("visual_branding_potential")
+                } for gen in generations]
+                
+            elif section_name == "linguistic_analysis":
+                # Fetch name generations for the brand names list
+                name_generations = await self._fetch_analysis("brand_name_generation", run_id)
+                section_data["brand_names"] = [ng.get("brand_name") for ng in name_generations]
+                
+                # Fetch linguistic analyses
+                linguistic_analyses = await self._fetch_analysis("linguistic_analysis", run_id)
+                
+                # Structure according to schema
+                section_data["linguistic_analyses"] = [{
+                    "brand_name": la.get("brand_name"),
+                    "pronunciation_ease": la.get("pronunciation_ease"),
+                    "euphony_vs_cacophony": la.get("euphony_vs_cacophony"),
+                    "rhythm_and_meter": la.get("rhythm_and_meter"),
+                    "sound_symbolism": la.get("sound_symbolism"),
+                    "word_class": la.get("word_class"),
+                    "overall_readability_score": la.get("overall_readability_score"),
+                    "ease_of_marketing_integration": la.get("ease_of_marketing_integration")
+                } for la in linguistic_analyses]
+                
+            elif section_name == "semantic_analysis":
+                # Fetch semantic analyses
+                semantic_analyses = await self._fetch_analysis("semantic_analysis", run_id)
+                
+                # Structure according to schema
+                section_data["semantic_analyses"] = [{
+                    "brand_name": sa.get("brand_name"),
+                    "denotative_meaning": sa.get("denotative_meaning"),
+                    "etymology": sa.get("etymology"),
+                    "descriptiveness": sa.get("descriptiveness"),
+                    "emotional_valence": sa.get("emotional_valence"),
+                    "brand_fit_relevance": sa.get("brand_fit_relevance"),
+                    "sensory_associations": sa.get("sensory_associations"),
+                    "memorability_score": sa.get("memorability_score"),
+                    "clarity_understandability": sa.get("clarity_understandability"),
+                    "uniqueness_differentiation": sa.get("uniqueness_differentiation")
+                } for sa in semantic_analyses]
+                
+            elif section_name == "cultural_sensitivity":
+                # Fetch cultural sensitivity analyses
+                cultural_analyses = await self._fetch_analysis("cultural_sensitivity_analysis", run_id)
+                
+                # Structure according to schema
+                section_data["cultural_analyses"] = [{
+                    "brand_name": ca.get("brand_name"),
+                    "cultural_connotations": ca.get("cultural_connotations"),
+                    "symbolic_meanings": ca.get("symbolic_meanings"),
+                    "religious_sensitivities": ca.get("religious_sensitivities"),
+                    "social_political_taboos": ca.get("social_political_taboos"),
+                    "regional_variations": ca.get("regional_variations"),
+                    "historical_meaning": ca.get("historical_meaning"),
+                    "overall_risk_rating": ca.get("overall_risk_rating")
+                } for ca in cultural_analyses]
+                
+            elif section_name == "name_evaluation":
+                # Fetch name generations for the brand names list
+                name_generations = await self._fetch_analysis("brand_name_generation", run_id)
+                section_data["brand_names"] = [ng.get("brand_name") for ng in name_generations]
+                
+                # Fetch evaluations
+                evaluations = await self._fetch_analysis("brand_name_evaluation", run_id)
+                
+                # Structure according to schema
+                section_data["evaluations"] = [{
+                    "brand_name": ev.get("brand_name"),
+                    "strategic_alignment_score": ev.get("strategic_alignment_score"),
+                    "distinctiveness_score": ev.get("distinctiveness_score"),
+                    "memorability_score": ev.get("memorability_score"),
+                    "pronounceability_score": ev.get("pronounceability_score"),
+                    "brand_fit_score": ev.get("brand_fit_score"),
+                    "meaningfulness_score": ev.get("meaningfulness_score"),
+                    "overall_score": ev.get("overall_score"),
+                    "shortlist_status": ev.get("shortlist_status"),
+                    "rank": ev.get("rank"),
+                    "evaluation_comments": ev.get("evaluation_comments")
+                } for ev in evaluations]
+                
+            elif section_name == "domain_analysis":
+                # Fetch domain analyses
+                domain_analyses = await self._fetch_analysis("domain_analysis", run_id)
+                
+                # Structure according to schema
+                section_data["domain_analyses"] = [{
+                    "brand_name": da.get("brand_name"),
+                    "domain_exact_match": da.get("domain_exact_match"),
+                    "alternative_tlds": da.get("alternative_tlds"),
+                    "domain_history_reputation": da.get("domain_history_reputation"),
+                    "social_media_availability": da.get("social_media_availability"),
+                    "seo_keyword_relevance": da.get("seo_keyword_relevance"),
+                    "domain_length_readability": da.get("domain_length_readability"),
+                    "acquisition_cost": da.get("acquisition_cost"),
+                    "scalability_future_proofing": da.get("scalability_future_proofing")
+                } for da in domain_analyses]
+                
+            elif section_name == "seo_analysis":
+                # Fetch SEO analyses
+                seo_analyses = await self._fetch_analysis("seo_online_discoverability", run_id)
+                
+                # Structure according to schema
+                section_data["seo_analyses"] = [{
+                    "brand_name": sa.get("brand_name"),
+                    "keyword_alignment": sa.get("keyword_alignment"),
+                    "search_volume": sa.get("search_volume"),
+                    "branded_keyword_potential": sa.get("branded_keyword_potential"),
+                    "non_branded_keyword_potential": sa.get("non_branded_keyword_potential"),
+                    "content_marketing_opportunities": sa.get("content_marketing_opportunities"),
+                    "social_media_discoverability": sa.get("social_media_discoverability"),
+                    "seo_viability_score": sa.get("seo_viability_score"),
+                    "seo_recommendations": sa.get("seo_recommendations")
+                } for sa in seo_analyses]
+                
+            elif section_name == "competitor_analysis":
+                # Fetch competitor analyses
+                competitor_analyses = await self._fetch_analysis("competitor_analysis", run_id)
+                
+                # Structure according to schema
+                section_data["competitor_analyses"] = [{
+                    "brand_name": ca.get("brand_name"),
+                    "competitor_name": ca.get("competitor_name"),
+                    "competitor_naming_style": ca.get("competitor_naming_style"),
+                    "competitor_positioning": ca.get("competitor_positioning"),
+                    "competitor_differentiation_opportunity": ca.get("competitor_differentiation_opportunity"),
+                    "risk_of_confusion": ca.get("risk_of_confusion"),
+                    "target_audience_perception": ca.get("target_audience_perception"),
+                    "competitive_advantage_notes": ca.get("competitive_advantage_notes"),
+                    "trademark_conflict_risk": ca.get("trademark_conflict_risk"),
+                    "differentiation_score": ca.get("differentiation_score")
+                } for ca in competitor_analyses]
+                
+            elif section_name == "survey_simulation":
+                # Fetch survey simulations
+                survey_simulations = await self._fetch_analysis("survey_simulation", run_id)
+                
+                # Structure according to schema - focusing on most important fields to avoid overwhelming
+                section_data["survey_simulations"] = [{
+                    "brand_name": ss.get("brand_name"),
+                    "persona_segment": ss.get("persona_segment"),
+                    "company_name": ss.get("company_name"),
+                    "job_title": ss.get("job_title"),
+                    "department": ss.get("department"),
+                    "personality_fit_score": ss.get("personality_fit_score"),
+                    "emotional_association": ss.get("emotional_association"),
+                    "competitive_differentiation_score": ss.get("competitive_differentiation_score"),
+                    "simulated_market_adoption_score": ss.get("simulated_market_adoption_score"),
+                    "qualitative_feedback_summary": ss.get("qualitative_feedback_summary"),
+                    "final_survey_recommendation": ss.get("final_survey_recommendation"),
+                    "strategic_ranking": ss.get("strategic_ranking")
+                } for ss in survey_simulations]
+                
+            elif section_name == "translation_analysis":
+                # Fetch translation analyses
+                translation_analyses = await self._fetch_analysis("translation_analysis", run_id)
+                
+                # Structure according to schema
+                section_data["translation_analyses"] = [{
+                    "brand_name": ta.get("brand_name"),
+                    "target_language": ta.get("target_language"),
+                    "direct_translation": ta.get("direct_translation"),
+                    "pronunciation_difficulty": ta.get("pronunciation_difficulty"),
+                    "semantic_shift": ta.get("semantic_shift"),
+                    "cultural_acceptability": ta.get("cultural_acceptability"),
+                    "adaptation_needed": ta.get("adaptation_needed"),
+                    "proposed_adaptation": ta.get("proposed_adaptation"),
+                    "brand_essence_preserved": ta.get("brand_essence_preserved")
+                } for ta in translation_analyses]
+                
+            elif section_name == "recommendations":
+                # For recommendations, we need evaluations and other key analyses
+                evaluations = await self._fetch_analysis("brand_name_evaluation", run_id)
+                domain_analyses = await self._fetch_analysis("domain_analysis", run_id)
+                seo_analyses = await self._fetch_analysis("seo_online_discoverability", run_id)
+                
+                # Structure evaluations by score
+                shortlisted = [e for e in evaluations if e.get("shortlist_status") is True]
+                section_data["shortlisted_names"] = [{
+                    "brand_name": e.get("brand_name"),
+                    "overall_score": e.get("overall_score"),
+                    "rank": e.get("rank")
+                } for e in shortlisted]
+                
+                # Get domain info for shortlisted names
+                shortlisted_domains = []
+                for name in [e.get("brand_name") for e in shortlisted]:
+                    domain_info = next((da for da in domain_analyses if da.get("brand_name") == name), None)
+                    if domain_info:
+                        shortlisted_domains.append({
+                            "brand_name": name,
+                            "domain_exact_match": domain_info.get("domain_exact_match"),
+                            "alternative_tlds": domain_info.get("alternative_tlds"),
+                            "acquisition_cost": domain_info.get("acquisition_cost")
+                        })
+                
+                section_data["shortlisted_domains"] = shortlisted_domains
+                
+                # Get SEO info for shortlisted names
+                shortlisted_seo = []
+                for name in [e.get("brand_name") for e in shortlisted]:
+                    seo_info = next((sa for sa in seo_analyses if sa.get("brand_name") == name), None)
+                    if seo_info:
+                        shortlisted_seo.append({
+                            "brand_name": name,
+                            "seo_viability_score": seo_info.get("seo_viability_score"),
+                            "seo_recommendations": seo_info.get("seo_recommendations")
+                        })
+                
+                section_data["shortlisted_seo"] = shortlisted_seo
+                
+        except Exception as e:
+            logger.error(
+                f"Error fetching data for section: {section_name}",
+                extra={
+                    "error": str(e),
+                    "run_id": run_id
+                }
+            )
+            # Return empty data but don't fail - the section generator will handle missing data
+            
+        return section_data
+    
+    async def _generate_section(
+        self, 
+        run_id: str, 
+        section_name: str, 
+        section_data: Dict[str, Any],
+        system_message: SystemMessage
+    ) -> Dict[str, Any]:
+        """
+        Generate a single section of the report using the LLM.
+        
+        Args:
+            run_id: The unique identifier for the workflow run
+            section_name: The name of the section to generate
+            section_data: Data needed for this section
+            system_message: The system message to use
+            
+        Returns:
+            Dict containing the formatted section content
+        """
+        # Create section-specific prompt
+        section_title = section_name.replace("_", " ").title()
+        section_instructions = f"Focus specifically on generating the '{section_title}' section of the report."
+        section_instructions += f"\nOnly generate content for the '{section_title}' section, not the entire report."
+        
+        # Determine which schema we need for this section
+        section_schema = None
+        for schema in self.output_schemas:
+            if schema.name == section_name:
+                section_schema = schema
+                break
+                
+        if not section_schema:
+            logger.warning(f"No schema found for section: {section_name}")
+            # Create a simple schema
+            section_schema = ResponseSchema(
+                name=section_name,
+                description=f"{section_title} content"
+            )
+        
+        # Create a specific output parser for just this section
+        section_output_parser = StructuredOutputParser.from_response_schemas([section_schema])
+        
+        # Create human message with focused instructions
+        human_message = HumanMessage(content=f"""
+        Generate the {section_title} section for a brand naming report using this data:
+        
+        {section_data}
+        
+        {section_instructions}
+        
+        Format your response according to this schema:
+        {section_output_parser.get_format_instructions()}
+        """)
+        
+        # Create LLM with appropriate parameters
+        temp_llm = ChatGoogleGenerativeAI(
+            model=settings.model_name,
+            google_api_key=settings.gemini_api_key,
+            convert_system_message_to_human=True,
+            generation_config={
+                "max_output_tokens": 8192,
+                "temperature": 0.2,
+                "top_p": 0.95,
+                "top_k": 40
+            },
+        )
+        
+        # Generate this section with retries
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                # Generate content for this section only
+                messages = [system_message, human_message]
+                response = await temp_llm.ainvoke(messages)
+                content = response.content if hasattr(response, 'content') else str(response)
+                
+                # Remove any non-ASCII characters
+                content = re.sub(r'[^\x00-\x7F]+', ' ', content)
+                
+                # Parse the section content
+                section_content = section_output_parser.parse(content)
+                
+                # Success - return the section content
+                return section_content.get(section_name, {})
+                
+            except Exception as e:
+                logger.error(
+                    f"Error generating content for section {section_name}, attempt {retry_count+1}/{max_retries}",
+                    extra={
+                        "error": str(e),
+                        "run_id": run_id,
+                    }
+                )
+                retry_count += 1
+                
+                # If all retries failed
+                if retry_count >= max_retries:
+                    logger.error(f"Failed to generate section {section_name} after {max_retries} attempts")
+                    return {"summary": f"Error generating {section_name} content after multiple attempts."}
+                
+                # Wait before retrying
+                await asyncio.sleep(1)
+        
+        # Fallback content if all else fails
+        return {"summary": f"Error generating {section_name} content."}
 
     def _format_report_sections(
         self, report_data: Dict[str, Any]
@@ -716,6 +941,7 @@ class ReportCompiler:
             "seo_analysis", 
             "competitor_analysis",
             "survey_simulation",
+            "translation_analysis",
             "recommendations",
         ]
         
@@ -907,28 +1133,101 @@ class ReportCompiler:
             return tmp.name
 
     async def _store_report(self, run_id: str, doc_path: str, report_data: Dict[str, Any]) -> str:
-        """Store the report document in Supabase Storage and metadata in the database."""
+        """Store the report document using Supabase Storage S3 protocol.
+        
+        Uses boto3 to upload files directly to Supabase Storage S3 following the
+        authentication method specified in the Supabase documentation:
+        https://supabase.com/docs/guides/storage/s3/authentication
+        
+        Args:
+            run_id: Unique identifier for the report run
+            doc_path: Path to the local document file
+            report_data: Report data dictionary
+            
+        Returns:
+            str: URL to the stored report
+        """
         try:
-            # Upload document to Supabase Storage
+            # Import boto3 for S3 operations
+            import boto3
+            from botocore.client import Config
+            
+            # Prepare S3 upload parameters
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            storage_path = f"reports/{run_id}/{timestamp}_report.docx"
-
-            with open(doc_path, "rb") as f:
-                await self.supabase.storage().from_("reports").upload(
-                    storage_path,
-                    f.read(),
-                    {
-                        "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    },
-                )
-
-            # Generate public URL
-            report_url = f"{settings.supabase_url}/storage/v1/object/public/reports/{storage_path}"
-
-            # Calculate file size
+            object_key = f"{run_id}/{timestamp}_report.docx"
+            
+            # Get S3 settings from environment
+            bucket_name = settings.s3_bucket
+            s3_endpoint = settings.s3_endpoint
+            s3_region = settings.s3_region
+            s3_access_key = settings.s3_access_key
+            s3_secret_key = settings.s3_secret_key
+            
             file_size = os.path.getsize(doc_path) // 1024  # Size in KB
-
-            # Store metadata in report_compilation table using execute_with_retry
+            
+            logger.info(
+                "Storing report using Supabase Storage S3 protocol",
+                extra={
+                    "run_id": run_id,
+                    "file_size_kb": file_size,
+                    "bucket": bucket_name,
+                    "object_key": object_key,
+                    "endpoint": s3_endpoint,
+                    "region": s3_region
+                }
+            )
+            
+            # Configure the S3 client following Supabase's documentation
+            # https://supabase.com/docs/guides/storage/s3/authentication
+            s3_client = boto3.client(
+                's3',
+                endpoint_url=s3_endpoint,
+                region_name=s3_region,
+                aws_access_key_id=s3_access_key,
+                aws_secret_access_key=s3_secret_key,
+                config=Config(
+                    s3={'addressing_style': 'path'},  # This is equivalent to forcePathStyle: true
+                    signature_version='s3v4'
+                )
+            )
+            
+            # Set content type for the document
+            content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            
+            logger.info(
+                "Uploading file to Supabase Storage S3",
+                extra={
+                    "run_id": run_id,
+                    "bucket": bucket_name,
+                    "key": object_key
+                }
+            )
+            
+            # For larger files, boto3's upload_file handles multipart uploads automatically
+            s3_client.upload_file(
+                Filename=doc_path,
+                Bucket=bucket_name,
+                Key=object_key,
+                ExtraArgs={
+                    "ContentType": content_type
+                }
+            )
+            
+            # Generate public URL - Using the Supabase format for public URLs
+            # The format is: {supabase_url}/storage/v1/object/public/{bucket_name}/{object_key}
+            # Rather than the direct S3 endpoint
+            public_url_base = f"{settings.supabase_url}/storage/v1/object/public"
+            report_url = f"{public_url_base}/{bucket_name}/{object_key}"
+            
+            logger.info(
+                "File uploaded successfully, storing metadata",
+                extra={
+                    "run_id": run_id,
+                    "report_url": report_url
+                }
+            )
+            
+            # Store metadata in report_compilation table
             await self.supabase.execute_with_retry(
                 operation="insert",
                 table="report_compilation",
@@ -940,21 +1239,53 @@ class ReportCompiler:
                     "format": "docx",
                     "file_size_kb": file_size,
                     "notes": "Comprehensive brand naming analysis report",
+                    "upload_protocol": "s3",
+                    "storage_bucket": bucket_name,
+                    "storage_key": object_key,
+                    "storage_endpoint": s3_endpoint,
+                    "storage_region": s3_region
                 }
             )
-
+            
             # Clean up temporary file
             os.unlink(doc_path)
-
+            
+            logger.info(
+                "Report stored successfully using Supabase Storage S3",
+                extra={
+                    "run_id": run_id, 
+                    "report_url": report_url,
+                    "file_size_kb": file_size,
+                    "bucket": bucket_name
+                }
+            )
+            
             return report_url
-
+            
         except Exception as e:
             logger.error(
-                "Error storing report",
-                extra={"run_id": run_id, "error_type": type(e).__name__, "error_message": str(e)},
+                "Error storing report via Supabase Storage S3",
+                extra={
+                    "run_id": run_id, 
+                    "error_type": type(e).__name__, 
+                    "error_message": str(e),
+                    "bucket": settings.s3_bucket
+                }
             )
-            if os.path.exists(doc_path):
+            
+            # If we failed to store in S3, keep the local file as a backup
+            local_backup_path = f"./reports/{run_id}_{timestamp}_report.docx"
+            try:
+                import shutil
+                os.makedirs(os.path.dirname(local_backup_path), exist_ok=True)
+                shutil.copy(doc_path, local_backup_path)
+                logger.info(f"Created local backup at {local_backup_path}")
+                # Still attempt to clean up the temp file
                 os.unlink(doc_path)
+            except Exception as backup_error:
+                logger.error(f"Failed to create local backup: {str(backup_error)}")
+            
+            # Raise the original error
             raise
 
     async def _fetch_analysis(self, analysis_type: str, run_id: str) -> List[Dict[str, Any]]:
@@ -1207,28 +1538,6 @@ class ReportCompiler:
             )
             raise
 
-    async def _fetch_workflow_data(self, run_id: str) -> Dict[str, Any]:
-        """Fetch workflow data from Supabase."""
-        try:
-            # execute_with_retry handles filtering with key-value pairs in the data dictionary
-            result = await self.supabase.execute_with_retry(
-                operation="select",
-                table="workflow_runs",
-                data={
-                    "select": "*",
-                    "run_id": run_id
-                }
-            )
-            
-            # result is already the data array, not the response object
-            return result[0] if result and len(result) > 0 else {}
-        except APIError as e:
-            logger.error(
-                "Error fetching workflow data",
-                extra={"run_id": run_id, "error_type": type(e).__name__, "error_message": str(e)},
-            )
-            return {}
-
     def _format_bullet_points(self, section_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Format section data as bullet points."""
         bullet_points = []
@@ -1380,9 +1689,7 @@ class ReportCompiler:
                                 "vendor_size_preference": survey.get("preferred_vendor_size"),
                                 "innovation_adoption": survey.get("innovation_adoption"),
                                 "kpis": survey.get("key_performance_indicators"),
-                                "development_interests": survey.get(
-                                    "professional_development_interests"
-                                ),
+                                "development_interests": survey.get("professional_development_interests"),
                                 "social_media": survey.get("social_media_usage"),
                                 "work_life_balance": survey.get("work_life_balance_priorities"),
                                 "frustrations": survey.get("frustrations_annoyances"),
@@ -1396,9 +1703,7 @@ class ReportCompiler:
                                 "adoption_stage": survey.get("product_adoption_lifecycle_stage"),
                                 "triggers": survey.get("purchase_triggers_events"),
                                 "success_metrics": survey.get("success_metrics_product_service"),
-                                "channel_preferences": survey.get(
-                                    "channel_preferences_brand_interaction"
-                                ),
+                                "channel_preferences": survey.get("channel_preferences_brand_interaction"),
                                 "adoption_barriers": survey.get("barriers_to_adoption"),
                             },
                         },
@@ -1406,9 +1711,7 @@ class ReportCompiler:
                             "brand_promise_score": survey.get("brand_promise_perception_score"),
                             "personality_fit": survey.get("personality_fit_score"),
                             "emotional_association": survey.get("emotional_association"),
-                            "differentiation_score": survey.get(
-                                "competitive_differentiation_score"
-                            ),
+                            "differentiation_score": survey.get("competitive_differentiation_score"),
                             "sentiment_mapping": survey.get("psychometric_sentiment_mapping"),
                             "competitor_benchmark": survey.get("competitor_benchmarking_score"),
                             "market_adoption": survey.get("simulated_market_adoption_score"),
@@ -1438,22 +1741,12 @@ class ReportCompiler:
                 "generation": {
                     "brand_name": brand_name,
                     "naming_category": generation_lookup.get(brand_name, {}).get("naming_category"),
-                    "brand_personality_alignment": generation_lookup.get(brand_name, {}).get(
-                        "brand_personality_alignment"
-                    ),
-                    "brand_promise_alignment": generation_lookup.get(brand_name, {}).get(
-                        "brand_promise_alignment"
-                    ),
-                    "memorability_score": generation_lookup.get(brand_name, {}).get(
-                        "memorability_score"
-                    ),
-                    "pronounceability_score": generation_lookup.get(brand_name, {}).get(
-                        "pronounceability_score"
-                    ),
+                    "brand_personality_alignment": generation_lookup.get(brand_name, {}).get("brand_personality_alignment"),
+                    "brand_promise_alignment": generation_lookup.get(brand_name, {}).get("brand_promise_alignment"),
+                    "memorability_score": generation_lookup.get(brand_name, {}).get("memorability_score"),
+                    "pronounceability_score": generation_lookup.get(brand_name, {}).get("pronounceability_score"),
                     "brand_fit_score": generation_lookup.get(brand_name, {}).get("brand_fit_score"),
-                    "meaningfulness_score": generation_lookup.get(brand_name, {}).get(
-                        "meaningfulness_score"
-                    ),
+                    "meaningfulness_score": generation_lookup.get(brand_name, {}).get("meaningfulness_score"),
                 },
                 "evaluation": {
                     "strategic_alignment_score": evaluation.get("strategic_alignment_score"),

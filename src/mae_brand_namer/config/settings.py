@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     supabase_service_key: Optional[str] = None
     supabase_timeout: int = 10
     
+    # S3 Storage configuration
+    s3_endpoint: Optional[str] = None
+    s3_region: str = "us-east-1"
+    s3_bucket: str = "agent_reports"
+    s3_access_key: Optional[str] = None
+    s3_secret_key: Optional[str] = None
+    
     # RapidAPI configuration
     rapid_api_key: Optional[str] = None
     
