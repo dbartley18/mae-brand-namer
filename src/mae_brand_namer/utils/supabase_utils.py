@@ -131,7 +131,48 @@ class SupabaseManager:
                     # Apply filters if provided
                     for key, value in data.items():
                         if key != "select" and key != "order" and key != "limit":
-                            query = query.eq(key, value)
+                            # Check if the value already includes an operator
+                            if isinstance(value, str) and len(value) > 3 and "." in value:
+                                # Extract operator and actual value
+                                parts = value.split(".", 1)
+                                if len(parts) == 2:
+                                    operator, actual_value = parts
+                                    # Apply the appropriate operator method
+                                    if operator == "eq":
+                                        query = query.eq(key, actual_value)
+                                    elif operator == "neq":
+                                        query = query.neq(key, actual_value)
+                                    elif operator == "gt":
+                                        query = query.gt(key, actual_value)
+                                    elif operator == "gte":
+                                        query = query.gte(key, actual_value)
+                                    elif operator == "lt":
+                                        query = query.lt(key, actual_value)
+                                    elif operator == "lte":
+                                        query = query.lte(key, actual_value)
+                                    elif operator == "like":
+                                        query = query.like(key, actual_value)
+                                    elif operator == "ilike":
+                                        query = query.ilike(key, actual_value)
+                                    elif operator == "is":
+                                        query = query.is_(key, actual_value)
+                                    elif operator == "in":
+                                        # Handle 'in' operator which needs a list
+                                        if actual_value.startswith("(") and actual_value.endswith(")"):
+                                            values_list = actual_value[1:-1].split(",")
+                                            query = query.in_(key, values_list)
+                                        else:
+                                            # If not properly formatted, fall back to eq
+                                            query = query.eq(key, value)
+                                    else:
+                                        # Unknown operator, use eq as fallback
+                                        query = query.eq(key, value)
+                                else:
+                                    # No valid operator format, use eq as fallback
+                                    query = query.eq(key, value)
+                            else:
+                                # No operator, use standard eq operator
+                                query = query.eq(key, value)
                     
                     # Apply ordering if specified
                     if "order" in data:

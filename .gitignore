@@ -119,3 +119,12 @@ debug_outputs/survey_response_TestBrand_20250306_010729.json
 test_survey.py
 src/mae_brand_namer/agents/report_storer.py
 test_standard_upload.py
+data_retrieval_test_mae_20250312_141302_d45cccde.json
+data_retrieval_test_mae_20250312_145208_286661c5.json
+db_diagnostics_mae_20250312_141302_d45cccde.json
+test_compile_report.py
+test_data_retrieval.py
+test_supabase.py
+src/mae_brand_namer/scripts/test_db_connection.py
+src/mae_brand_namer/db/supabase.py
+src/mae_brand_namer/scripts/run_db_test.py
