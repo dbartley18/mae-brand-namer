@@ -1169,6 +1169,12 @@ class ReportCompiler:
             # Get S3 settings from environment
             bucket_name = settings.s3_bucket
             s3_endpoint = settings.s3_endpoint
+            
+            # If the s3_endpoint is set to the Supabase URL or contains 'supabase.co',
+            # ensure it has the /s3 suffix for S3 API compatibility
+            if s3_endpoint and ('supabase.co' in s3_endpoint) and not s3_endpoint.endswith('/s3'):
+                s3_endpoint = f"{s3_endpoint}/s3"
+                
             s3_region = settings.s3_region
             s3_access_key = settings.s3_access_key
             s3_secret_key = settings.s3_secret_key
@@ -1236,7 +1242,15 @@ class ReportCompiler:
             # Generate public URL - Using the Supabase format for public URLs
             # The format is: {supabase_url}/storage/v1/object/public/{bucket_name}/{object_key}
             # Rather than the direct S3 endpoint
-            public_url_base = f"{settings.supabase_url}/storage/v1/object/public"
+            
+            # Make sure we use the base Supabase URL (without /storage/v1/s3) for the public URL
+            base_supabase_url = settings.supabase_url
+            if base_supabase_url.endswith('/storage/v1/s3'):
+                base_supabase_url = base_supabase_url[:-13]  # Remove '/storage/v1/s3'
+            elif base_supabase_url.endswith('/storage/v1'):
+                base_supabase_url = base_supabase_url[:-10]  # Remove '/storage/v1'
+                
+            public_url_base = f"{base_supabase_url}/storage/v1/object/public"
             report_url = f"{public_url_base}/{bucket_name}/{object_key}"
             
             logger.info(
