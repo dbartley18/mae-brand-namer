@@ -1883,7 +1883,8 @@ async def process_report(state: BrandNameGenerationState, agent: ReportCompiler)
         with tracing_v2_enabled():
             report = await agent.compile_report(
                 run_id=state.run_id,
-                state=state
+                state=state,
+                user_prompt=state.user_prompt
             )
             
             # IMPORTANT: Match the output_keys defined in tasks.yaml

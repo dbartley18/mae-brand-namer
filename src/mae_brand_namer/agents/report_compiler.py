@@ -337,7 +337,7 @@ class ReportCompiler:
             )
 
     async def compile_report(
-        self, run_id: str, state: Optional[Dict[str, Any]] = None
+        self, run_id: str, state: Optional[Dict[str, Any]] = None, user_prompt: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Compile a comprehensive brand name analysis report using sequential section generation.
@@ -345,6 +345,7 @@ class ReportCompiler:
         Args:
             run_id (str): The unique identifier for the workflow run
             state (Optional[Dict[str, Any]]): Only needed for the run_id
+            user_prompt (Optional[str]): The initial user prompt that started the workflow
             
         Returns:
             Dict[str, Any]: The updated workflow state with report URL and metadata
@@ -366,7 +367,8 @@ class ReportCompiler:
                 "metadata": {
                     "run_id": run_id,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "version": 1
+                    "version": 1,
+                    "user_prompt": user_prompt or "Not provided"
                 },
                 "sections": []
             }
@@ -409,16 +411,28 @@ class ReportCompiler:
                 try:
                     # 1. Query relevant data for this section directly from Supabase
                     section_data = await self._fetch_section_data(run_id, section_name)
+                    logger.info(f"Fetched data for section: {section_name}", 
+                               extra={"run_id": run_id, "section": section_name, "data_keys": list(section_data.keys()) if isinstance(section_data, dict) else "non-dict"})
                     
                     # 2. Generate this specific section using LLM
                     section_content = await self._generate_section(run_id, section_name, section_data, system_message)
+                    logger.info(f"Generated content for section: {section_name}", 
+                               extra={"run_id": run_id, "section": section_name, "content_type": type(section_content).__name__, 
+                                      "content_keys": list(section_content.keys()) if isinstance(section_content, dict) else "non-dict"})
                     
                     # 3. Add to report incrementally
                     if section_content:
-                        report["sections"].append({
+                        # Format section for the report
+                        formatted_section = {
                             "title": section_name.replace("_", " ").title(),
                             "content": section_content
-                        })
+                        }
+                        
+                        logger.info(f"Adding formatted section to report: {section_name}", 
+                                   extra={"run_id": run_id, "section": section_name, 
+                                          "formatted_type": type(section_content).__name__})
+                        
+                        report["sections"].append(formatted_section)
                         
                         # Track token count for reporting
                         section_token_count = len(str(section_content).split()) // 4 * 3  # Rough estimate
@@ -455,10 +469,12 @@ class ReportCompiler:
                     })
             
             # Once all sections are generated, format the report
-            formatted_report = self._format_report_sections(report)
+            logger.info(f"Formatting report with {len(report['sections'])} sections", extra={"run_id": run_id})
+            formatted_report = report  # We're already building the report in the right format
             
             # Generate document
-            doc_path = await self._generate_document(formatted_report, run_id)
+            logger.info(f"Generating document", extra={"run_id": run_id})
+            doc_path = await self._generate_document(formatted_report, run_id, user_prompt)
             
             # Store report and get URL
             report_url = await self._store_report(run_id, doc_path, formatted_report)
@@ -972,58 +988,175 @@ class ReportCompiler:
         self, section_type: str, section_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Format section content with appropriate styling and structure."""
-        formatted_content = {"summary": section_data.get("summary", ""), "details": []}
+        # Initialize the formatted content
+        formatted_content = {}
         
-        # Format based on section type
-        if section_type == "survey_simulation":
+        # If section_data is a string, it's likely the direct content from the LLM's response
+        if isinstance(section_data, str):
+            formatted_content["summary"] = section_data
+            return formatted_content
+            
+        # If we have a complex object with specific fields
+        if section_type in section_data:
+            # Some LLM responses have the content directly under the section name key
+            main_content = section_data.get(section_type)
+            if isinstance(main_content, str):
+                formatted_content["summary"] = main_content
+                return formatted_content
+        
+        # Extract summary if present (common in most outputs)
+        if "summary" in section_data:
+            formatted_content["summary"] = section_data["summary"]
+        
+        # Handle different section types with specialized formatting
+        if section_type == "executive_summary":
+            # Executive summary often comes as a markdown string
+            if isinstance(section_data, str):
+                formatted_content["summary"] = section_data
+            elif "executive_summary" in section_data:
+                formatted_content["summary"] = section_data["executive_summary"]
+                
+        elif section_type == "recommendations":
+            # Recommendations often come as a markdown string with bullet points
+            if isinstance(section_data, str):
+                formatted_content["summary"] = section_data
+            elif "recommendations" in section_data:
+                formatted_content["summary"] = section_data["recommendations"]
+                
+            # Extract bullet points if present in a structured way
+            bullet_points = []
+            if isinstance(section_data, dict):
+                for key, value in section_data.items():
+                    if key.lower() not in ["summary", "recommendations", "executive_summary"]:
+                        if isinstance(value, list):
+                            bullet_points.append({"heading": key.replace("_", " ").title(), "points": value})
+                        elif isinstance(value, str) and ("*" in value or "-" in value):
+                            # Attempt to parse markdown bullet points
+                            points = []
+                            lines = value.split("\n")
+                            for line in lines:
+                                if line.strip().startswith("*") or line.strip().startswith("-"):
+                                    points.append(line.strip()[1:].strip())
+                            if points:
+                                bullet_points.append({"heading": key.replace("_", " ").title(), "points": points})
+                
+                if bullet_points:
+                    formatted_content["bullet_points"] = bullet_points
+                    
+        elif section_type == "survey_simulation":
             # For survey simulation, we need to structure the table data
             formatted_content["table"] = {
                 "headers": ["Persona", "Company", "Role", "Brand Score", "Key Feedback"],
-                "rows": []  # Will be filled in _format_survey_results_table
+                "rows": []  # Will be filled with actual data rows
             }
+            
+            # Attempt to extract survey data
+            if isinstance(section_data, dict) and "survey_simulations" in section_data:
+                surveys = section_data["survey_simulations"]
+                for survey in surveys:
+                    if isinstance(survey, dict):
+                        row = [
+                            survey.get("persona_segment", ""),
+                            survey.get("company_name", ""),
+                            survey.get("job_title", ""),
+                            str(survey.get("simulated_market_adoption_score", "")),
+                            survey.get("qualitative_feedback_summary", "")
+                        ]
+                        formatted_content["table"]["rows"].append(row)
+                        
         elif section_type == "competitor_analysis":
             # Format competitor analysis as structured data
-            formatted_content["summary"] = section_data.get("summary", "")
+            if "summary" not in formatted_content and "competitive_analysis" in section_data:
+                formatted_content["summary"] = section_data["competitive_analysis"]
             
             # Create a more structured format for competitor analysis
-            # First, try to extract any table data if present
-            table_data = {}
-            for key, value in section_data.items():
-                if "table" in key.lower() or "comparison" in key.lower():
-                    table_data[key] = value
-            
-            # Then extract key points as bullet points
+            # Extract any key points as bullet points
             bullet_points = []
             key_competitor_aspects = [
                 "Competitor Naming Styles", 
                 "Market Positioning",
                 "Differentiation Opportunities",
                 "Risk of Confusion",
-                "Target Audience Perception",
+                "Target Audience Perception", 
                 "Competitive Advantages",
                 "Trademark Considerations"
             ]
             
+            # Look for these aspects in the data
             for aspect in key_competitor_aspects:
-                if aspect in section_data:
-                    bullet_points.append({
-                        "heading": aspect,
-                        "points": [section_data.get(aspect, "")]
-                    })
+                aspect_key = aspect.lower().replace(" ", "_")
+                if aspect_key in section_data:
+                    content = section_data[aspect_key]
+                    if isinstance(content, str):
+                        bullet_points.append({
+                            "heading": aspect,
+                            "points": [content]
+                        })
+                    elif isinstance(content, list):
+                        bullet_points.append({
+                            "heading": aspect,
+                            "points": content
+                        })
             
-            formatted_content["bullet_points"] = bullet_points
-            formatted_content["tables"] = table_data
-            
+            # If we found bullet points, add them
+            if bullet_points:
+                formatted_content["bullet_points"] = bullet_points
+                
         elif section_type == "domain_analysis":
             # Format as bullet points with subsections
-            formatted_content["bullet_points"] = self._format_bullet_points(section_data)
+            if "domain_analyses" in section_data:
+                domains = section_data["domain_analyses"]
+                details = []
+                for domain in domains:
+                    if isinstance(domain, dict) and "brand_name" in domain:
+                        detail = {
+                            "heading": domain["brand_name"],
+                            "content": f"Exact Match: {domain.get('domain_exact_match', 'Unknown')}\n"
+                                      f"Alternative TLDs: {domain.get('alternative_tlds', 'Unknown')}\n"
+                                      f"Acquisition Cost: {domain.get('acquisition_cost', 'Unknown')}\n"
+                                      f"Notes: {domain.get('notes', '')}"
+                        }
+                        details.append(detail)
+                
+                if details:
+                    formatted_content["details"] = details
         else:
-            # Standard formatting
-            formatted_content["details"] = self._format_details(section_data)
+            # Default formatting for other section types
+            # Check if we have details to extract
+            details = []
+            if isinstance(section_data, dict):
+                for key, value in section_data.items():
+                    if key.lower() not in ["summary"]:
+                        if isinstance(value, str):
+                            details.append({
+                                "heading": key.replace("_", " ").title(),
+                                "content": value
+                            })
+                        elif isinstance(value, dict):
+                            # For nested structures, format as a readable string
+                            content = "\n".join([f"**{k}**: {v}" for k, v in value.items()])
+                            details.append({
+                                "heading": key.replace("_", " ").title(),
+                                "content": content
+                            })
+                        elif isinstance(value, list):
+                            # For lists, format as bullet points in a string
+                            content = "\n".join([f"* {item}" for item in value])
+                            details.append({
+                                "heading": key.replace("_", " ").title(),
+                                "content": content
+                            })
+            
+            if details:
+                formatted_content["details"] = details
+                
+        # If we didn't find any specific content to format, default to the original data
+        if not formatted_content:
+            formatted_content["summary"] = str(section_data)
             
         return formatted_content
 
-    async def _generate_document(self, report: Dict[str, Any], run_id: str) -> str:
+    async def _generate_document(self, report: Dict[str, Any], run_id: str, user_prompt: str = None) -> str:
         """Generate a Word document from the report data."""
         doc = Document()
 
@@ -1053,6 +1186,11 @@ class ReportCompiler:
         note_style = styles.add_style("CustomNote", WD_STYLE_TYPE.PARAGRAPH)
         note_style.font.size = Pt(11)
         note_style.font.italic = True
+        
+        # Bold style for important points
+        bold_style = styles.add_style("CustomBold", WD_STYLE_TYPE.PARAGRAPH)
+        bold_style.font.size = Pt(11)
+        bold_style.font.bold = True
 
         # Add title
         title = doc.add_paragraph("Brand Naming Report", style="CustomTitle")
@@ -1074,7 +1212,7 @@ class ReportCompiler:
             style="CustomNote",
         )
         doc.add_paragraph(
-            f'"{report.get("metadata", {}).get("user_prompt", "")}"', style="CustomNote"
+            f'"{user_prompt or report.get("metadata", {}).get("user_prompt", "")}"', style="CustomNote"
         )
         doc.add_paragraph(
             "All additional context, analysis, and insights were autonomously generated by the simulation.",
@@ -1092,54 +1230,239 @@ class ReportCompiler:
             toc_entry.add_run(f"{i}. {section['title']}")
         doc.add_paragraph()  # Add space after TOC
 
+        # Helper function to parse markdown in text
+        def _parse_markdown_text(text, paragraph):
+            # Handle bold text (replace **text** with bold text)
+            bold_pattern = re.compile(r'\*\*(.*?)\*\*')
+            
+            # Find all bold patterns
+            bold_matches = list(bold_pattern.finditer(text))
+            
+            if bold_matches:
+                # Text has bold sections, need to add runs with appropriate formatting
+                last_end = 0
+                for match in bold_matches:
+                    # Add regular text before the bold
+                    if match.start() > last_end:
+                        paragraph.add_run(text[last_end:match.start()])
+                    
+                    # Add bold text
+                    bold_run = paragraph.add_run(match.group(1))  # Group 1 is the text inside **
+                    bold_run.bold = True
+                    
+                    last_end = match.end()
+                
+                # Add any remaining text after the last bold section
+                if last_end < len(text):
+                    paragraph.add_run(text[last_end:])
+            else:
+                # No bold text, just add the entire text
+                paragraph.add_run(text)
+                
+            return paragraph
+            
+        # Helper function to parse and add a markdown text block
+        def _add_markdown_paragraph(text, default_style="CustomNormal"):
+            # Check for headings
+            if text.startswith('## '):
+                para = doc.add_paragraph(text[3:], style="CustomH2")
+                return para
+            elif text.startswith('# '):
+                para = doc.add_paragraph(text[2:], style="CustomH1")
+                return para
+            elif text.startswith('* ') or text.startswith('- '):
+                # Create bullet point
+                para = doc.add_paragraph(style="List Bullet")
+                return _parse_markdown_text(text[2:], para)
+            else:
+                # Regular paragraph
+                para = doc.add_paragraph(style=default_style)
+                return _parse_markdown_text(text, para)
+                
+        # Helper function to parse and add a markdown table
+        def _add_markdown_table(text):
+            lines = text.strip().split('\n')
+            if len(lines) < 2:
+                # Not enough lines for a valid table
+                return _add_markdown_paragraph(text)
+                
+            # Count pipe symbols to determine columns
+            header_row = lines[0]
+            columns = header_row.count('|')
+            
+            # Need at least 2 pipe symbols for a valid table (3 columns)
+            if columns < 2:
+                return _add_markdown_paragraph(text)
+                
+            # Split the header row by pipes and strip whitespace
+            headers = [cell.strip() for cell in header_row.split('|')]
+            # Remove empty first/last cells if present
+            if headers[0] == '':
+                headers = headers[1:]
+            if headers[-1] == '':
+                headers = headers[:-1]
+                
+            # Create table
+            table = doc.add_table(rows=1, cols=len(headers))
+            table.style = 'Table Grid'
+            
+            # Add header row
+            header_cells = table.rows[0].cells
+            for i, header in enumerate(headers):
+                header_cells[i].text = header
+                
+            # Skip the separator row (typically row 1 with ----)
+            start_row = 2 if len(lines) > 2 and '---' in lines[1] else 1
+            
+            # Add data rows
+            for i in range(start_row, len(lines)):
+                row_text = lines[i]
+                if not row_text.strip():
+                    continue
+                    
+                # Split by pipes
+                cells = [cell.strip() for cell in row_text.split('|')]
+                # Remove empty first/last cells if present
+                if cells[0] == '':
+                    cells = cells[1:]
+                if cells[-1] == '':
+                    cells = cells[:-1]
+                    
+                # Add row to table
+                row_cells = table.add_row().cells
+                for j, cell in enumerate(cells):
+                    if j < len(row_cells):
+                        row_cells[j].text = cell
+                        
+            return table
+
         # Add sections
-        for section in report["sections"]:
-            # Add section title
-            doc.add_paragraph(section["title"], style="CustomH1")
-
-            # Add section content
-            content = section["content"]
-
-            # Add summary if present
-            if content.get("summary"):
-                doc.add_paragraph(content["summary"], style="CustomNormal")
-
-            # Add table if present
-            if content.get("table"):
-                table_data = content["table"]
-                table = doc.add_table(rows=1, cols=len(table_data["headers"]))
-                table.style = "Table Grid"
-
-                # Add headers
-                header_cells = table.rows[0].cells
-                for i, header in enumerate(table_data["headers"]):
-                    header_cells[i].text = header
-
-                # Add rows
-                for row_data in table_data["rows"]:
-                    row_cells = table.add_row().cells
-                    for i, value in enumerate(row_data.values()):
-                        row_cells[i].text = str(value)
-
-            # Add bullet points if present
-            if content.get("bullet_points"):
-                for bullet_section in content["bullet_points"]:
-                    doc.add_paragraph(bullet_section["heading"], style="CustomH2")
-                    for point in bullet_section["points"]:
-                        doc.add_paragraph(point, style="CustomNormal").style = "List Bullet"
-
-            # Add details if present
-            if content.get("details"):
-                for detail in content["details"]:
-                    doc.add_paragraph(detail["heading"], style="CustomH2")
-                    doc.add_paragraph(detail["content"], style="CustomNormal")
-
-            doc.add_paragraph()  # Add spacing between sections
-
+        logger.info(f"Processing {len(report['sections'])} sections for document generation")
+        
+        for i, section in enumerate(report["sections"], 1):
+            # Log the section being processed
+            logger.info(f"Processing section {i}: {section['title']}")
+            
+            # Add section title with section number
+            section_title = doc.add_paragraph(f"{i}. {section['title']}", style="CustomH1")
+            
+            # Get the section content
+            content = section['content']
+            
+            # Process different content formats
+            if isinstance(content, dict):
+                # Handle structured content
+                
+                # Process summary if present
+                if "summary" in content and content["summary"]:
+                    summary_text = content["summary"]
+                    
+                    # Check if the summary contains markdown tables
+                    if '|' in summary_text and '\n' in summary_text and '|---' in summary_text:
+                        # Split by potential table markers
+                        parts = re.split(r'(\|.*\|[\s]*\n\|[-]+\|.*(?:\n\|.*\|)*)', summary_text, flags=re.DOTALL)
+                        
+                        for part in parts:
+                            if part.strip():
+                                if part.startswith('|') and '|---' in part:
+                                    # This is a table
+                                    _add_markdown_table(part)
+                                else:
+                                    # Process regular text with markdown
+                                    lines = part.split('\n')
+                                    for line in lines:
+                                        if line.strip():
+                                            _add_markdown_paragraph(line)
+                    else:
+                        # Process as regular text with markdown
+                        lines = summary_text.split('\n')
+                        for line in lines:
+                            if line.strip():
+                                _add_markdown_paragraph(line)
+                
+                # Process bullet points
+                if "bullet_points" in content and content["bullet_points"]:
+                    for bp_section in content["bullet_points"]:
+                        if isinstance(bp_section, dict) and "heading" in bp_section and "points" in bp_section:
+                            # Add the bullet point section heading
+                            doc.add_paragraph(bp_section["heading"], style="CustomH2")
+                            
+                            # Add each point as a bullet
+                            for point in bp_section["points"]:
+                                bullet = doc.add_paragraph(style="List Bullet")
+                                _parse_markdown_text(point, bullet)
+                        elif isinstance(bp_section, str):
+                            # Direct string bullet point
+                            bullet = doc.add_paragraph(style="List Bullet")
+                            _parse_markdown_text(bp_section, bullet)
+                
+                # Process tables
+                if "table" in content and content["table"]:
+                    table_data = content["table"]
+                    if "headers" in table_data and "rows" in table_data:
+                        # Create table with headers
+                        table = doc.add_table(rows=1, cols=len(table_data["headers"]))
+                        table.style = "Table Grid"
+                        
+                        # Add headers
+                        header_cells = table.rows[0].cells
+                        for i, header in enumerate(table_data["headers"]):
+                            header_cells[i].text = header
+                            
+                        # Add rows
+                        for row_data in table_data["rows"]:
+                            row_cells = table.add_row().cells
+                            for i, cell_value in enumerate(row_data):
+                                if i < len(row_cells):  # Ensure we don't exceed the table columns
+                                    row_cells[i].text = str(cell_value)
+                
+                # Process details sections
+                if "details" in content and content["details"]:
+                    for detail in content["details"]:
+                        if isinstance(detail, dict) and "heading" in detail and "content" in detail:
+                            # Add section heading
+                            doc.add_paragraph(detail["heading"], style="CustomH2")
+                            
+                            # Process content - could be string or structured content
+                            if isinstance(detail["content"], str):
+                                # Check if content has tables
+                                if '|' in detail["content"] and '\n' in detail["content"] and '---' in detail["content"]:
+                                    _add_markdown_table(detail["content"])
+                                else:
+                                    # Split by line breaks and process each paragraph
+                                    paragraphs = detail["content"].split("\n")
+                                    for para in paragraphs:
+                                        if para.strip():
+                                            _add_markdown_paragraph(para)
+                            else:
+                                # Handle more complex content structure if needed
+                                doc.add_paragraph(str(detail["content"]), style="CustomNormal")
+            
+            elif isinstance(content, str):
+                # Direct string content - check if it contains tables
+                if '|' in content and '\n' in content and '---' in content:
+                    _add_markdown_table(content)
+                else:
+                    # Process as regular text with markdown
+                    lines = content.split('\n')
+                    for line in lines:
+                        if line.strip():
+                            _add_markdown_paragraph(line)
+            
+            # Add spacing between sections
+            doc.add_paragraph()
+        
         # Save document to temporary file
         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
-            doc.save(tmp.name)
-            return tmp.name
+            doc_path = tmp.name
+            try:
+                logger.info(f"Saving document to {doc_path}")
+                doc.save(doc_path)
+                logger.info(f"Document saved successfully to {doc_path}")
+                return doc_path
+            except Exception as e:
+                logger.error(f"Error saving document: {str(e)}")
+                raise
 
     async def _store_report(self, run_id: str, doc_path: str, report_data: Dict[str, Any]) -> str:
         """Store the report document using Supabase Storage standard upload method.
@@ -1238,23 +1561,75 @@ class ReportCompiler:
                     }
                 )
                 
-                # Store metadata in report_compilation table
-                await self.supabase.execute_with_retry(
-                    operation="insert",
-                    table="report_compilation",
-                    data={
-                        "run_id": run_id,
-                        "report_url": report_url,
-                        "version": 1,
-                        "created_at": datetime.now().isoformat(),
-                        "format": "docx",
-                        "file_size_kb": file_size,
-                        "notes": "Comprehensive brand naming analysis report",
-                        "upload_protocol": "standard",
-                        "storage_bucket": bucket_name,
-                        "storage_key": object_key
-                    }
-                )
+                # Store metadata in the report_compilation table
+                metadata = {
+                    "run_id": run_id,
+                    "report_url": report_url,
+                    "version": "1.0",
+                    "created_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat(),
+                    "format": "docx",  # Use hardcoded value instead of settings.report_output_format
+                    "file_size_kb": file_size,
+                    "notes": f"Report generated successfully for run_id {run_id}",
+                    "last_updated": datetime.now().isoformat()
+                    # Remove fields that don't exist in the table schema
+                    # "storage_region": settings.s3_region
+                    # "storage_endpoint": s3_endpoint,
+                    # "upload_protocol": "s3", 
+                    # "storage_bucket": bucket_name,
+                    # "storage_key": object_key,
+                }
+
+                try:
+                    await self.supabase.execute_with_retry(
+                        operation="insert",
+                        table="report_compilation",
+                        data=metadata
+                    )
+                    
+                    logger.info(
+                        f"Successfully stored report metadata in report_compilation table",
+                        extra={
+                            "run_id": run_id,
+                            "report_url": report_url,
+                            "table": "report_compilation"
+                        }
+                    )
+                    
+                except (TypeError, ValueError) as e:
+                    logger.error(
+                        "Error preparing report metadata for Supabase",
+                        extra={
+                            "run_id": run_id,
+                            "error": str(e),
+                            "table": "report_compilation"
+                        }
+                    )
+                    # Continue execution since the file is still uploaded successfully
+                
+                except APIError as e:
+                    logger.error(
+                        "API error storing report metadata in Supabase",
+                        extra={
+                            "run_id": run_id,
+                            "error": str(e),
+                            "table": "report_compilation",
+                            "status_code": getattr(e, "status_code", None)
+                        }
+                    )
+                    # Continue execution since the file is still uploaded successfully
+                
+                except Exception as e:
+                    logger.error(
+                        "Unexpected error storing report metadata in Supabase",
+                        extra={
+                            "run_id": run_id,
+                            "error_type": type(e).__name__,
+                            "error": str(e),
+                            "table": "report_compilation"
+                        }
+                    )
+                    # Continue execution since the file is still uploaded successfully
                 
                 # Clean up temporary file
                 os.unlink(doc_path)
