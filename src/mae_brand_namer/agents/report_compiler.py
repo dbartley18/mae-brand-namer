@@ -1142,11 +1142,7 @@ class ReportCompiler:
             return tmp.name
 
     async def _store_report(self, run_id: str, doc_path: str, report_data: Dict[str, Any]) -> str:
-        """Store the report document using Supabase Storage S3 protocol.
-        
-        Uses boto3 to upload files directly to Supabase Storage S3 following the
-        authentication method specified in the Supabase documentation:
-        https://supabase.com/docs/guides/storage/s3/authentication
+        """Store the report document using Supabase Storage standard upload method.
         
         Args:
             run_id: Unique identifier for the report run
@@ -1162,159 +1158,124 @@ class ReportCompiler:
         object_key = f"{run_id}/{timestamp}_report.docx"
         
         try:
-            # Check if boto3 is available
-            if boto3 is None:
-                raise ImportError("boto3 library is not installed. Please install with 'pip install boto3'")
-            
-            # Get S3 settings from environment
-            bucket_name = settings.s3_bucket
-            s3_endpoint = settings.s3_endpoint
-            
-            # If the s3_endpoint is set to the Supabase URL or contains 'supabase.co',
-            # ensure it has the /s3 suffix for S3 API compatibility
-            if s3_endpoint and ('supabase.co' in s3_endpoint) and not s3_endpoint.endswith('/s3'):
-                s3_endpoint = f"{s3_endpoint}/s3"
-                
-            s3_region = settings.s3_region
-            s3_access_key = settings.s3_access_key
-            s3_secret_key = settings.s3_secret_key
-            
-            # Validate required settings
-            if not all([s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key]):
-                missing = []
-                if not s3_endpoint: missing.append("S3_ENDPOINT")
-                if not s3_region: missing.append("S3_REGION")
-                if not bucket_name: missing.append("S3_BUCKET")
-                if not s3_access_key: missing.append("S3_ACCESS_KEY")
-                if not s3_secret_key: missing.append("S3_SECRET_KEY")
-                raise ValueError(f"Missing required S3 settings: {', '.join(missing)}")
+            # Get storage settings
+            bucket_name = settings.s3_bucket  # Using the same bucket name defined in settings
             
             file_size = os.path.getsize(doc_path) // 1024  # Size in KB
             
             logger.info(
-                "Storing report using Supabase Storage S3 protocol",
+                "Storing report using Supabase Storage standard upload",
                 extra={
                     "run_id": run_id,
                     "file_size_kb": file_size,
                     "bucket": bucket_name,
-                    "object_key": object_key,
-                    "endpoint": s3_endpoint,
-                    "region": s3_region
+                    "object_key": object_key
                 }
             )
             
-            # Configure the S3 client following Supabase's documentation
-            # https://supabase.com/docs/guides/storage/s3/authentication
-            s3_client = boto3.client(
-                's3',
-                endpoint_url=s3_endpoint,
-                region_name=s3_region,
-                aws_access_key_id=s3_access_key,
-                aws_secret_access_key=s3_secret_key,
-                config=Config(
-                    s3={'addressing_style': 'path'},  # This is equivalent to forcePathStyle: true
-                    signature_version='s3v4'
-                )
-            )
+            # Read the file content
+            with open(doc_path, "rb") as file:
+                file_content = file.read()
             
             # Set content type for the document
             content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             
-            logger.info(
-                "Uploading file to Supabase Storage S3",
-                extra={
-                    "run_id": run_id,
-                    "bucket": bucket_name,
-                    "key": object_key
-                }
-            )
-            
-            # For larger files, boto3's upload_file handles multipart uploads automatically
-            s3_client.upload_file(
-                Filename=doc_path,
-                Bucket=bucket_name,
-                Key=object_key,
-                ExtraArgs={
-                    "ContentType": content_type
-                }
-            )
-            
-            # Generate public URL - Using the Supabase format for public URLs
-            # The format is: {supabase_url}/storage/v1/object/public/{bucket_name}/{object_key}
-            # Rather than the direct S3 endpoint
-            
-            # Make sure we use the base Supabase URL (without /storage/v1/s3) for the public URL
-            base_supabase_url = settings.supabase_url
-            if base_supabase_url.endswith('/storage/v1/s3'):
-                base_supabase_url = base_supabase_url[:-13]  # Remove '/storage/v1/s3'
-            elif base_supabase_url.endswith('/storage/v1'):
-                base_supabase_url = base_supabase_url[:-10]  # Remove '/storage/v1'
+            # Use Supabase client to upload the file
+            if self.supabase:
+                # Get Supabase client directly
+                supabase_client = self.supabase.client
                 
-            public_url_base = f"{base_supabase_url}/storage/v1/object/public"
-            report_url = f"{public_url_base}/{bucket_name}/{object_key}"
-            
-            logger.info(
-                "File uploaded successfully, storing metadata",
-                extra={
-                    "run_id": run_id,
-                    "report_url": report_url
-                }
-            )
-            
-            # Store metadata in report_compilation table
-            await self.supabase.execute_with_retry(
-                operation="insert",
-                table="report_compilation",
-                data={
-                    "run_id": run_id,
-                    "report_url": report_url,
-                    "version": 1,
-                    "created_at": datetime.now().isoformat(),
-                    "format": "docx",
-                    "file_size_kb": file_size,
-                    "notes": "Comprehensive brand naming analysis report",
-                    "upload_protocol": "s3",
-                    "storage_bucket": bucket_name,
-                    "storage_key": object_key,
-                    "storage_endpoint": s3_endpoint,
-                    "storage_region": s3_region
-                }
-            )
-            
-            # Clean up temporary file
-            os.unlink(doc_path)
-            
-            logger.info(
-                "Report stored successfully using Supabase Storage S3",
-                extra={
-                    "run_id": run_id, 
-                    "report_url": report_url,
-                    "file_size_kb": file_size,
-                    "bucket": bucket_name
-                }
-            )
-            
-            return report_url
-            
-        except ImportError as e:
-            logger.error(
-                "Error importing boto3 - cannot use S3 storage",
-                extra={
-                    "run_id": run_id,
-                    "error_message": str(e)
-                }
-            )
-            # Fall back to storing locally
-            local_path = f"./reports/{object_key}"
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            import shutil
-            shutil.copy(doc_path, local_path)
-            logger.info(f"Saved report locally at {local_path}")
-            return f"file://{os.path.abspath(local_path)}"
-            
+                # Upload file using standard upload method - not async in Supabase client
+                try:
+                    logger.debug("Starting file upload using standard Supabase upload")
+                    result = supabase_client.storage.from_(bucket_name).upload(
+                        path=object_key,
+                        file=file_content,
+                        file_options={"content_type": content_type}
+                    )
+                    
+                    logger.debug(f"Upload result: {result}")
+                    
+                    if hasattr(result, 'error') and result.error:
+                        raise Exception(f"Supabase upload returned error: {result.error}")
+                        
+                except Exception as upload_error:
+                    logger.error(
+                        f"Supabase upload error",
+                        extra={
+                            "error": str(upload_error),
+                            "bucket": bucket_name,
+                            "object_key": object_key
+                        }
+                    )
+                    raise Exception(f"Supabase upload error: {str(upload_error)}")
+                
+                # Try to get the public URL directly from Supabase client first
+                try:
+                    report_url = supabase_client.storage.from_(bucket_name).get_public_url(object_key)
+                    logger.info(f"Generated public URL from Supabase client: {report_url}")
+                except Exception as url_error:
+                    logger.warning(
+                        f"Could not get URL from Supabase client, falling back to constructed URL",
+                        extra={"error": str(url_error)}
+                    )
+                    # Fall back to constructing the URL manually
+                    base_supabase_url = settings.supabase_url
+                    if base_supabase_url.endswith('/storage/v1/s3'):
+                        base_supabase_url = base_supabase_url[:-13]  # Remove '/storage/v1/s3'
+                    elif base_supabase_url.endswith('/storage/v1'):
+                        base_supabase_url = base_supabase_url[:-10]  # Remove '/storage/v1'
+                        
+                    public_url_base = f"{base_supabase_url}/storage/v1/object/public"
+                    report_url = f"{public_url_base}/{bucket_name}/{object_key}"
+                    logger.info(f"Using constructed public URL: {report_url}")
+                
+                logger.info(
+                    "File uploaded successfully using standard upload, storing metadata",
+                    extra={
+                        "run_id": run_id,
+                        "report_url": report_url
+                    }
+                )
+                
+                # Store metadata in report_compilation table
+                await self.supabase.execute_with_retry(
+                    operation="insert",
+                    table="report_compilation",
+                    data={
+                        "run_id": run_id,
+                        "report_url": report_url,
+                        "version": 1,
+                        "created_at": datetime.now().isoformat(),
+                        "format": "docx",
+                        "file_size_kb": file_size,
+                        "notes": "Comprehensive brand naming analysis report",
+                        "upload_protocol": "standard",
+                        "storage_bucket": bucket_name,
+                        "storage_key": object_key
+                    }
+                )
+                
+                # Clean up temporary file
+                os.unlink(doc_path)
+                
+                logger.info(
+                    "Report stored successfully using Supabase Storage standard upload",
+                    extra={
+                        "run_id": run_id, 
+                        "report_url": report_url,
+                        "file_size_kb": file_size,
+                        "bucket": bucket_name
+                    }
+                )
+                
+                return report_url
+            else:
+                raise ValueError("Supabase client not initialized")
+                
         except Exception as e:
             logger.error(
-                "Error storing report via Supabase Storage S3",
+                "Error storing report via Supabase Storage standard upload",
                 extra={
                     "run_id": run_id, 
                     "error_type": type(e).__name__, 
@@ -1323,7 +1284,7 @@ class ReportCompiler:
                 }
             )
             
-            # If we failed to store in S3, keep the local file as a backup
+            # If we failed to store, keep the local file as a backup
             local_backup_path = f"./reports/{object_key}"
             try:
                 import shutil
@@ -1332,6 +1293,11 @@ class ReportCompiler:
                 logger.info(f"Created local backup at {local_backup_path}")
                 # Still attempt to clean up the temp file
                 os.unlink(doc_path)
+                
+                # Return a file:// URL as fallback
+                absolute_path = os.path.abspath(local_backup_path)
+                return f"file://{absolute_path}"
+                
             except Exception as backup_error:
                 logger.error(f"Failed to create local backup: {str(backup_error)}")
             
