@@ -98,7 +98,7 @@ reports/*
 *.env.test.local
 *.env.production.local
 *zz
-*test
+*test*
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -128,3 +128,4 @@ test_supabase.py
 src/mae_brand_namer/scripts/test_db_connection.py
 src/mae_brand_namer/db/supabase.py
 src/mae_brand_namer/scripts/run_db_test.py
+test_exec_summary.py

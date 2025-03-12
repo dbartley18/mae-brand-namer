@@ -194,9 +194,9 @@ class ReportCompiler:
 
             # Set up the prompt template
             system_message = SystemMessage(content=self.system_prompt.format())
-            human_template = self.compilation_prompt.template
+            # Don't hardcode the template content, use the yaml file's template
             self.prompt = ChatPromptTemplate.from_messages(
-                [system_message, HumanMessage(content=human_template)]
+                [system_message, HumanMessage(content=self.compilation_prompt.template)]
             )
             logger.info("Successfully set up prompt template")
 
@@ -522,6 +522,7 @@ class ReportCompiler:
                 "competitor_analysis",
                 "survey_simulation",
                 "translation_analysis",
+                "market_research",
                 "recommendations"
             ]
             
@@ -545,6 +546,7 @@ class ReportCompiler:
                 "competitor_analysis": ["competitor_analysis"],
                 "survey_simulation": ["survey_simulation"],
                 "translation_analysis": ["translation_analysis"],
+                "market_research": ["market_research"],
                 "recommendations": ["brand_name_evaluation", "domain_analysis", "seo_online_discoverability"]
             }
             
@@ -819,6 +821,20 @@ class ReportCompiler:
         Returns:
             Dict containing the data needed for this section
         """
+        # Set a high limit to ensure we get all records
+        high_limit = 10000
+        
+        # Utility function to fetch with high limit
+        async def _fetch_with_high_limit(analysis_type, run_id, fields=None, filter_condition=None, filter_values=None):
+            return await self._fetch_analysis(
+                analysis_type=analysis_type,
+                run_id=run_id,
+                fields=fields,
+                filter_condition=filter_condition,
+                filter_values=filter_values,
+                limit=high_limit
+            )
+        
         section_data = {
             "run_id": run_id,
             "metadata": {
@@ -930,7 +946,7 @@ class ReportCompiler:
             if section_name == "executive_summary":
                 # For executive summary, we need basic brand context and overall metrics
                 # Use a more targeted query with minimal fields
-                brand_contexts = await self._fetch_analysis(
+                brand_contexts = await _fetch_with_high_limit(
                     "brand_context", 
                     run_id,
                     fields=["brand_promise", "brand_mission", "target_audience", "run_id"]
@@ -944,7 +960,7 @@ class ReportCompiler:
                 section_data["total_names_generated"] = name_count
                 
                 # Get shortlisted names count - only need specific fields
-                evaluations = await self._fetch_analysis(
+                evaluations = await _fetch_with_high_limit(
                     "brand_name_evaluation", 
                     run_id,
                     fields=["brand_name", "shortlist_status", "overall_score", "run_id"],
@@ -956,7 +972,7 @@ class ReportCompiler:
                 
             elif section_name == "brand_context":
                 # Fetch brand context with the exact fields needed
-                brand_contexts = await self._fetch_analysis(
+                brand_contexts = await _fetch_with_high_limit(
                     "brand_context", 
                     run_id,
                     fields=brand_context_fields
@@ -968,7 +984,7 @@ class ReportCompiler:
                 
             elif section_name == "name_generation":
                 # Fetch name generations with required fields
-                generations = await self._fetch_analysis(
+                generations = await _fetch_with_high_limit(
                     "brand_name_generation", 
                     run_id,
                     fields=brand_name_generation_fields
@@ -979,7 +995,7 @@ class ReportCompiler:
                 
             elif section_name == "linguistic_analysis":
                 # Fetch name generations for the brand names list - just need names
-                name_generations = await self._fetch_analysis(
+                name_generations = await _fetch_with_high_limit(
                     "brand_name_generation", 
                     run_id,
                     fields=["brand_name", "run_id"]
@@ -988,7 +1004,7 @@ class ReportCompiler:
                 section_data["brand_names"] = [ng.get("brand_name") for ng in name_generations]
                 
                 # Fetch linguistic analyses with the required fields
-                linguistic_analyses = await self._fetch_analysis(
+                linguistic_analyses = await _fetch_with_high_limit(
                     "linguistic_analysis", 
                     run_id, 
                     fields=linguistic_analysis_fields
@@ -999,7 +1015,7 @@ class ReportCompiler:
                 
             elif section_name == "semantic_analysis":
                 # Fetch semantic analyses with the required fields
-                semantic_analyses = await self._fetch_analysis(
+                semantic_analyses = await _fetch_with_high_limit(
                     "semantic_analysis", 
                     run_id,
                     fields=semantic_analysis_fields
@@ -1010,7 +1026,7 @@ class ReportCompiler:
                 
             elif section_name == "cultural_sensitivity":
                 # Fetch cultural sensitivity analyses with the required fields
-                cultural_analyses = await self._fetch_analysis(
+                cultural_analyses = await _fetch_with_high_limit(
                     "cultural_sensitivity_analysis", 
                     run_id,
                     fields=cultural_sensitivity_fields
@@ -1021,7 +1037,7 @@ class ReportCompiler:
                 
             elif section_name == "name_evaluation":
                 # Fetch name generations for the brand names list - just need names
-                name_generations = await self._fetch_analysis(
+                name_generations = await _fetch_with_high_limit(
                     "brand_name_generation", 
                     run_id,
                     fields=["brand_name", "run_id"]
@@ -1030,7 +1046,7 @@ class ReportCompiler:
                 section_data["brand_names"] = [ng.get("brand_name") for ng in name_generations]
                 
                 # Fetch evaluations with the required fields
-                evaluations = await self._fetch_analysis(
+                evaluations = await _fetch_with_high_limit(
                     "brand_name_evaluation", 
                     run_id,
                     fields=brand_name_evaluation_fields
@@ -1041,7 +1057,7 @@ class ReportCompiler:
                 
             elif section_name == "domain_analysis":
                 # Fetch domain analyses with the required fields
-                domain_analyses = await self._fetch_analysis(
+                domain_analyses = await _fetch_with_high_limit(
                     "domain_analysis", 
                     run_id,
                     fields=domain_analysis_fields
@@ -1057,7 +1073,7 @@ class ReportCompiler:
                     "seo_viability_score", "seo_recommendations", "run_id"
                 ]
                 
-                seo_analyses = await self._fetch_analysis(
+                seo_analyses = await _fetch_with_high_limit(
                     "seo_online_discoverability", 
                     run_id,
                     fields=seo_fields
@@ -1068,7 +1084,7 @@ class ReportCompiler:
                 
             elif section_name == "competitor_analysis":
                 # Fetch competitor analyses with the required fields
-                competitor_analyses = await self._fetch_analysis(
+                competitor_analyses = await _fetch_with_high_limit(
                     "competitor_analysis", 
                     run_id,
                     fields=competitor_analysis_fields
@@ -1078,19 +1094,31 @@ class ReportCompiler:
                 section_data["competitor_analyses"] = competitor_analyses
                 
             elif section_name == "survey_simulation":
-                # Fetch survey simulations with the essential fields only to avoid GRPC overload
-                survey_simulations = await self._fetch_analysis(
+                # Log that we're starting to fetch survey simulation data
+                logger.info(f"Fetching survey simulation data for run_id: {run_id}")
+                
+                # Fetch survey simulations with the essential fields
+                survey_simulations = await _fetch_with_high_limit(
                     "survey_simulation", 
                     run_id,
                     fields=survey_simulation_essential_fields
                 )
+                
+                # Log the number of survey simulations retrieved
+                logger.info(f"Retrieved {len(survey_simulations)} survey simulations")
+                
+                # Log the first survey simulation to see its structure (if any were retrieved)
+                if survey_simulations and len(survey_simulations) > 0:
+                    logger.info(f"First survey simulation keys: {list(survey_simulations[0].keys())}")
+                else:
+                    logger.warning(f"No survey simulations found for run_id: {run_id}")
                 
                 # Structure according to schema - organized by brand name
                 section_data["survey_simulations"] = survey_simulations
                 
             elif section_name == "translation_analysis":
                 # Fetch translation analyses with the required fields
-                translation_analyses = await self._fetch_analysis(
+                translation_analyses = await _fetch_with_high_limit(
                     "translation_analysis", 
                     run_id,
                     fields=translation_analysis_fields
@@ -1099,9 +1127,20 @@ class ReportCompiler:
                 # Structure according to schema - grouped by brand name and target language
                 section_data["translation_analyses"] = translation_analyses
                 
+            elif section_name == "market_research":
+                # Fetch market research analyses with the required fields
+                market_researches = await _fetch_with_high_limit(
+                    "market_research", 
+                    run_id,
+                    fields=market_research_fields
+                )
+                
+                # Structure according to schema - grouped by brand name
+                section_data["market_researches"] = market_researches
+                
             elif section_name == "recommendations":
                 # Only need shortlisted names with minimal data for recommendations
-                shortlisted_evaluations = await self._fetch_analysis(
+                shortlisted_evaluations = await _fetch_with_high_limit(
                     "brand_name_evaluation", 
                     run_id,
                     fields=["brand_name", "overall_score", "shortlist_status", "evaluation_comments", "run_id"],
@@ -1119,7 +1158,7 @@ class ReportCompiler:
                         "acquisition_cost", "run_id"
                     ]
                     
-                    domain_analyses = await self._fetch_analysis(
+                    domain_analyses = await _fetch_with_high_limit(
                         "domain_analysis", 
                         run_id,
                         fields=domain_info_fields,
@@ -1133,7 +1172,7 @@ class ReportCompiler:
                         "brand_name", "seo_viability_score", "seo_recommendations", "run_id"
                     ]
                     
-                    seo_analyses = await self._fetch_analysis(
+                    seo_analyses = await _fetch_with_high_limit(
                         "seo_online_discoverability", 
                         run_id,
                         fields=seo_info_fields,
@@ -1217,6 +1256,9 @@ class ReportCompiler:
         
         {section_instructions}
         
+        {"IMPORTANT: For executive summary, ensure you include the actual total number of brand names generated. The total count is: " + str(optimized_data.get('total_names_generated', 0)) if section_name == "executive_summary" else ""}
+        {"IMPORTANT: For name generation, ensure you include the total count of names generated. The total count is: " + str(optimized_data.get('total_names_generated', 0)) if section_name == "name_generation" else ""}
+        
         Format your response according to this schema:
         {section_output_parser.get_format_instructions()}
         """)
@@ -1277,60 +1319,46 @@ class ReportCompiler:
         
     def _optimize_section_data(self, section_name: str, section_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Optimize section data to reduce payload size sent to LLM.
+        Optimize the section data for LLM processing by summarizing large lists and restructuring data.
         
         Args:
-            section_name: The name of the section being generated
-            section_data: Original data for this section
+            section_name: The name of the section being processed
+            section_data: The raw data for this section
             
         Returns:
-            Dict with optimized/filtered data for LLM consumption
+            Dict containing optimized data
         """
-        # Remove metadata and run_id from all sections (no need to send to LLM)
-        optimized = {k: v for k, v in section_data.items() if k not in ["metadata", "run_id"]}
+        optimized = {}
         
-        # Section-specific optimizations
+        # Special case for executive summary which needs metadata
         if section_name == "executive_summary":
-            # For executive summary, we need basic info but not full details
-            if "brand_context" in optimized:
-                # Keep only essential brand context fields
-                essential_fields = ["brand_promise", "brand_mission", "target_audience"]
-                optimized["brand_context"] = {k: v for k, v in optimized.get("brand_context", {}).items() 
-                                            if k in essential_fields}
+            # Make sure total_names_generated is prominently displayed if available
+            if "total_names_generated" in section_data:
+                optimized["total_names_generated"] = section_data["total_names_generated"]
+                # Add an explicit note for the LLM
+                optimized["note"] = f"IMPORTANT: A total of {section_data['total_names_generated']} names were generated. Include this exact number in the executive summary."
+            
+            # Include other key metadata
+            for key in ["brand_context", "shortlisted_names", "shortlisted_names_count"]:
+                if key in section_data:
+                    optimized[key] = section_data[key]
+                    
+            return optimized
+        
+        # For name generation, ensure total count is included
+        if section_name == "name_generation" and "total_names_generated" in section_data:
+            optimized["total_names_generated"] = section_data["total_names_generated"]
+            optimized["note"] = f"IMPORTANT: A total of {section_data['total_names_generated']} names were generated. Include this exact number in the name generation section."
+        
+        # Copy all other data with basic optimization
+        for key, value in section_data.items():
+            # Skip metadata
+            if key == "metadata":
+                continue
                 
-        elif section_name == "recommendations":
-            # Filter to only include evaluation scores and shortlisted names
-            if "shortlisted_names" in optimized:
-                # Keep the shortlisted names but limit any additional data
-                optimized = {
-                    "shortlisted_names": optimized.get("shortlisted_names", []),
-                    "shortlisted_domains": optimized.get("shortlisted_domains", []),
-                    "shortlisted_seo": optimized.get("shortlisted_seo", [])
-                }
-                
-        elif section_name == "survey_simulation":
-            # For survey simulation, filter out excessive details
-            if "survey_simulations" in optimized:
-                # Keep only the most relevant survey data fields
-                filtered_simulations = []
-                for sim in optimized.get("survey_simulations", []):
-                    filtered_sim = {
-                        "brand_name": sim.get("brand_name"),
-                        "persona_segment": sim.get("persona_segment"),
-                        "company_name": sim.get("company_name"),
-                        "job_title": sim.get("job_title"),
-                        "simulated_market_adoption_score": sim.get("simulated_market_adoption_score"),
-                        "qualitative_feedback_summary": sim.get("qualitative_feedback_summary"),
-                        "final_survey_recommendation": sim.get("final_survey_recommendation")
-                    }
-                    filtered_simulations.append(filtered_sim)
-                optimized["survey_simulations"] = filtered_simulations
-                
-        # Apply general optimizations - remove any None values to reduce payload size
-        for key in list(optimized.keys()):
-            if optimized[key] is None:
-                del optimized[key]
-                
+            # Include all other fields
+            optimized[key] = value
+            
         return optimized
         
     async def _generate_section_in_chunks(
@@ -1604,13 +1632,25 @@ class ReportCompiler:
             "competitor_analysis",
             "survey_simulation",
             "translation_analysis",
+            "market_research",
             "recommendations",
         ]
+        
+        # Log all available sections in report_data
+        logger.info(f"Available sections in report_data: {list(report_data.keys())}")
+        
+        # Log which sections have data and which don't
+        for section in section_order:
+            has_data = section in report_data and bool(report_data.get(section))
+            logger.info(f"Section '{section}': {'HAS DATA' if has_data else 'NO DATA'}")
         
         for section in section_order:
             section_data = report_data.get(section, {})
             if not section_data:
+                logger.warning(f"Skipping section '{section}' because it has no data")
                 continue
+            
+            logger.info(f"Formatting section '{section}' with data keys: {list(section_data.keys()) if isinstance(section_data, dict) else 'Non-dict data'}")
             
             formatted_section = {
                 "title": section.replace("_", " ").title(),
@@ -1618,6 +1658,10 @@ class ReportCompiler:
             }
             
             formatted_report["sections"].append(formatted_section)
+            logger.info(f"Added '{section}' to formatted_report")
+        
+        # Log the final sections that made it into the report
+        logger.info(f"Final report sections: {[section['title'] for section in formatted_report['sections']]}")
             
         return formatted_report
         
@@ -1681,6 +1725,9 @@ class ReportCompiler:
                     formatted_content["bullet_points"] = bullet_points
                     
         elif section_type == "survey_simulation":
+            # Log that we're formatting the survey simulation section
+            logger.info(f"Formatting survey simulation section with data keys: {list(section_data.keys())}")
+            
             # For survey simulation, we need to structure the table data
             formatted_content["table"] = {
                 "headers": ["Persona", "Company", "Role", "Brand Score", "Key Feedback"],
@@ -1690,8 +1737,13 @@ class ReportCompiler:
             # Attempt to extract survey data
             if isinstance(section_data, dict) and "survey_simulations" in section_data:
                 surveys = section_data["survey_simulations"]
+                logger.info(f"Found {len(surveys)} survey simulations to format")
+                
                 for survey in surveys:
                     if isinstance(survey, dict):
+                        # Log each survey being processed
+                        logger.info(f"Processing survey for brand: {survey.get('brand_name', 'Unknown')}")
+                        
                         row = [
                             survey.get("persona_segment", ""),
                             survey.get("company_name", ""),
@@ -1700,7 +1752,12 @@ class ReportCompiler:
                             survey.get("qualitative_feedback_summary", "")
                         ]
                         formatted_content["table"]["rows"].append(row)
-                        
+                
+                # Log the formatted table structure
+                logger.info(f"Created survey table with {len(formatted_content['table']['rows'])} rows")
+            else:
+                logger.warning("No survey_simulations key found in section_data or it's not a dictionary")
+            
         elif section_type == "competitor_analysis":
             # Format competitor analysis as structured data
             if "summary" not in formatted_content and "competitive_analysis" in section_data:
@@ -1757,6 +1814,26 @@ class ReportCompiler:
                 
                 if details:
                     formatted_content["details"] = details
+        elif section_type == "market_research":
+            # Format market research as structured data
+            formatted_content["table"] = {
+                "headers": ["Brand Name", "Market Opportunity", "Target Audience Fit", "Market Viability", "Key Recommendations"],
+                "rows": []  # Will be filled with actual data rows
+            }
+            
+            # Attempt to extract market research data
+            if isinstance(section_data, dict) and "market_researches" in section_data:
+                researches = section_data["market_researches"]
+                for research in researches:
+                    if isinstance(research, dict):
+                        row = [
+                            research.get("brand_name", ""),
+                            research.get("market_opportunity", ""),
+                            research.get("target_audience_fit", ""),
+                            research.get("market_viability", ""),
+                            research.get("recommendations", "")
+                        ]
+                        formatted_content["table"]["rows"].append(row)
         else:
             # Default formatting for other section types
             # Check if we have details to extract
@@ -2042,7 +2119,12 @@ class ReportCompiler:
                 if "table" in content and isinstance(content["table"], dict):
                     table = content["table"]
                     logger.info(f"Survey table headers: {table.get('headers', [])}")
+                    logger.info(f"Survey table row count: {len(table.get('rows', []))}")
                     # The existing logic will process the table with all columns
+                else:
+                    logger.warning("No table found in survey simulation content or it's not a dictionary")
+            else:
+                logger.warning("Survey simulation content is not a dictionary")
 
         # Add sections
         logger.info(f"Processing {len(report['sections'])} sections for document generation")
@@ -2053,6 +2135,14 @@ class ReportCompiler:
             if section["title"].lower() == "translation analysis":
                 translation_section_index = i
                 break
+        
+        # Log all section titles before processing
+        section_titles = [section["title"] for section in report["sections"]]
+        logger.info(f"Sections to be included in document: {section_titles}")
+        
+        # Check if survey_simulation section is present
+        survey_simulation_present = any(section["title"].lower() == "survey simulation" for section in report["sections"])
+        logger.info(f"Survey Simulation section present in report: {survey_simulation_present}")
         
         for i, section in enumerate(report["sections"], 1):
             # Log the section being processed
@@ -2067,18 +2157,25 @@ class ReportCompiler:
             # Special handling for recommendations section (make it more professional)
             if section["title"].lower() == "recommendations":
                 _process_recommendations_section(content)
+                logger.info("Processed recommendations section")
             
             # Special handling for linguistic analysis to ensure all data is captured
             if section["title"].lower() == "linguistic analysis":
                 _process_linguistic_analysis_section(content)
+                logger.info("Processed linguistic analysis section")
                 
             # Special handling for translation analysis to ensure all data is captured
             if section["title"].lower() == "translation analysis":
                 _process_translation_analysis_section(content)
+                logger.info("Processed translation analysis section")
                 
             # Special handling for survey simulation to include full details
             if section["title"].lower() == "survey simulation":
                 _process_survey_simulation_section(content)
+                logger.info("Processed survey simulation section")
+            
+            # After processing, log that the section was added
+            logger.info(f"Added section {i}: {section['title']} to document")
             
             # Process different content formats
             if isinstance(content, dict):
@@ -2422,16 +2519,11 @@ class ReportCompiler:
             int: Count of records
         """
         try:
-            # Use a count query for better performance when we just need the number of rows
-            count_query = f"""
-                SELECT COUNT(*) 
-                FROM {analysis_type} 
-                WHERE run_id = :run_id
-            """
-            
+            # Use direct query with the execute_query method on supabase client
+            query = f"SELECT COUNT(*) FROM {analysis_type} WHERE run_id = :run_id"
             params = {"run_id": run_id}
             
-            result = await self.supabase.execute_query(count_query, params)
+            result = await self.supabase.execute_query(query, params)
             
             # Extract count from result
             if result and len(result) > 0:
@@ -2447,15 +2539,29 @@ class ReportCompiler:
                     "run_id": run_id
                 }
             )
-            return 0
             
+            # Alternative approach - fetch all records and count them
+            try:
+                all_records = await self._fetch_analysis(analysis_type, run_id, fields=["id"])
+                return len(all_records)
+            except Exception as fallback_error:
+                logger.error(
+                    f"Fallback counting method also failed for {analysis_type}",
+                    extra={
+                        "error": str(fallback_error),
+                        "run_id": run_id
+                    }
+                )
+                return 0
+
     async def _fetch_analysis(
         self, 
         analysis_type: str, 
         run_id: str, 
         fields: Optional[List[str]] = None,
         filter_condition: Optional[Dict[str, Any]] = None,
-        filter_values: Optional[Dict[str, List[Any]]] = None
+        filter_values: Optional[Dict[str, List[Any]]] = None,
+        limit: int = 10000
     ) -> List[Dict[str, Any]]:
         """
         Fetch analysis data from the database for a specific analysis type and run ID.
@@ -2471,6 +2577,7 @@ class ReportCompiler:
                                                         or {'column': 'op.value'} for other operators
             filter_values (Optional[Dict[str, List[Any]]]): Filters with multiple possible values
                                                           Format: {'column': [value1, value2, ...]}
+            limit (int): Maximum number of records to fetch (default: 10000)
             
         Returns:
             List[Dict[str, Any]]: List of analysis results
@@ -2577,6 +2684,9 @@ class ReportCompiler:
             # Add select fields parameter
             if selected_fields and selected_fields != ["*"]:
                 query_data["select"] = ",".join(selected_fields)
+            
+            # Add limit parameter to avoid default Supabase limit issues
+            query_data["limit"] = limit
             
             # FIXED: Handle multiple operator prefixes by fully cleaning the run_id
             # Extract clean run_id to prevent double operators (like "eq.eq.")

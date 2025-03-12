@@ -6,11 +6,11 @@ template: |
   State Data:
   {state_data}
 
-  Structure the report with these sections in exact order:
+  Structure the report with these sections in exact order, but do not include section numbers in the final report:
 
   1. Executive Summary
      - Project overview and objectives
-     - Key findings and insights
+     - Key findings and insights including the total number of brand names generated
      - Top recommendations
      - Strategic implications
 
@@ -26,7 +26,7 @@ template: |
 
   3. Name Generation
      - Methodology and approach
-     - Generated names overview
+     - Generated names overview (include total count of names generated)
      - Initial evaluation metrics
      - Brand personality alignment
      - Brand promise alignment
@@ -66,7 +66,19 @@ template: |
      - Historical meaning
      - Overall risk assessment
 
-  7. Name Evaluation
+  7. Translation Analysis
+     - Direct translations
+     - Semantic shifts
+     - Pronunciation difficulty
+     - Phonetic retention
+     - Cultural acceptability
+     - Adaptation needs
+     - Proposed adaptations
+     - Brand essence preservation
+     - Global consistency vs localization
+     - Language-specific considerations
+
+  8. Name Evaluation
      - Strategic alignment scores
      - Distinctiveness scores
      - Memorability scores
@@ -77,7 +89,7 @@ template: |
      - Evaluation rationale
      - Ranking and recommendations
 
-  8. Domain Analysis
+  9. Domain Analysis
      - Domain availability
      - Alternative TLDs
      - Domain history
@@ -86,16 +98,16 @@ template: |
      - Technical considerations
      - Future-proofing strategy
 
-  9. SEO Analysis
-     - Keyword alignment
-     - Search volume potential
-     - Branded vs non-branded potential
-     - Content opportunities
-     - Social media discoverability
-     - SEO viability scores
-     - Implementation recommendations
+  10. SEO Analysis
+      - Keyword alignment
+      - Search volume potential
+      - Branded vs non-branded potential
+      - Content opportunities
+      - Social media discoverability
+      - SEO viability scores
+      - Implementation recommendations
 
-  10. Competitor Analysis
+  11. Competitor Analysis
       - Competitor naming styles
       - Market positioning
       - Differentiation opportunities
@@ -104,7 +116,19 @@ template: |
       - Competitive advantages
       - Trademark considerations
 
-  11. Survey Simulation
+  12. Market Research
+      - Market opportunity assessment
+      - Target audience fit
+      - Market viability
+      - Potential risks
+      - Industry insights
+      - Market size and growth
+      - Key competitors
+      - Customer pain points
+      - Market entry barriers
+      - Emerging trends
+
+  13. Survey Simulation
       - Methodology overview
       - Persona demographics
       - Brand promise perception
@@ -115,7 +139,7 @@ template: |
       - Qualitative feedback
       - Strategic recommendations
 
-  12. Strategic Recommendations
+  14. Strategic Recommendations
       - Final name recommendations
       - Implementation strategy
       - Risk management

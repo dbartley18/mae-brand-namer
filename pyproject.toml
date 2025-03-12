@@ -39,6 +39,11 @@ dependencies = [
     "jinja2>=3.1.0",
     "click>=8.1.0",
     "python-docx>=1.0.1",
+    "boto3>=1.26.0",
+    "markdown>=3.4.0",
+    "postgrest>=0.10.6",
+    "storage3>=0.5.2",
+    "gotrue>=1.0.1",
 ]
 requires-python = ">=3.11"
 
