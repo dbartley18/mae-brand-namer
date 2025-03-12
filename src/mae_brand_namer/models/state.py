@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, Sequence, Any
+from typing import List, Dict, Optional, Sequence, Any, Union
 from typing_extensions import TypedDict, Annotated
 from pydantic import BaseModel, Field, ConfigDict
 from langchain_core.messages import BaseMessage
@@ -445,6 +445,14 @@ class BrandNameGenerationState(Serializable, BaseModel):
     
     # Report compilation fields
     compiled_report: Optional[Dict[str, Any]] = Field(default=None, description="Compiled report with organized data and report URL")
+    report_url: Optional[str] = Field(default=None, description="URL to the generated report document")
+    version: Optional[Union[str, int]] = Field(default=None, description="Version of the generated report")
+    created_at: Optional[str] = Field(default=None, description="Timestamp when the report was created")
+    last_updated: Optional[str] = Field(default=None, description="Timestamp when the report was last updated")
+    format: Optional[str] = Field(default=None, description="Format of the report (e.g., docx, pdf)")
+    file_size_kb: Optional[float] = Field(default=None, description="Size of the report file in kilobytes")
+    notes: Optional[str] = Field(default=None, description="Additional notes about the report")
+    token_count: Optional[int] = Field(default=None, description="Number of tokens used in the report generation")
     
     model_config = ConfigDict(arbitrary_types_allowed=True)
     

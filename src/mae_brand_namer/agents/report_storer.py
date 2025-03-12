@@ -2,7 +2,7 @@
 
 import os
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from postgrest import APIError
 
 from ..config.settings import settings
@@ -21,7 +21,7 @@ class ReportStorer:
             report_data: Report data to store
             
         Returns:
-            Dict containing the report URL and access information
+            Dict containing the updated state with report URL and access information
         """
         try:
             # Generate the report URL
@@ -30,6 +30,9 @@ class ReportStorer:
             
             # Create the access token (simplified for demo)
             access_token = f"token_{run_id}"
+            
+            # Current timestamp
+            now = datetime.now()
             
             # Log the storage operation
             logger.info(
@@ -40,14 +43,27 @@ class ReportStorer:
                 }
             )
             
-            # Return the access information
-            return {
+            # Ensure we're returning all the fields needed by BrandNameGenerationState
+            # Create a result that preserves all original report data
+            result = {
+                **report_data,  # Keep all existing report data
                 "report_url": report_url,
-                "access_token": access_token,
-                "expires_at": (datetime.now().replace(microsecond=0) + 
-                              datetime.timedelta(days=30)).isoformat(),
                 "status": "complete"
             }
+            
+            # Only set these fields if they don't already exist
+            if "created_at" not in result:
+                result["created_at"] = now.isoformat()
+            
+            if "last_updated" not in result:
+                result["last_updated"] = now.isoformat()
+                
+            # Ensure version is always present
+            if "version" not in result:
+                result["version"] = 1
+                
+            # Return the complete state data
+            return result
             
         except APIError as e:
             logger.error(

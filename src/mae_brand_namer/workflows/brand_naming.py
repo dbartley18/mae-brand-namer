@@ -35,7 +35,7 @@ from mae_brand_namer.agents import (
     SurveySimulationExpert,
     MarketResearchExpert,
     ReportCompiler,
-    ReportStorer,
+    
     ProcessSupervisor,
     BrandNameEvaluator
 )
@@ -64,7 +64,6 @@ NODE_AGENT_TASK_MAPPING = {
     "process_competitor_analysis": ("CompetitorAnalysisExpert", "Analyze_Competition"),
     "process_survey_simulation": ("SurveySimulationExpert", "Simulate_Survey"),
     "compile_report": ("ReportCompiler", "Compile_Report"),
-    "store_report": ("ReportStorer", "Store_Report")
 }
 
 class ProcessSupervisorCallbackHandler(BaseCallbackHandler):
@@ -551,10 +550,6 @@ def create_workflow(config: dict) -> StateGraph:
         )), "compile_report")
     )
     
-    workflow.add_node("store_report", 
-        wrap_async_node(lambda state: process_report_storage(state, ReportStorer()), "store_report")
-    )
-    
     # Add edges to connect nodes in the workflow
     workflow.add_edge("generate_uid", "understand_brand_context")
     workflow.add_edge("understand_brand_context", "generate_brand_names")
@@ -574,7 +569,6 @@ def create_workflow(config: dict) -> StateGraph:
     workflow.add_edge("process_seo_analysis", "process_competitor_analysis")
     workflow.add_edge("process_competitor_analysis", "process_survey_simulation")
     workflow.add_edge("process_survey_simulation", "compile_report")
-    workflow.add_edge("compile_report", "store_report")
     
     # Define entry point
     workflow.set_entry_point("generate_uid")
@@ -1918,31 +1912,11 @@ async def process_report(state: BrandNameGenerationState, agent: ReportCompiler)
             "status": "error"
         }
 
-async def process_report_storage(state: BrandNameGenerationState, agent: ReportStorer) -> Dict[str, Any]:
-    """Process report storage with error handling and tracing."""
-    try:
-        with tracing_v2_enabled():
-            storage_result = await agent.store_report(
-                run_id=state.run_id,
-                report_data=state.compiled_report
-            )
-            
-            # IMPORTANT: Match the output_keys defined in tasks.yaml
-            current_time = datetime.now().isoformat()
-            return {
-                "report_storage_metadata": storage_result,
-                "run_id": state.run_id,
-                "report_url": storage_result.get("report_url", ""),
-                "status": storage_result.get("status", "completed"),
-                "created_at": current_time,
-                "last_updated": current_time
-            }
             
     except Exception as e:
         logger.error(f"Error in process_report_storage: {str(e)}")
         return {
             "errors": [{
-                "step": "store_report",
                 "error": str(e),
                 "traceback": traceback.format_exc(),
                 "timestamp": datetime.now().isoformat()
