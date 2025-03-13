@@ -1,0 +1,32 @@
+{
+  "semantic_analysis": {
+    "brand_name_1": {
+      "denotative_meaning": "string",
+      "etymology": "string",
+      "emotional_valence": "string",
+      "brand_personality": "string",
+      "sensory_associations": "string",
+      "figurative_language": "string",
+      "phoneme_combinations": "string",
+      "sound_symbolism": "string",
+      "alliteration_assonance": "string",
+      "word_length_syllables": "string",
+      "compounding_derivation": "string",
+      "semantic_trademark_risk": "string"
+    },
+    "brand_name_2": {
+      "denotative_meaning": "string",
+      "etymology": "string",
+      "emotional_valence": "string",
+      "brand_personality": "string",
+      "sensory_associations": "string",
+      "figurative_language": "string",
+      "phoneme_combinations": "string",
+      "sound_symbolism": "string",
+      "alliteration_assonance": "string",
+      "word_length_syllables": "string",
+      "compounding_derivation": "string",
+      "semantic_trademark_risk": "string"
+    }
+  }
+} 

@@ -1,0 +1,30 @@
+{
+  "cultural_sensitivity_analysis": {
+    "brand_name_1": {
+      "cultural_connotations": "string",
+      "symbolic_meanings": "string",
+      "alignment_with_cultural_values": "string",
+      "religious_sensitivities": "string",
+      "social_political_taboos": "string",
+      "age_related_connotations": "string",
+      "regional_variations": "string",
+      "historical_meaning": "string",
+      "current_event_relevance": "string",
+      "overall_risk_rating": "string",
+      "notes": "string"
+    },
+    "brand_name_2": {
+      "cultural_connotations": "string",
+      "symbolic_meanings": "string",
+      "alignment_with_cultural_values": "string",
+      "religious_sensitivities": "string",
+      "social_political_taboos": "string",
+      "age_related_connotations": "string",
+      "regional_variations": "string",
+      "historical_meaning": "string",
+      "current_event_relevance": "string",
+      "overall_risk_rating": "string",
+      "notes": "string"
+    }
+  }
+} 

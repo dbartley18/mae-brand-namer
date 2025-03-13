@@ -1,0 +1,17 @@
+{
+  "brand_context": {
+    "brand_promise": "string",
+    "brand_personality": "string",
+    "brand_tone_of_voice": "string",
+    "brand_values": "string",
+    "brand_purpose": "string",
+    "brand_mission": "string",
+    "target_audience": "string",
+    "customer_needs": "string",
+    "market_positioning": "string",
+    "competitive_landscape": "string",
+    "industry_focus": "string",
+    "industry_trends": "string",
+    "brand_identity_brief": "string"
+  }
+} 

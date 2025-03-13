@@ -1,0 +1,34 @@
+{
+  "market_research": {
+    "brand_name_1": {
+      "market_opportunity": "string",
+      "target_audience_fit": "string",
+      "competitive_analysis": "string",
+      "market_viability": "string",
+      "potential_risks": "string",
+      "recommendations": "string",
+      "industry_name": "string",
+      "market_size": "string",
+      "market_growth_rate": "string",
+      "key_competitors": "string",
+      "customer_pain_points": "string",
+      "market_entry_barriers": "string",
+      "emerging_trends": "string"
+    },
+    "brand_name_2": {
+      "market_opportunity": "string",
+      "target_audience_fit": "string",
+      "competitive_analysis": "string",
+      "market_viability": "string",
+      "potential_risks": "string",
+      "recommendations": "string",
+      "industry_name": "string",
+      "market_size": "string",
+      "market_growth_rate": "string",
+      "key_competitors": "string",
+      "customer_pain_points": "string",
+      "market_entry_barriers": "string",
+      "emerging_trends": "string"
+    }
+  }
+} 

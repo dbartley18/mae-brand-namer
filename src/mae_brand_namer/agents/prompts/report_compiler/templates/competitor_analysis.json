@@ -1,0 +1,35 @@
+{
+  "competitor_analysis": {
+    "brand_name_1": {
+      "competitor_1": {
+        "competitor_positioning": "string",
+        "competitor_strengths": "string",
+        "competitor_weaknesses": "string",
+        "competitor_differentiation_opportunity": "string",
+        "risk_of_confusion": "string",
+        "target_audience_perception": "string",
+        "trademark_conflict_risk": "string"
+      },
+      "competitor_2": {
+        "competitor_positioning": "string",
+        "competitor_strengths": "string",
+        "competitor_weaknesses": "string",
+        "competitor_differentiation_opportunity": "string",
+        "risk_of_confusion": "string",
+        "target_audience_perception": "string",
+        "trademark_conflict_risk": "string"
+      }
+    },
+    "brand_name_2": {
+      "competitor_1": {
+        "competitor_positioning": "string",
+        "competitor_strengths": "string",
+        "competitor_weaknesses": "string",
+        "competitor_differentiation_opportunity": "string",
+        "risk_of_confusion": "string",
+        "target_audience_perception": "string",
+        "trademark_conflict_risk": "string"
+      }
+    }
+  }
+} 

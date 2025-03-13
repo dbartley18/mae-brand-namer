@@ -1,0 +1,28 @@
+{
+  "domain_analysis": {
+    "brand_name_1": {
+      "domain_exact_match": "string",
+      "alternative_tlds": "string",
+      "misspellings_variations_available": "string",
+      "acquisition_cost": "string",
+      "domain_length_readability": "string",
+      "hyphens_numbers_present": "string",
+      "brand_name_clarity_in_url": "string",
+      "social_media_availability": "string",
+      "scalability_future_proofing": "string",
+      "notes": "string"
+    },
+    "brand_name_2": {
+      "domain_exact_match": "string",
+      "alternative_tlds": "string",
+      "misspellings_variations_available": "string",
+      "acquisition_cost": "string",
+      "domain_length_readability": "string",
+      "hyphens_numbers_present": "string",
+      "brand_name_clarity_in_url": "string",
+      "social_media_availability": "string",
+      "scalability_future_proofing": "string",
+      "notes": "string"
+    }
+  }
+} 

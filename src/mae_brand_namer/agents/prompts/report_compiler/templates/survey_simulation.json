@@ -1,0 +1,26 @@
+{
+  "survey_simulation": {
+    "brand_name_1": {
+      "brand_promise_perception_score": "number",
+      "personality_fit_score": "number",
+      "emotional_association": "string",
+      "competitive_differentiation_score": "number",
+      "competitor_benchmarking_score": "number",
+      "simulated_market_adoption_score": "number",
+      "qualitative_feedback_summary": "string",
+      "raw_qualitative_feedback": "string",
+      "final_survey_recommendation": "string"
+    },
+    "brand_name_2": {
+      "brand_promise_perception_score": "number",
+      "personality_fit_score": "number",
+      "emotional_association": "string",
+      "competitive_differentiation_score": "number",
+      "competitor_benchmarking_score": "number",
+      "simulated_market_adoption_score": "number",
+      "qualitative_feedback_summary": "string",
+      "raw_qualitative_feedback": "string",
+      "final_survey_recommendation": "string"
+    }
+  }
+} 

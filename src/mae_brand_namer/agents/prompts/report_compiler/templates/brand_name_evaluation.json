@@ -1,0 +1,18 @@
+{
+  "brand_name_evaluation": {
+    "shortlisted_names": [
+      {
+        "brand_name": "string",
+        "overall_score": "number",
+        "evaluation_comments": "string"
+      }
+    ],
+    "other_names": [
+      {
+        "brand_name": "string",
+        "overall_score": "number",
+        "evaluation_comments": "string"
+      }
+    ]
+  }
+} 

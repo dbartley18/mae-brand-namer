@@ -1,0 +1,36 @@
+{
+  "brand_name_generation": {
+    "total_names_generated": "number",
+    "methodology_summary": "string",
+    "categories": {
+      "category_name_1": [
+        {
+          "brand_name": "string",
+          "naming_category": "string",
+          "brand_personality_alignment": "string",
+          "brand_promise_alignment": "string",
+          "name_generation_methodology": "string",
+          "memorability_score_details": "string",
+          "pronounceability_score_details": "string",
+          "visual_branding_potential_details": "string",
+          "target_audience_relevance_details": "string",
+          "market_differentiation_details": "string"
+        }
+      ],
+      "category_name_2": [
+        {
+          "brand_name": "string",
+          "naming_category": "string",
+          "brand_personality_alignment": "string",
+          "brand_promise_alignment": "string",
+          "name_generation_methodology": "string",
+          "memorability_score_details": "string",
+          "pronounceability_score_details": "string",
+          "visual_branding_potential_details": "string",
+          "target_audience_relevance_details": "string",
+          "market_differentiation_details": "string"
+        }
+      ]
+    }
+  }
+} 

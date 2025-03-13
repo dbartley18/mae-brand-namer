@@ -1,0 +1,36 @@
+{
+  "linguistic_analysis": {
+    "brand_name_1": {
+      "pronunciation_ease": "string",
+      "euphony_vs_cacophony": "string",
+      "rhythm_and_meter": "string",
+      "phoneme_frequency_distribution": "string",
+      "sound_symbolism": "string",
+      "word_class": "string",
+      "morphological_transparency": "string",
+      "inflectional_properties": "string",
+      "ease_of_marketing_integration": "string",
+      "naturalness_in_collocations": "string",
+      "semantic_distance_from_competitors": "string",
+      "neologism_appropriateness": "string",
+      "overall_readability_score": "string",
+      "notes": "string"
+    },
+    "brand_name_2": {
+      "pronunciation_ease": "string",
+      "euphony_vs_cacophony": "string",
+      "rhythm_and_meter": "string",
+      "phoneme_frequency_distribution": "string",
+      "sound_symbolism": "string",
+      "word_class": "string",
+      "morphological_transparency": "string",
+      "inflectional_properties": "string",
+      "ease_of_marketing_integration": "string",
+      "naturalness_in_collocations": "string",
+      "semantic_distance_from_competitors": "string",
+      "neologism_appropriateness": "string",
+      "overall_readability_score": "string",
+      "notes": "string"
+    }
+  }
+} 

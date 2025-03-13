@@ -9,7 +9,7 @@ import asyncio
 
 # Third-party imports
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, load_prompt
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 from langchain_core.messages import HumanMessage, SystemMessage
 from postgrest import APIError
@@ -53,33 +53,23 @@ class ReportCompiler:
             top_k=40,
             top_p=0.95
         )
-
-    async def _verify_table_exists(self, table_name: str) -> bool:
-        """Verify that a table exists and is accessible.
         
-        Args:
-            table_name: Name of the table to verify
-            
-        Returns:
-            bool indicating if the table exists and is accessible
-        """
+        # Load prompt templates
         try:
-            # Try to count rows to verify table exists
-            result = await self.supabase.execute_with_retry(
-                "select",
-                table_name,
-                {
-                    "count": "exact",
-                    "limit": 1
-                }
-            )
-            
-            logger.info(f"Table {table_name} exists and returned a result")
-            return True
+            self.system_prompt = load_prompt("src/mae_brand_namer/agents/prompts/report_compiler/system.yaml")
+            self.compilation_prompt = load_prompt("src/mae_brand_namer/agents/prompts/report_compiler/compilation.yaml")
+            logger.info("Successfully loaded report compiler prompt templates")
         except Exception as e:
-            logger.error(f"Error verifying table {table_name}: {str(e)}")
-            return False
-            
+            logger.error(f"Error loading prompt templates: {str(e)}")
+            # Create fallback prompts
+            self.system_prompt = ChatPromptTemplate.from_template(
+                "You are a Report Compilation Expert specializing in brand naming analysis reports."
+            )
+            self.compilation_prompt = ChatPromptTemplate.from_template(
+                "Compile a comprehensive brand naming report using the following workflow data:\n\n"
+                "State Data:\n{state_data}\n\nFormat your report according to this schema:\n{format_instructions}"
+            )
+
     async def compile_report(
         self,
         run_id: str,
@@ -101,30 +91,6 @@ class ReportCompiler:
         try:
             # Start logging the process
             await self._log_overall_process(run_id, "started")
-            
-            # Verify essential tables exist
-            required_tables = [
-                "brand_name_evaluation", 
-                "brand_context",
-                "market_research",
-                "competitor_analysis",
-                "report_raw_data"
-            ]
-            
-            missing_tables = []
-            for table in required_tables:
-                if not await self._verify_table_exists(table):
-                    missing_tables.append(table)
-            
-            if missing_tables:
-                error_msg = f"Missing required tables: {', '.join(missing_tables)}"
-                logger.error(error_msg)
-                await self._log_overall_process(run_id, "failed", error_message=error_msg)
-                return {
-                    "status": "error",
-                    "error": error_msg,
-                    "run_id": run_id
-                }
             
             # Process each section
             sections_processed = []
@@ -480,33 +446,159 @@ class ReportCompiler:
             logger.error(f"Error fetching data for section {section_name}: {str(e)}")
             raise
 
+    def _get_structure_template(self, section_name: str) -> str:
+        """Get the JSON structure template and field descriptions for a specific section.
+        
+        Args:
+            section_name: Name of the section to get template for
+            
+        Returns:
+            String containing the structure template and field descriptions
+        """
+        try:
+            # Get the JSON template
+            template_path = f"src/mae_brand_namer/agents/prompts/report_compiler/templates/{section_name}.json"
+            json_template = ""
+            if os.path.exists(template_path):
+                with open(template_path, 'r') as f:
+                    json_template = f.read()
+            else:
+                logger.warning(f"No template file found for section {section_name}")
+                return ""
+
+            # Get field descriptions from README.md
+            readme_path = "src/mae_brand_namer/agents/prompts/report_compiler/templates/README.md"
+            field_descriptions = ""
+            if os.path.exists(readme_path):
+                with open(readme_path, 'r') as f:
+                    content = f.read()
+                    # Find the section for this template
+                    section_start = content.find(f"## {section_name.replace('_', ' ').title()} Template")
+                    if section_start != -1:
+                        section_end = content.find("##", section_start + 1)
+                        if section_end == -1:  # If it's the last section
+                            section_end = len(content)
+                        field_descriptions = content[section_start:section_end].strip()
+
+            # Combine template and descriptions
+            return f"""Structure Template:
+{json_template}
+
+Field Descriptions:
+{field_descriptions}"""
+
+        except Exception as e:
+            logger.error(f"Error loading template for section {section_name}: {str(e)}")
+            return ""
+
     async def _generate_section(
         self,
         run_id: str,
         section_name: str,
         section_data: Dict[str, Any],
-        user_prompt: Optional[str] = None
+        user_prompt: Optional[str] = None  # Keep this for potential future use
     ) -> Dict[str, Any]:
-        """Process raw data using LLM to generate structured insights.
+        """Process raw data to ensure consistent structure for the formatter.
         
         Args:
             run_id: Unique identifier for the report generation run
             section_name: Name of the section being processed
             section_data: Raw data for the section organized by table names
-            user_prompt: Optional user prompt for customization
+            user_prompt: Optional user prompt for customization (not used for structure template)
             
         Returns:
-            Dict containing processed insights
+            Dict containing the structured data in a format ready for the formatter
         """
         try:
-            # Simply store the raw data as is for each section
-            # This ensures we maintain the exact structure required
-            logger.info(f"Section {section_name} data prepared for storage")
+            logger.info(f"Processing section {section_name} for consistent structure")
+            
+            # Get the template
+            structure_template = self._get_structure_template(section_name)
+            
+            # If data structure is already well-formed or no template exists, skip LLM processing
+            if not structure_template or self._is_data_well_structured(section_data, section_name):
+                logger.info(f"Data for {section_name} is already well-structured, skipping LLM processing")
+                return section_data
+                
+            # Use the LLM to ensure data follows the proper structure
+            # Create messages for the LLM
+            system_message = SystemMessage(content=self.system_prompt.format())
+            
+            # Use the compilation prompt to format the section data
+            compilation_messages = self.compilation_prompt.format_messages(
+                section_name=section_name,
+                section_data=section_data,
+                structure_template=structure_template  # Use the correct parameter name
+            )
+            
+            # Combine messages
+            messages = [system_message] + compilation_messages
+            
+            # Invoke LLM
+            response = await self.llm.ainvoke(messages)
+            
+            try:
+                # Parse the response as JSON
+                structured_data = json.loads(response.content)
+                logger.info(f"Successfully structured data for section {section_name}")
+                return structured_data
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse LLM response as JSON for {section_name}: {e}")
+                # If parsing fails, just return the original data
+                return section_data
+                
+        except Exception as e:
+            logger.error(f"Error in _generate_section for {section_name}: {str(e)}")
+            # Return the original data if processing fails
             return section_data
             
-        except Exception as e:
-            logger.error(f"Error processing section {section_name}: {str(e)}")
-            raise
+    def _is_data_well_structured(self, data: Dict[str, Any], section_name: str) -> bool:
+        """Check if the data is already properly structured.
+        
+        Args:
+            data: The data to check
+            section_name: The name of the section
+            
+        Returns:
+            bool indicating if the data is already well-structured
+        """
+        # Check if data is empty
+        if not data:
+            return False
+            
+        # Check if the data has the expected top-level key
+        if section_name not in data:
+            return False
+            
+        # For brand_name_generation, check if it has the expected structure
+        if section_name == "brand_name_generation":
+            if not isinstance(data.get(section_name), dict):
+                return False
+                
+            # Check if we have categories with lists of names
+            for category, names in data.get(section_name, {}).items():
+                if not isinstance(names, list):
+                    return False
+                    
+        # For sections that should have brand names as keys
+        elif section_name in ["semantic_analysis", "linguistic_analysis", 
+                             "cultural_sensitivity_analysis", "brand_name_evaluation", 
+                             "market_research", "domain_analysis", "survey_simulation"]:
+            if not isinstance(data.get(section_name), dict):
+                return False
+                
+        # For translation_analysis and competitor_analysis, check nested structure
+        elif section_name in ["translation_analysis", "competitor_analysis"]:
+            if not isinstance(data.get(section_name), dict):
+                return False
+                
+            # Check first level (brand names)
+            for brand_name, brand_data in data.get(section_name, {}).items():
+                if not isinstance(brand_data, dict):
+                    return False
+                    
+        # Data passes all checks
+        return True
 
     async def _store_raw_section_data(
         self,

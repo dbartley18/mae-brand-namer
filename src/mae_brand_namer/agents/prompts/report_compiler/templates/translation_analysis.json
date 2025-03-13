@@ -1,0 +1,47 @@
+{
+  "translation_analysis": {
+    "brand_name_1": {
+      "language_1": {
+        "target_language": "string",
+        "direct_translation": "string",
+        "semantic_shift": "string",
+        "pronunciation_difficulty": "string",
+        "phonetic_retention": "string",
+        "cultural_acceptability": "string",
+        "adaptation_needed": "string",
+        "proposed_adaptation": "string",
+        "brand_essence_preserved": "string",
+        "global_consistency_vs_localization": "string",
+        "notes": "string"
+      },
+      "language_2": {
+        "target_language": "string",
+        "direct_translation": "string",
+        "semantic_shift": "string",
+        "pronunciation_difficulty": "string",
+        "phonetic_retention": "string",
+        "cultural_acceptability": "string",
+        "adaptation_needed": "string",
+        "proposed_adaptation": "string",
+        "brand_essence_preserved": "string",
+        "global_consistency_vs_localization": "string",
+        "notes": "string"
+      }
+    },
+    "brand_name_2": {
+      "language_1": {
+        "target_language": "string",
+        "direct_translation": "string",
+        "semantic_shift": "string",
+        "pronunciation_difficulty": "string",
+        "phonetic_retention": "string",
+        "cultural_acceptability": "string",
+        "adaptation_needed": "string",
+        "proposed_adaptation": "string",
+        "brand_essence_preserved": "string",
+        "global_consistency_vs_localization": "string",
+        "notes": "string"
+      }
+    }
+  }
+} 
