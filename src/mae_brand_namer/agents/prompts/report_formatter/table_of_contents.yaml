@@ -1,0 +1,34 @@
+_type: prompt
+input_variables: ["available_sections"]
+template: |
+  Generate a table of contents for a brand naming report.
+  
+  The report contains the following sections:
+  ```
+  {available_sections}
+  ```
+  
+  The table of contents should follow this exact structure:
+  
+  # Table of Contents 
+  1. Executive Summary
+  2. Brand Context
+  3. Name Generation
+  4. Linguistic Analysis
+  5. Semantic Analysis
+  6. Cultural Sensitivity
+  7. Name Evaluation
+  8. Domain Analysis
+  9. Competitor Analysis
+  10. Survey Simulation
+  11. Translation Analysis
+  12. Recommendations
+  
+  Only include sections that are available in the report (from the available_sections list).
+  Maintain the order exactly as shown above.
+  Use proper numbering that starts from 1 and increments sequentially.
+  
+  Return the table of contents as a JSON object with this key:
+  {
+    "table_of_contents": "text"
+  } 

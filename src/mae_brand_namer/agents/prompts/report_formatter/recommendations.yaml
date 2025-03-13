@@ -1,0 +1,75 @@
+_type: prompt
+input_variables: ["run_id", "sections_data", "shortlisted_names", "brand_context", "linguistic_analysis", "market_research", "domain_analysis", "cultural_sensitivity"]
+template: |
+  Your task is to create strategic recommendations for a brand naming report.
+
+  Run ID: {run_id}
+  
+  Shortlisted Brand Names (with scores):
+  ```
+  {shortlisted_names}
+  ```
+  
+  Brand Context:
+  ```
+  {brand_context}
+  ```
+  
+  Key Linguistic Analysis:
+  ```
+  {linguistic_analysis}
+  ```
+  
+  Market Research Summary:
+  ```
+  {market_research}
+  ```
+  
+  Domain Analysis:
+  ```
+  {domain_analysis}
+  ```
+  
+  Cultural Sensitivity Assessment:
+  ```
+  {cultural_sensitivity}
+  ```
+
+  Based on this comprehensive data, develop detailed strategic recommendations that include:
+
+  1. Final Name Recommendations
+     - Present the top 1-3 recommended brand names in ranked order
+     - Support each recommendation with specific data-backed strengths
+     - Show how each recommended name aligns with brand strategy and objectives
+     - Compare recommended names against competitors
+
+  2. Implementation Strategy
+     - Outline steps for implementing the new brand name
+     - Discuss potential trademark and legal considerations
+     - Suggest messaging for internal and external communications
+     - Provide timeline recommendations for rollout
+
+  3. Risk Management
+     - Identify potential challenges or issues with recommended names
+     - Present mitigation strategies for each identified risk
+     - Address any regional or cultural concerns
+     - Discuss contingency plans if needed
+
+  4. Next Steps
+     - Recommend immediate actions to move forward
+     - Suggest any additional research or testing if necessary
+     - Outline key decision points in the implementation process
+     - Provide metrics for measuring successful implementation
+
+  The recommendations should be actionable, strategic, and business-focused.
+  Use formal, professional language appropriate for senior executives.
+  Support all recommendations with specific data points from the analysis.
+  Focus on practical implementation rather than theoretical considerations.
+
+  Return the recommendations as a JSON object with these keys:
+  {
+    "final_name_recommendations": "text",
+    "implementation_strategy": "text",
+    "risk_management": "text",
+    "next_steps": "text"
+  } 

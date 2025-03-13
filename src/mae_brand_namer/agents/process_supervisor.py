@@ -1,6 +1,6 @@
 """Process supervision and monitoring for the brand naming workflow."""
 
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from datetime import datetime, timedelta
 import json
 import traceback
@@ -79,15 +79,25 @@ class ProcessSupervisor:
             await self._ensure_workflow_run_exists(run_id)
             
             # Create/update record in process_logs table
-            await self.supabase.table("process_logs").upsert({
-                "run_id": run_id,
-                "agent_type": agent_type,
-                "task_name": task_name,
-                "status": "in_progress",
-                "start_time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                "retry_count": self._get_retry_count(run_id, agent_type, task_name),
-                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }).execute()
+            update_query = f"""
+            INSERT INTO process_logs 
+            (run_id, agent_type, task_name, status, start_time, retry_count, last_updated)
+            VALUES 
+            ('{run_id}', '{agent_type}', '{task_name}', 'in_progress', 
+             '{start_time.strftime("%Y-%m-%d %H:%M:%S")}', 
+             {self._get_retry_count(run_id, agent_type, task_name)},
+             '{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+            ON CONFLICT (id) DO UPDATE SET
+            status = 'in_progress',
+            start_time = '{start_time.strftime("%Y-%m-%d %H:%M:%S")}',
+            retry_count = {self._get_retry_count(run_id, agent_type, task_name)},
+            last_updated = '{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+            WHERE process_logs.run_id = '{run_id}' 
+            AND process_logs.agent_type = '{agent_type}'
+            AND process_logs.task_name = '{task_name}'
+            """
+            
+            await self.supabase.execute_with_retry(update_query, {})
             
             logger.info(
                 "Task started",
@@ -133,7 +143,8 @@ class ProcessSupervisor:
         except Exception as e:
             logger.error(f"Error ensuring workflow run exists: {str(e)}")
     
-    async def log_task_completion(self, run_id: str, agent_type: str, task_name: str) -> None:
+    async def log_task_completion(self, run_id: str, agent_type: str, task_name: str, data_quality_issues: Optional[Dict] = None, 
+                               formatting_errors: Optional[Dict] = None, missing_sections: Optional[List[str]] = None) -> None:
         """
         Log the successful completion of a task.
         
@@ -141,6 +152,9 @@ class ProcessSupervisor:
             run_id (str): Unique identifier for the workflow run
             agent_type (str): Type of agent executing the task
             task_name (str): Name of the task being executed
+            data_quality_issues (Optional[Dict]): Data quality issues keyed by section name
+            formatting_errors (Optional[Dict]): Formatting errors keyed by section name
+            missing_sections (Optional[List[str]]): List of missing section names
         """
         try:
             # Skip if run_id is null or empty
@@ -158,16 +172,21 @@ class ProcessSupervisor:
             await self._ensure_workflow_run_exists(run_id)
             
             # Get existing record to calculate duration
-            response = await self.supabase.table("process_logs") \
-                .select("start_time") \
-                .eq("run_id", run_id) \
-                .eq("agent_type", agent_type) \
-                .eq("task_name", task_name) \
-                .execute()
+            query = f"""
+            SELECT start_time 
+            FROM process_logs 
+            WHERE run_id = '{run_id}' 
+            AND agent_type = '{agent_type}' 
+            AND task_name = '{task_name}'
+            """
             
+            result = await self.supabase.execute_with_retry(query, {})
+            
+            start_time = None
             duration_sec = None
-            if response.data and len(response.data) > 0:
-                start_time_str = response.data[0].get("start_time")
+            
+            if result and len(result) > 0:
+                start_time_str = result[0].get("start_time")
                 if start_time_str:
                     try:
                         # Handle different formats that might come from the database
@@ -180,24 +199,58 @@ class ProcessSupervisor:
             
             if start_time:
                 duration_sec = int((end_time - start_time).total_seconds())
+                
+            # Determine status based on any issues found
+            status = "completed"
+            if data_quality_issues or formatting_errors or missing_sections:
+                status = "completed_with_issues"
+                
+            # Format JSON fields for SQL
+            data_quality_json = "NULL"
+            if data_quality_issues:
+                try:
+                    data_quality_json = f"'{json.dumps(data_quality_issues)}'"
+                except:
+                    logger.warning("Failed to serialize data_quality_issues")
+                    
+            formatting_errors_json = "NULL"
+            if formatting_errors:
+                try:
+                    formatting_errors_json = f"'{json.dumps(formatting_errors)}'"
+                except:
+                    logger.warning("Failed to serialize formatting_errors")
+                    
+            missing_sections_array = "NULL"
+            if missing_sections:
+                missing_sections_array = f"ARRAY[{','.join([f'\'{s}\'' for s in missing_sections])}]"
             
             # Update the record
-            await self.supabase.table("process_logs").upsert({
-                "run_id": run_id,
-                "agent_type": agent_type,
-                "task_name": task_name,
-                "status": "completed",
-                "end_time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                "duration_sec": duration_sec,
-                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }).execute()
+            update_query = f"""
+            UPDATE process_logs SET
+            status = '{status}',
+            end_time = '{end_time.strftime("%Y-%m-%d %H:%M:%S")}',
+            duration_sec = {duration_sec if duration_sec is not None else 'NULL'},
+            data_quality_issues = {data_quality_json}::jsonb,
+            formatting_errors = {formatting_errors_json}::jsonb,
+            missing_sections = {missing_sections_array},
+            last_updated = '{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+            WHERE run_id = '{run_id}' 
+            AND agent_type = '{agent_type}' 
+            AND task_name = '{task_name}'
+            """
+            
+            await self.supabase.execute_with_retry(update_query, {})
             
             logger.info(
                 "Task completed",
                 run_id=run_id,
                 agent_type=agent_type,
                 task_name=task_name,
-                duration_sec=duration_sec
+                duration_sec=duration_sec,
+                status=status,
+                has_data_quality_issues=bool(data_quality_issues),
+                has_formatting_errors=bool(formatting_errors),
+                missing_section_count=len(missing_sections) if missing_sections else 0
             )
                 
         except Exception as e:
@@ -208,6 +261,7 @@ class ProcessSupervisor:
                 task_name=task_name,
                 error=str(e)
             )
+            logger.debug(f"Error traceback: {traceback.format_exc()}")
             # Don't raise exception - monitoring should not block workflow
     
     async def log_task_error(
@@ -248,15 +302,15 @@ class ProcessSupervisor:
             await self._ensure_workflow_run_exists(run_id)
             
             # Extract error details from the exception if available
-            error_details = {}
+            error_details = {
+                'error_type': type(error).__name__,
+                'traceback': traceback.format_exc()
+            }
             
             # Check for context attribute on the error object
             if hasattr(error, 'context'):
                 error_details['context'] = error.context
                 
-            # Add error type information
-            error_details['error_type'] = type(error).__name__
-            
             # If error has args, include them
             if hasattr(error, 'args') and error.args:
                 error_details['args'] = [str(arg) for arg in error.args]
@@ -269,20 +323,30 @@ class ProcessSupervisor:
                     error_details['code'] = error.code
                 if hasattr(error, 'hint'):
                     error_details['hint'] = error.hint
+            
+            # Serialize error details to JSON for SQL
+            error_details_json = "NULL"
+            try:
+                error_details_json = f"'{json.dumps(error_details)}'"
+            except:
+                logger.warning("Failed to serialize error_details")
                     
             # Update the process_logs record
-            await self.supabase.table("process_logs").upsert({
-                "run_id": run_id,
-                "agent_type": agent_type,
-                "task_name": task_name,
-                "status": "error",
-                "error_message": str(error),
-                "error_details": error_details,
-                "retry_count": retry_count,
-                "last_retry_at": current_time.strftime("%Y-%m-%d %H:%M:%S") if should_retry else None,
-                "retry_status": "pending" if should_retry else "exhausted",
-                "last_updated": current_time.strftime("%Y-%m-%d %H:%M:%S")
-            }).execute()
+            update_query = f"""
+            UPDATE process_logs SET
+            status = 'error',
+            error_message = '{str(error).replace("'", "''")}',
+            error_details = {error_details_json}::jsonb,
+            retry_count = {retry_count},
+            last_retry_at = '{current_time.strftime("%Y-%m-%d %H:%M:%S")}',
+            retry_status = '{'pending' if should_retry else 'exhausted'}',
+            last_updated = '{current_time.strftime("%Y-%m-%d %H:%M:%S")}'
+            WHERE run_id = '{run_id}' 
+            AND agent_type = '{agent_type}' 
+            AND task_name = '{task_name}'
+            """
+            
+            await self.supabase.execute_with_retry(update_query, {})
             
             log_level = logger.warning if should_retry else logger.error
             log_level(
@@ -306,6 +370,7 @@ class ProcessSupervisor:
                 original_error=str(error),
                 logging_error=str(e)
             )
+            logger.debug(f"Error traceback: {traceback.format_exc()}")
             # Return False to prevent infinite retry loops if monitoring fails
             return False
     

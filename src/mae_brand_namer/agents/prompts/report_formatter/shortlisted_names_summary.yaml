@@ -1,0 +1,54 @@
+_type: prompt
+input_variables: ["shortlisted_names", "brand_context", "linguistic_analysis", "semantic_analysis"]
+template: |
+  Your task is to create concise summaries for each shortlisted brand name, highlighting their key strengths and alignment with the brand.
+
+  Brand Context:
+  ```
+  {brand_context}
+  ```
+
+  Shortlisted Names:
+  ```
+  {shortlisted_names}
+  ```
+
+  Linguistic Analysis:
+  ```
+  {linguistic_analysis}
+  ```
+
+  Semantic Analysis:
+  ```
+  {semantic_analysis}
+  ```
+
+  For each shortlisted name (maximum 3 names), create a summary that includes:
+  1. The name itself
+  2. A one-sentence description of what the name communicates or represents
+  3. 2-3 bullet points highlighting the name's key strengths based on the analysis data
+  4. A brief explanation of how the name aligns with the brand's positioning and target audience
+
+  Example format:
+  ```
+  **[Name]**: This name communicates [key message/concept]. 
+  
+  Key strengths:
+  - [Strength 1 based on analysis]
+  - [Strength 2 based on analysis]
+  - [Strength 3 based on analysis]
+  
+  This name aligns with [specific aspect of brand positioning] and appeals to [target audience] by [specific benefit/quality].
+  ```
+
+  Keep each name summary concise (100-150 words maximum).
+  Focus on concrete strengths backed by the analysis data.
+  Highlight differentiation factors compared to typical competitor names.
+  Emphasize business and strategic value rather than purely linguistic features.
+
+  Return the summaries as a JSON object with the name as the key and the summary as the value:
+  {
+    "name1": "summary text",
+    "name2": "summary text",
+    "name3": "summary text"
+  } 
