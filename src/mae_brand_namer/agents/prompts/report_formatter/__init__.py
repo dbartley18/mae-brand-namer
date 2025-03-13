@@ -1,33 +1,72 @@
 """Report formatter prompt templates loader."""
 
 import os
-import yaml
-from typing import Dict, Any, List
+from typing import Dict, Any
+
+from ....utils.template_utils import load_and_process_template, get_template_dir
 
 # Directory where this file is located
-TEMPLATE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATE_DIR = get_template_dir(__file__)
 
-def _load_yaml_template(filename: str) -> Dict[str, Any]:
-    """Load a YAML template from file."""
-    template_path = os.path.join(TEMPLATE_DIR, filename)
-    with open(template_path, 'r') as f:
-        return yaml.safe_load(f)
+def get_executive_summary_prompt(**kwargs) -> Dict[str, Any]:
+    """
+    Get the executive summary prompt template with variables replaced.
+    
+    Args:
+        **kwargs: Variables to substitute in the template
+        
+    Returns:
+        Processed template with variables replaced
+    """
+    return load_and_process_template(
+        os.path.join(TEMPLATE_DIR, 'executive_summary.yaml'),
+        kwargs
+    )
 
-def get_executive_summary_prompt(**kwargs) -> Dict:
-    """Get the executive summary prompt template."""
-    return _load_yaml_template('executive_summary.yaml')
+def get_recommendations_prompt(**kwargs) -> Dict[str, Any]:
+    """
+    Get the recommendations prompt template with variables replaced.
+    
+    Args:
+        **kwargs: Variables to substitute in the template
+        
+    Returns:
+        Processed template with variables replaced
+    """
+    return load_and_process_template(
+        os.path.join(TEMPLATE_DIR, 'recommendations.yaml'),
+        kwargs
+    )
 
-def get_recommendations_prompt(**kwargs) -> Dict:
-    """Get the recommendations prompt template."""
-    return _load_yaml_template('recommendations.yaml')
+def get_title_page_prompt(**kwargs) -> Dict[str, Any]:
+    """
+    Get the title page prompt template with variables replaced.
+    
+    Args:
+        **kwargs: Variables to substitute in the template
+        
+    Returns:
+        Processed template with variables replaced
+    """
+    return load_and_process_template(
+        os.path.join(TEMPLATE_DIR, 'title_page.yaml'),
+        kwargs
+    )
 
-def get_title_page_prompt(**kwargs) -> Dict:
-    """Get the title page prompt template."""
-    return _load_yaml_template('title_page.yaml')
-
-def get_toc_prompt(**kwargs) -> Dict:
-    """Get the table of contents prompt template."""
-    return _load_yaml_template('table_of_contents.yaml')
+def get_toc_prompt(**kwargs) -> Dict[str, Any]:
+    """
+    Get the table of contents prompt template with variables replaced.
+    
+    Args:
+        **kwargs: Variables to substitute in the template
+        
+    Returns:
+        Processed template with variables replaced
+    """
+    return load_and_process_template(
+        os.path.join(TEMPLATE_DIR, 'table_of_contents.yaml'),
+        kwargs
+    )
 
 __all__ = [
     'get_executive_summary_prompt',

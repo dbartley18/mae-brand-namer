@@ -1,16 +1,12 @@
 """Supabase connection pooling and management utilities."""
 
-from typing import Optional, Dict, List, Any
+from typing import Optional
 from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions
 from postgrest.exceptions import APIError
 from storage3.exceptions import StorageException
 from gotrue.errors import AuthError as AuthException
 import asyncio
-import os
-import time
-import logging
-import traceback
 
 from ..config.settings import settings
 from .logging import get_logger
@@ -68,7 +64,7 @@ class SupabaseManager:
             raise RuntimeError("Supabase client not initialized")
         return self._client
     
-    def table(self, table_name: str = None, **kwargs):
+    def table(self, table_name: str):
         """
         Access a Supabase table directly.
         
@@ -83,19 +79,6 @@ class SupabaseManager:
         """
         if self._client is None:
             raise RuntimeError("Supabase client not initialized")
-            
-        # Extract table_name from kwargs if not provided directly
-        if table_name is None and 'table_name' in kwargs:
-            table_name = kwargs.pop('table_name')
-            
-        # Validate required parameters
-        if table_name is None:
-            raise ValueError("Table name is required but was not provided")
-            
-        # Handle backward compatibility with code that passes 'operation'
-        if 'operation' in kwargs:
-            logger.debug(f"Operation (ignored): {kwargs['operation']}")
-        
         return self._client.table(table_name)
     
     async def execute_with_retry(self, operation: str, table: str, data: dict, max_retries: Optional[int] = None) -> dict:
@@ -103,7 +86,7 @@ class SupabaseManager:
         Execute a Supabase operation with retry logic.
         
         Args:
-            operation (str): Operation type ('insert', 'update', 'upsert', 'delete', 'select')
+            operation (str): Operation type ('insert', 'update', 'upsert', 'delete')
             table (str): Target table name
             data (dict): Data to operate on
             max_retries (Optional[int]): Maximum number of retry attempts. Defaults to settings value.
@@ -278,128 +261,6 @@ class SupabaseManager:
             }
         )
         raise last_error
-    
-    async def storage_upload_with_retry(self, bucket: str = None, path: str = None, file: bytes = None, **kwargs) -> dict:
-        """
-        Upload a file to Supabase Storage with retry logic.
-        
-        Args:
-            bucket: The storage bucket name
-            path: The path within the bucket where the file will be stored
-            file: The file content as bytes
-            
-        Returns:
-            The upload result from Supabase
-        """
-        retry_count = 0
-        max_retries = int(os.getenv('MAX_RETRIES', '3'))
-        base_delay = float(os.getenv('RETRY_DELAY', '1'))
-        backoff_factor = float(os.getenv('RETRY_BACKOFF', '2'))
-        
-        # Extract parameters from kwargs if not provided directly
-        if bucket is None and 'bucket' in kwargs:
-            bucket = kwargs.pop('bucket')
-        if path is None and 'path' in kwargs:
-            path = kwargs.pop('path')
-        if file is None and 'file' in kwargs:
-            file = kwargs.pop('file')
-            
-        # Validate required parameters
-        if bucket is None or path is None or file is None:
-            missing = []
-            if bucket is None: missing.append('bucket')
-            if path is None: missing.append('path')
-            if file is None: missing.append('file')
-            raise ValueError(f"Missing required parameters for storage upload: {', '.join(missing)}")
-        
-        # Log for debugging
-        logger.debug(f"Uploading to bucket: {bucket}, path: {path}")
-        
-        # Handle backward compatibility with code that passes 'operation'
-        if 'operation' in kwargs:
-            logger.debug(f"Operation (ignored): {kwargs['operation']}")
-            
-        # Ensure the bucket exists
-        self._ensure_bucket_exists(bucket)
-        
-        while True:
-            try:
-                result = await self.client.storage.from_(bucket).upload(
-                    path=path,
-                    file=file,
-                    file_options={"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
-                )
-                return result
-            except Exception as e:
-                retry_count += 1
-                if retry_count > max_retries:
-                    logger.error(f"Failed to upload file after {max_retries} retries: {str(e)}")
-                    raise
-                
-                delay = base_delay * (backoff_factor ** (retry_count - 1))
-                logger.warning(f"Upload failed, retrying in {delay:.2f} seconds (attempt {retry_count}/{max_retries}): {str(e)}")
-                await asyncio.sleep(delay)
-    
-    async def storage_get_public_url(self, bucket: str = None, path: str = None, **kwargs) -> str:
-        """
-        Get the public URL for a file in Supabase Storage.
-        
-        Args:
-            bucket: The storage bucket name
-            path: The path to the file within the bucket
-            
-        Returns:
-            The public URL for the file
-        """
-        try:
-            # Extract parameters from kwargs if not provided directly
-            if bucket is None and 'bucket' in kwargs:
-                bucket = kwargs.pop('bucket')
-            if path is None and 'path' in kwargs:
-                path = kwargs.pop('path')
-                
-            # Validate required parameters
-            if bucket is None or path is None:
-                missing = []
-                if bucket is None: missing.append('bucket')
-                if path is None: missing.append('path')
-                raise ValueError(f"Missing required parameters for getting public URL: {', '.join(missing)}")
-            
-            # Log for debugging
-            logger.debug(f"Getting public URL for bucket: {bucket}, path: {path}")
-            
-            # Handle backward compatibility with code that passes 'operation'
-            if 'operation' in kwargs:
-                logger.debug(f"Operation (ignored): {kwargs['operation']}")
-                
-            # Get the public URL from Supabase
-            public_url = self.client.storage.from_(bucket).get_public_url(path)
-            return public_url
-        except Exception as e:
-            logger.error(f"Failed to get public URL: {str(e)}")
-            raise
-    
-    def _ensure_bucket_exists(self, bucket: str) -> None:
-        """
-        Check if a bucket exists, and create it if it doesn't.
-        
-        Args:
-            bucket: The storage bucket name
-        """
-        try:
-            # List buckets to check if the target bucket exists
-            buckets = self.client.storage.list_buckets()
-            bucket_exists = any(b["name"] == bucket for b in buckets)
-            
-            if not bucket_exists:
-                logger.info(f"Creating storage bucket: {bucket}")
-                self.client.storage.create_bucket(
-                    bucket,
-                    {"public": True}  # Make the bucket public so reports can be accessed via URLs
-                )
-        except Exception as e:
-            logger.error(f"Error checking/creating bucket {bucket}: {str(e)}")
-            # Continue anyway, the upload will fail if the bucket doesn't exist
 
 # Global instance
 supabase = SupabaseManager() 

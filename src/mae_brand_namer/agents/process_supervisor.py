@@ -222,7 +222,10 @@ class ProcessSupervisor:
                     
             missing_sections_array = "NULL"
             if missing_sections:
-                missing_sections_array = f"ARRAY[{','.join([f'\'{s}\'' for s in missing_sections])}]"
+                # Fix syntax error by avoiding nested f-strings with backslashes
+                quoted_sections = [f"'{s}'" for s in missing_sections]
+                sections_joined = ','.join(quoted_sections)
+                missing_sections_array = f"ARRAY[{sections_joined}]"
             
             # Update the record
             update_query = f"""
