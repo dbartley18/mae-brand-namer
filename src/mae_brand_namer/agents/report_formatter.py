@@ -10,10 +10,12 @@ import json
 import re
 import logging
 import argparse
+import asyncio
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple, Callable, Set
 from pathlib import Path
 import traceback
+import time
 
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
@@ -142,24 +144,18 @@ class ReportFormatter:
         "final_recommendations"
     ]
     
-    def __init__(self, dependencies: Optional[Dependencies] = None):
+    def __init__(self, run_id: str, dependencies=None, supabase: SupabaseManager = None):
         """Initialize the ReportFormatter with dependencies."""
-        # Extract clients from dependencies if available
+        # Initialize Supabase client
         if dependencies:
             self.supabase = dependencies.supabase
-            # Safely try to get LLM from dependencies, with fallback if not available
-            try:
-                self.llm = dependencies.llm
-                logger.info(f"Using LLM from dependencies: {type(self.llm).__name__}")
-            except AttributeError:
-                # Log the issue and create a new LLM instance
-                logger.warning("'llm' attribute not found in Dependencies, creating new instance")
-                self._initialize_llm()
+            self.langsmith = dependencies.langsmith
         else:
-            # Create clients if not provided
-            self.supabase = SupabaseManager()
-            self._initialize_llm()
-                
+            self.supabase = supabase or SupabaseManager()
+            self.langsmith = None
+        
+        # Always initialize our own LLM (there is no LLM in Dependencies)
+        self._initialize_llm()
         logger.info("ReportFormatter initialized successfully with LLM")
         
         # Initialize error tracking
@@ -167,7 +163,7 @@ class ReportFormatter:
         self.missing_sections = set()
         
         # Initialize current run ID
-        self.current_run_id = None
+        self.current_run_id = run_id
         
         # Create transformers mapping
         self.transformers = {
@@ -186,57 +182,93 @@ class ReportFormatter:
             # Add transformers as needed
         }
         
+        logger.info("Initializing ReportFormatter for run_id: %s", run_id)
+        
         # Load prompts from YAML files
         try:
-            self.prompts = {
+            logger.info("Loading report formatter prompts")
+            
+            prompt_paths = {
                 # Title page and TOC
-                "title_page": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "title_page.yaml")),
-                "table_of_contents": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "table_of_contents.yaml")),
+                "title_page": str(Path(__file__).parent / "prompts" / "report_formatter" / "title_page.yaml"),
+                "table_of_contents": str(Path(__file__).parent / "prompts" / "report_formatter" / "table_of_contents.yaml"),
                 
                 # Main section prompts
-                "executive_summary": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "executive_summary.yaml")),
-                "recommendations": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "recommendations.yaml")),
-                "seo_analysis": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "seo_analysis.yaml")),
-                "brand_context": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "brand_context.yaml")),
-                "brand_name_generation": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "brand_name_generation.yaml")),
-                "semantic_analysis": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "semantic_analysis.yaml")),
-                "linguistic_analysis": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "linguistic_analysis.yaml")),
-                "cultural_sensitivity": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "cultural_sensitivity.yaml")),
-                "translation_analysis": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "translation_analysis.yaml")),
-                "market_research": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "market_research.yaml")),
-                "competitor_analysis": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "competitor_analysis.yaml")),
-                "name_evaluation": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "brand_name_evaluation.yaml")),
-                "domain_analysis": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "domain_analysis.yaml")),
-                "survey_simulation": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "survey_simulation.yaml")),
-                "system": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "system.yaml")),
-                "shortlisted_names_summary": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "shortlisted_names_summary.yaml")),
-                "format_section": _safe_load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "format_section.yaml"))
+                "executive_summary": str(Path(__file__).parent / "prompts" / "report_formatter" / "executive_summary.yaml"),
+                "recommendations": str(Path(__file__).parent / "prompts" / "report_formatter" / "recommendations.yaml"),
+                "seo_analysis": str(Path(__file__).parent / "prompts" / "report_formatter" / "seo_analysis.yaml"),
+                "brand_context": str(Path(__file__).parent / "prompts" / "report_formatter" / "brand_context.yaml"),
+                "brand_name_generation": str(Path(__file__).parent / "prompts" / "report_formatter" / "brand_name_generation.yaml"),
+                "semantic_analysis": str(Path(__file__).parent / "prompts" / "report_formatter" / "semantic_analysis.yaml"),
+                "linguistic_analysis": str(Path(__file__).parent / "prompts" / "report_formatter" / "linguistic_analysis.yaml"),
+                "cultural_sensitivity": str(Path(__file__).parent / "prompts" / "report_formatter" / "cultural_sensitivity.yaml"),
+                "translation_analysis": str(Path(__file__).parent / "prompts" / "report_formatter" / "translation_analysis.yaml"),
+                "market_research": str(Path(__file__).parent / "prompts" / "report_formatter" / "market_research.yaml"),
+                "competitor_analysis": str(Path(__file__).parent / "prompts" / "report_formatter" / "competitor_analysis.yaml"),
+                "name_evaluation": str(Path(__file__).parent / "prompts" / "report_formatter" / "brand_name_evaluation.yaml"),
+                "domain_analysis": str(Path(__file__).parent / "prompts" / "report_formatter" / "domain_analysis.yaml"),
+                "survey_simulation": str(Path(__file__).parent / "prompts" / "report_formatter" / "survey_simulation.yaml"),
+                "system": str(Path(__file__).parent / "prompts" / "report_formatter" / "system.yaml"),
+                "shortlisted_names_summary": str(Path(__file__).parent / "prompts" / "report_formatter" / "shortlisted_names_summary.yaml"),
+                "format_section": str(Path(__file__).parent / "prompts" / "report_formatter" / "format_section.yaml")
             }
             
-            logger.info("Successfully loaded report formatter prompts")
+            # Create format_section fallback in case it doesn't load
+            format_section_fallback = PromptTemplate.from_template(
+                "Format the section '{section_name}' based on this data:\n"
+                "```\n{section_data}\n```\n\n"
+                "Include a title, main content, and sections with headings."
+            )
+            
+            self.prompts = {}
+            
+            # Load each prompt with basic error handling
+            for prompt_name, prompt_path in prompt_paths.items():
+                try:
+                    self.prompts[prompt_name] = _safe_load_prompt(prompt_path)
+                    logger.debug(f"Loaded prompt: {prompt_name}")
+                except Exception as e:
+                    logger.warning(f"Could not load prompt {prompt_name}: {str(e)}")
+                    # Only create fallback for format_section as it's critical
+                    if prompt_name == "format_section":
+                        self.prompts[prompt_name] = format_section_fallback
+                        logger.info("Using fallback template for format_section")
+            
+            # Verify format_section prompt is available
+            if "format_section" not in self.prompts:
+                logger.warning("Critical prompt 'format_section' not found, using fallback")
+                self.prompts["format_section"] = format_section_fallback
+                
+            logger.info(f"Loaded {len(self.prompts)} prompts")
+                
         except Exception as e:
             logger.error(f"Error loading prompts: {str(e)}")
-            # Create an empty dictionary as fallback
-            self.prompts = {}
+            # Minimum fallback prompts
+            self.prompts = {
+                "format_section": format_section_fallback
+            }
     
     def _initialize_llm(self):
-        """Initialize the LLM with proper error handling."""
+        """Initialize the LLM with Google Generative AI."""
         try:
             # Verify API key is available
             if not settings.gemini_api_key:
                 raise ValueError("Gemini API key is not set in settings")
                 
+            # Create LLM instance
             self.llm = ChatGoogleGenerativeAI(
                 model="gemini-2.0-flash",
                 temperature=1.0,
                 google_api_key=settings.gemini_api_key,
                 convert_system_message_to_human=True
             )
-            logger.info(f"Created new LLM instance: {type(self.llm).__name__}")
+            logger.info(f"Initialized LLM: {type(self.llm).__name__}")
+            
         except Exception as e:
             logger.error(f"Failed to initialize LLM: {str(e)}")
+            logger.error(traceback.format_exc())
             raise ValueError(f"Could not initialize LLM: {str(e)}")
-            
+
     async def _safe_llm_invoke(self, messages, section_name=None, fallback_response=None):
         """Safe wrapper for LLM invocation with error handling.
         
@@ -258,6 +290,7 @@ class ReportFormatter:
                 logger.error(f"Error during LLM call{context} (attempt {attempt+1}/{max_retries}): {str(e)}")
                 if attempt == max_retries - 1:
                     logger.error(f"All LLM retry attempts failed{context}. Using fallback.")
+                    
                     if fallback_response:
                         return fallback_response
                     
@@ -537,967 +570,160 @@ class ReportFormatter:
         """Fetch all raw data for a specific run_id from the report_raw_data table."""
         logger.info(f"Fetching all raw data for run_id: {run_id}")
         
-        # Update to use the new execute_with_retry API
-        result = await self.supabase.execute_with_retry(
-            "select",
-            "report_raw_data",
-            {
-                "run_id": f"eq.{run_id}",
-                "select": "section_name,raw_data",
-                "order": "section_name"
-            }
-        )
-        
-        if not result:
-            logger.warning(f"No data found for run_id: {run_id}")
-            return {}
-        
-        # Track data quality issues
-        data_quality_issues = {}
-        
-        # Transform results into a dictionary with section_name as keys
-        sections_data = {}
-        for row in result:
-            db_section_name = row['section_name']
-            raw_data = row['raw_data']
+        try:
+            # Update to use the new execute_with_retry API
+            result = await self.supabase.execute_with_retry(
+                "select",
+                "report_raw_data",
+                {
+                    "run_id": f"eq.{run_id}",
+                    "select": "section_name,raw_data",
+                    "order": "section_name"
+                }
+            )
             
-            # Use the DB section name as the key directly since that's what we use in SECTION_ORDER
-            # This way we maintain the exact mapping between database names and our processing
-            formatter_section_name = db_section_name
+            logger.info(f"Query result for run_id {run_id}: {len(result) if result else 0} rows found")
             
-            # Apply transformation if available
-            if formatter_section_name in self.transformers:
-                transformer = self.transformers[formatter_section_name]
-                try:
-                    transformed_data = transformer(raw_data)
-                    
-                    # Validate transformed data
-                    is_valid, issues = self._validate_section_data(formatter_section_name, transformed_data)
+            if not result or len(result) == 0:
+                logger.warning(f"No data found for run_id: {run_id}")
+                return {}
+            
+            # Debug log to see what's in the result
+            section_names = [row['section_name'] for row in result]
+            logger.info(f"Found sections: {section_names}")
+            
+            # Track data quality issues
+            data_quality_issues = {}
+            
+            # Transform results into a dictionary with section_name as keys
+            sections_data = {}
+            for row in result:
+                db_section_name = row['section_name']
+                raw_data = row['raw_data']
+                
+                # Debug each row
+                logger.debug(f"Processing row for section: {db_section_name} (data length: {len(str(raw_data))})")
+                
+                # Use the DB section name as the key directly since that's what we use in SECTION_ORDER
+                # This way we maintain the exact mapping between database names and our processing
+                formatter_section_name = db_section_name
+                
+                # Make sure raw_data is a properly formatted dict
+                if isinstance(raw_data, str):
+                    try:
+                        raw_data = json.loads(raw_data)
+                        logger.debug(f"Converted string raw_data to dict for {formatter_section_name}")
+                    except json.JSONDecodeError:
+                        logger.warning(f"Raw data for {formatter_section_name} is a string but not valid JSON")
+                
+                if not isinstance(raw_data, dict) and not isinstance(raw_data, list):
+                    logger.warning(f"Raw data for {formatter_section_name} is not a dict or list: {type(raw_data)}")
+                    # Convert to dict to avoid crashes
+                    raw_data = {"raw_content": str(raw_data)}
+                
+                # Apply transformation if available
+                if formatter_section_name in self.transformers:
+                    transformer = self.transformers[formatter_section_name]
+                    try:
+                        logger.info(f"Applying transformer for {formatter_section_name}")
+                        transformed_data = transformer(raw_data)
+                        
+                        # Validate transformed data
+                        is_valid, issues = self._validate_section_data(formatter_section_name, transformed_data)
+                        if not is_valid or issues:
+                            for issue in issues:
+                                logger.warning(f"Data quality issue in {formatter_section_name}: {issue}")
+                            if issues:
+                                data_quality_issues[formatter_section_name] = issues
+                        
+                        sections_data[formatter_section_name] = transformed_data
+                        logger.info(f"Successfully transformed data for {formatter_section_name}")
+                    except Exception as e:
+                        logger.error(f"Error transforming data for section {formatter_section_name}: {str(e)}")
+                        logger.error(f"Transformation error details: {traceback.format_exc()}")
+                        logger.debug(f"Raw data for failed transformation: {str(raw_data)[:500]}...")
+                        # Store error but continue with other sections
+                        data_quality_issues[formatter_section_name] = [f"Transformation error: {str(e)}"]
+                        # Still store raw data for potential fallback handling
+                        sections_data[formatter_section_name] = raw_data
+                else:
+                    # Use raw data if no transformer is available
+                    logger.info(f"No transformer available for {formatter_section_name}, using raw data")
+                    # Also validate raw data
+                    is_valid, issues = self._validate_section_data(formatter_section_name, raw_data)
                     if not is_valid or issues:
                         for issue in issues:
                             logger.warning(f"Data quality issue in {formatter_section_name}: {issue}")
                         if issues:
                             data_quality_issues[formatter_section_name] = issues
-                    
-                    sections_data[formatter_section_name] = transformed_data
-                except Exception as e:
-                    logger.error(f"Error transforming data for section {formatter_section_name}: {str(e)}")
-                    logger.debug(f"Raw data for failed transformation: {str(raw_data)[:500]}...")
-                    # Store error but continue with other sections
-                    data_quality_issues[formatter_section_name] = [f"Transformation error: {str(e)}"]
-                    # Still store raw data for potential fallback handling
+                            
                     sections_data[formatter_section_name] = raw_data
-            else:
-                # Use raw data if no transformer is available
-                # Also validate raw data
-                is_valid, issues = self._validate_section_data(formatter_section_name, raw_data)
-                if not is_valid or issues:
-                    for issue in issues:
-                        logger.warning(f"Data quality issue in {formatter_section_name}: {issue}")
-                    if issues:
-                        data_quality_issues[formatter_section_name] = issues
-                        
-                sections_data[formatter_section_name] = raw_data
-        
-        # Store data quality issues for later reporting
-        if data_quality_issues:
-            logger.warning(f"Found {len(data_quality_issues)} sections with data quality issues")
-            sections_data["_data_quality_issues"] = data_quality_issues
             
-        logger.info(f"Found {len(sections_data)} sections for run_id: {run_id}")
-        return sections_data
+            # Store data quality issues for later reporting
+            if data_quality_issues:
+                logger.warning(f"Found {len(data_quality_issues)} sections with data quality issues")
+                sections_data["_data_quality_issues"] = data_quality_issues
+                
+            logger.info(f"Successfully processed {len(sections_data)} sections for run_id: {run_id}")
+            
+            # Log the keys to verify what we're returning
+            logger.info(f"Returning data for sections: {sorted(list(sections_data.keys()))}")
+            
+            # Check for expected sections
+            missing_sections = [section for section in self.SECTION_ORDER if section not in sections_data]
+            if missing_sections:
+                logger.warning(f"Missing expected sections: {missing_sections}")
+            
+            return sections_data
+            
+        except Exception as e:
+            logger.error(f"Error fetching raw data for run_id {run_id}: {str(e)}")
+            logger.error(f"Error details: {traceback.format_exc()}")
+            return {}
 
     def _setup_document_styles(self, doc: Document) -> None:
-        """Set up consistent document styles."""
-        # Set default font and document properties
-        style = doc.styles['Normal']
-        style.font.name = 'Aptos'
-        style.font.size = Pt(11)
-        style.paragraph_format.space_after = Pt(8)
-        style.paragraph_format.line_spacing = 1.15
-        
-        # Set heading styles
-        for i in range(1, 4):
-            heading_style = doc.styles[f'Heading {i}']
-            heading_style.font.name = 'Aptos Header'
-            
-            # Different sizes for different heading levels
-            if i == 1:
-                heading_style.font.size = Pt(16)
-                heading_style.font.color.rgb = RGBColor(0, 70, 127)  # Dark blue for main headers
-            elif i == 2:
-                heading_style.font.size = Pt(14)
-                heading_style.font.color.rgb = RGBColor(0, 112, 192)  # Medium blue for subheaders
-            else:
-                heading_style.font.size = Pt(12)
-                heading_style.font.color.rgb = RGBColor(68, 114, 196)  # Light blue for minor headers
-                
-            heading_style.font.bold = True
-            heading_style.paragraph_format.space_before = Pt(12 + (3-i)*4)  # More space before larger headings
-            heading_style.paragraph_format.space_after = Pt(6)
-            heading_style.paragraph_format.keep_with_next = True  # Keep headings with following paragraph
-        
-        # Set List Bullet style
-        if 'List Bullet' in doc.styles:
-            bullet_style = doc.styles['List Bullet']
-            bullet_style.font.name = 'Aptos'
-            bullet_style.font.size = Pt(11)
-            bullet_style.paragraph_format.left_indent = Inches(0.25)
-            bullet_style.paragraph_format.first_line_indent = Inches(-0.25)
-        
-        # Set Caption style for tables and figures
-        if 'Caption' in doc.styles:
-            caption_style = doc.styles['Caption']
-            caption_style.font.name = 'Aptos'
-            caption_style.font.size = Pt(10)
-            caption_style.font.italic = True
-            caption_style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            caption_style.paragraph_format.space_before = Pt(6)
-            caption_style.paragraph_format.space_after = Pt(12)
-        
-        # Set Quote style 
-        if 'Quote' in doc.styles:
-            quote_style = doc.styles['Quote']
-            quote_style.font.name = 'Aptos'
-            quote_style.font.size = Pt(11)
-            quote_style.font.italic = True
-            quote_style.paragraph_format.left_indent = Inches(0.5)
-            quote_style.paragraph_format.right_indent = Inches(0.5)
-            
-        # Set Intense Quote style
-        if 'Intense Quote' in doc.styles:
-            intense_quote = doc.styles['Intense Quote']
-            intense_quote.font.name = 'Aptos'
-            intense_quote.font.size = Pt(11)
-            intense_quote.font.bold = True
-            intense_quote.font.italic = True
-            intense_quote.paragraph_format.left_indent = Inches(0.5)
-            intense_quote.paragraph_format.right_indent = Inches(0.5)
-    
-    def _add_section_divider(self, doc: Document, add_page_break: bool = False) -> None:
-        """Add a consistent divider between sections."""
-        # Add horizontal line
-        p = doc.add_paragraph()
-        p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.add_run("_" * 50)
-        
-        # Add page break if requested
-        if add_page_break:
-            doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
-        else:
-            # Just add some space
-            doc.add_paragraph()
-
-    async def _add_title_page(self, doc: Document, run_id: str, brand_context: Dict[str, Any]) -> None:
-        """Add a professional title page to the document."""
-        # Get title page content from LLM for any customizations
+        """Set up document styles."""
         try:
-            title_content = await self._safe_llm_invoke([
-                SystemMessage(content="You are an expert report formatter creating a professional title page for a brand naming report."),
-                HumanMessage(content=str(self.prompts["title_page"].format(
-                    run_id=run_id,
-                    brand_context=brand_context
-                )))
-            ])
+            # Add styles
+            styles = doc.styles
             
-            # Try to parse the response for any customizations
-            try:
-                content = json.loads(title_content.content)
-            except json.JSONDecodeError:
-                # Use default values if parsing fails
-                content = {
-                    "title": "Brand Naming Report",
-                    "subtitle": "Generated by Mae Brand Naming Expert"
-                }
-        except Exception as e:
-            logger.error(f"Error getting title page from LLM: {str(e)}")
-            # Use default values if LLM fails
-            content = {
-                "title": "Brand Naming Report",
-                "subtitle": "Generated by Mae Brand Naming Expert"
-            }
-        
-        # Add main title - always use "Brand Naming Report" as specified in notepad
-        title = doc.add_heading("Brand Naming Report", level=0)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Add subtitle - always use "Generated by Mae Brand Naming Expert" as specified in notepad
-        subtitle = doc.add_paragraph()
-        subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        subtitle.add_run("Generated by Mae Brand Naming Expert").bold = True
-        
-        # Add date and run ID
-        metadata = doc.add_paragraph()
-        metadata.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        metadata.add_run(f"Date: {datetime.now().strftime('%B %d, %Y')}\n")
-        metadata.add_run(f"Run ID: {run_id}")
-        
-        # Add space 
-        doc.add_paragraph()
-        
-        # Add note about AI generation with user prompt in the exact format specified
-        user_prompt = brand_context.get("user_prompt", "Not available")
-        note = doc.add_paragraph()
-        note.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # First line
-        note_text = note.add_run(
-            f"This report was generated through the Mae Brand Naming Expert Agent Simulation. "
-            f"The only input provided was the initial user prompt:\n\n"
-        )
-        note_text.italic = True
-        
-        # User prompt in quotes, emphasized
-        prompt_text = note.add_run(f"\"{user_prompt}\"\n\n")
-        prompt_text.italic = True
-        prompt_text.bold = True
-        
-        # Final line
-        final_text = note.add_run(
-            f"All additional context, analysis, and insights were autonomously generated by the AI Agent Simulation"
-        )
-        final_text.italic = True
-        
-        # Add page break
-        doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
-
-    async def _add_table_of_contents(self, doc: Document) -> None:
-        """Add a table of contents to the document."""
-        # Add TOC heading
-        doc.add_heading("Table of Contents", level=1)
-        
-        # Define the exact section list according to notepad requirements
-        # Use the same section order as in generate_report but with display names
-        toc_sections = [self.SECTION_MAPPING.get(section_name, section_name.replace("_", " ").title()) 
-                       for section_name in self.SECTION_ORDER]
-        
-        # Add TOC entries with consistent styling
-        for i, section in enumerate(toc_sections, 1):
-            p = doc.add_paragraph(style='TOC 1')
-            p.add_run(f"{i}. {section}")
+            # Add a style for bullet points
+            if 'List Bullet' not in styles:
+                bullet_style = styles.add_style('List Bullet', 1)
+                bullet_style.base_style = styles['Normal']
+                bullet_style.font.size = Pt(11)
+                bullet_style.paragraph_format.left_indent = Inches(0.5)
             
-            # Add page number placeholder (would be replaced in a real TOC)
-            tab = p.add_run("\t")
-            p.add_run("___")
-        
-        # Optional: Get any additional TOC information from LLM for section descriptions
-        try:
-            toc_content = await self._safe_llm_invoke([
-                SystemMessage(content="You are an expert report formatter creating a professional table of contents for a brand naming report."),
-                HumanMessage(content=str(self.prompts["table_of_contents"]))
-            ])
+            # Add a style for quotes
+            if 'Intense Quote' not in styles:
+                quote_style = styles.add_style('Intense Quote', 1)
+                quote_style.base_style = styles['Normal']
+                quote_style.font.size = Pt(11)
+                quote_style.font.italic = True
+                quote_style.paragraph_format.left_indent = Inches(0.5)
+                quote_style.paragraph_format.right_indent = Inches(0.5)
             
-            # Try to extract section descriptions
-            try:
-                content = json.loads(toc_content.content)
-                if "sections" in content and isinstance(content["sections"], list):
-                    # Add section descriptions if available, but keep the original TOC order
-                    doc.add_paragraph()
-                    doc.add_heading("Section Descriptions", level=2)
-                    
-                    for section in content["sections"]:
-                        if "title" in section and "description" in section:
-                            p = doc.add_paragraph()
-                            p.add_run(f"{section['title']}: ").bold = True
-                            p.add_run(section["description"])
-            except json.JSONDecodeError:
-                # Skip descriptions if parsing fails
-                pass
-        except Exception as e:
-            logger.error(f"Error getting TOC descriptions from LLM: {str(e)}")
-            # Continue without descriptions
-        
-        # Add page break
-        doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
-
-    async def upload_report_to_storage(self, file_path: str, run_id: str) -> str:
-        """
-        Upload the generated report to Supabase Storage.
-        
-        Args:
-            file_path: Path to the local report file
-            run_id: The run ID associated with the report
+            # Add a style for code blocks
+            if 'Code Block' not in styles:
+                code_style = styles.add_style('Code Block', 1)
+                code_style.base_style = styles['Normal']
+                code_style.font.name = 'Courier New'
+                code_style.font.size = Pt(10)
+                code_style.paragraph_format.left_indent = Inches(0.5)
+                code_style.paragraph_format.right_indent = Inches(0.5)
             
-        Returns:
-            The URL of the uploaded report
-        """
-        logger.info(f"Uploading report to Supabase Storage: {file_path}")
-        
-        # Extract filename from path
-        filename = os.path.basename(file_path)
-        
-        # Define the storage path - organize by run_id
-        storage_path = f"{run_id}/{filename}"
-        
-        # Get file size in KB
-        file_size_kb = os.path.getsize(file_path) // 1024
-        
-        try:
-            # Read the file content
-            with open(file_path, 'rb') as f:
-                file_content = f.read()
-            
-            # Upload to Supabase Storage with proper content type
-            result = await self.supabase.storage_upload_with_retry(
-                bucket=self.STORAGE_BUCKET,
-                path=storage_path,
-                file=file_content,
-                file_options={"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
-            )
-            
-            # Get the public URL
-            public_url = await self.supabase.storage_get_public_url(
-                bucket=self.STORAGE_BUCKET,
-                path=storage_path
-            )
-            
-            logger.info(f"Report uploaded successfully to: {public_url}")
-            
-            # Store metadata in report_metadata table
-            await self.store_report_metadata(
-                run_id=run_id,
-                report_url=public_url,
-                file_size_kb=file_size_kb,
-                format=self.FORMAT_DOCX
-            )
-            
-            return public_url
-            
-        except Exception as e:
-            logger.error(f"Error uploading report to storage: {str(e)}")
-            raise
-    
-    async def store_report_metadata(self, run_id: str, report_url: str, file_size_kb: int, format: str = FORMAT_DOCX, notes: str = None) -> None:
-        """
-        Store metadata about the report in the report_metadata table.
-        
-        Args:
-            run_id: The run ID associated with the report
-            report_url: URL where the report is accessible
-            file_size_kb: Size of the report file in KB
-            format: Format of the report (default: docx)
-            notes: Optional notes about the report
-        """
-        logger.info(f"Storing report metadata for run_id: {run_id}")
-        
-        # Check if a report already exists for this run_id to determine version
-        result = await self.supabase.execute_with_retry(
-            "select",
-            "report_metadata",
-            {
-                "run_id": f"eq.{run_id}",
-                "select": "MAX(version) as current_version"
-            }
-        )
-        current_version = 1  # Default to version 1
-        
-        if result and result[0]['current_version']:
-            current_version = result[0]['current_version'] + 1
-        
-        # Insert metadata into the report_metadata table
-        await self.supabase.execute_with_retry(
-            "insert",
-            "report_metadata",
-            {
-                "run_id": run_id,
-                "report_url": report_url,
-                "version": current_version,
-                "format": format,
-                "file_size_kb": file_size_kb,
-                "notes": notes,
-                "created_at": "NOW()"
-            }
-        )
-        logger.info(f"Report metadata stored successfully for run_id: {run_id}, version: {current_version}")
-
-    def _handle_section_error(self, doc: Document, section_name: str, error: Exception) -> None:
-        """
-        Handle errors that occur during section formatting.
-        
-        Args:
-            doc: The document being generated
-            section_name: The name of the section where the error occurred
-            error: The exception that was raised
-        """
-        # Log detailed error with traceback for troubleshooting
-        logger.error(f"Error formatting section '{section_name}': {str(error)}")
-        logger.debug(f"Error traceback: {traceback.format_exc()}")
-        
-        # Store error for summary report
-        self.formatting_errors[section_name] = str(error)
-        
-        # Add error message to the document
-        error_para = doc.add_paragraph(style='Intense Quote')
-        error_para.add_run("⚠️ ERROR: ").bold = True
-        error_para.add_run(f"This section could not be properly formatted due to the following error:\n{str(error)}")
-        
-        # Add suggestions for troubleshooting
-        doc.add_paragraph(
-            "Possible solutions:\n"
-            "• Check if the data is properly structured for this section\n"
-            "• Verify that all required fields are present\n"
-            "• Review the report_raw_data table for this section"
-        )
-
-    async def log_report_generation_issues(self, run_id: str) -> None:
-        """
-        Log report generation issues to the process_logs table.
-        
-        Args:
-            run_id: The run ID associated with the report
-        """
-        try:
-            # Skip if there are no issues to log
-            if not (self.formatting_errors or hasattr(self, 'missing_sections') and self.missing_sections):
-                return
-                
-            # Get data quality issues if they exist
-            data_quality_issues = {}
-            if hasattr(self, '_data_quality_issues'):
-                data_quality_issues = self._data_quality_issues
-                
-            logger.info(f"Logging report generation issues for run_id: {run_id}")
-            
-            # Use the ProcessSupervisor to log task completion with issues
-            from ..agents.process_supervisor import ProcessSupervisor
-            supervisor = ProcessSupervisor(supabase=self.supabase)
-            
-            await supervisor.log_task_completion(
-                run_id=run_id,
-                agent_type="report_formatter",
-                task_name="generate_report",
-                data_quality_issues=data_quality_issues,
-                formatting_errors=self.formatting_errors,
-                missing_sections=list(self.missing_sections) if hasattr(self, 'missing_sections') and self.missing_sections else None
-            )
-            
-            logger.info(f"Successfully logged report generation issues for run_id: {run_id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to log report generation issues: {str(e)}")
-            logger.debug(f"Error details: {traceback.format_exc()}")
-            # Continue execution - logging issues should not prevent report generation
-    
-    async def generate_report(self, run_id: str, output_dir: Optional[str] = None, upload_to_storage: bool = True) -> str:
-        """
-        Generate a complete report document for the given run_id.
-        
-        Args:
-            run_id: The run ID to generate a report for
-            output_dir: Optional directory to save the report in
-            upload_to_storage: Whether to upload the report to Supabase Storage
-            
-        Returns:
-            Path to the generated report document
-        """
-        # Set current run ID for use in LLM prompts
-        self.current_run_id = run_id
-        
-        # Reset error tracking for this run
-        self.formatting_errors = {}
-        self.missing_sections = set()  # Track missing sections
-        
-        # Create output directory if needed
-        if not output_dir:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_dir = f"reports/{run_id}"
-        
-        os.makedirs(output_dir, exist_ok=True)
-        logger.info(f"Report generation for {run_id} - Output in {output_dir}")
-        
-        # Check LLM availability - debug verbose to catch potential issues
-        logger.debug(f"LLM instance: {type(self.llm).__name__} - {self.llm}")
-        
-        # Fetch all raw data for this run
-        try:
-            sections_data = await self.fetch_raw_data(run_id)
-        except Exception as e:
-            logger.error(f"Critical error fetching data for run_id {run_id}: {str(e)}")
-            error_msg = f"Failed to fetch report data: {str(e)}"
-            raise ValueError(error_msg)
-        
-        # Create a new document
-        doc = Document()
-        
-        # Extract brand context for title page
-        brand_context = sections_data.get("brand_context", {})
-        
-        # Add title page
-        try:
-            await self._add_title_page(doc, run_id, brand_context)
-        except Exception as e:
-            logger.error(f"Error adding title page: {str(e)}")
-            doc.add_heading(f"Brand Name Analysis Report - {run_id}", level=0)
-        
-        # Add table of contents
-        try:
-            await self._add_table_of_contents(doc)
-        except Exception as e:
-            logger.error(f"Error adding table of contents: {str(e)}")
-            doc.add_heading("Table of Contents", level=1)
-            doc.add_paragraph("Error generating table of contents")
-        
-        # Track data quality issues
-        data_quality_issues = {}
-        
-        # Process each section in order
-        for section_name in self.SECTION_ORDER:
-            if section_name in sections_data:
-                logger.info(f"Formatting section: {section_name}")
-                
-                # Add section header using the proper title from SECTION_MAPPING
-                section_title = self.SECTION_MAPPING.get(section_name, section_name.replace("_", " ").title())
-                heading = doc.add_heading(section_title, level=1)
-                
-                # If there are known data quality issues, add warning
-                if section_name in data_quality_issues:
-                    warning_para = doc.add_paragraph(style='Intense Quote')
-                    warning_para.add_run("⚠️ Warning: ").bold = True
-                    warning_para.add_run("This section has known data quality issues that may affect formatting.")
-                
-                # Format the section based on its type
-                try:
-                    if section_name == "executive_summary":
-                        # Generate executive summary using LLM
-                        await self._add_executive_summary(doc, sections_data)
-                    elif section_name == "recommendations":
-                        # Generate recommendations using LLM
-                        await self._add_recommendations(doc, sections_data)
-                    else:
-                        # Use the _format_section method which handles different section types
-                        success, error = await self._format_section(doc, section_name, sections_data)
-                        if not success:
-                            logger.warning(f"Section '{section_name}' had formatting issues: {error}")
-                            # Don't return early, continue with other sections
-                except Exception as e:
-                    logger.error(f"Error processing section {section_name}: {str(e)}")
-                    logger.error(traceback.format_exc())  # Add traceback for debugging
-                    self._handle_section_error(doc, section_name, e)
-                    # Don't return early, continue with other sections
-                
-                # Add divider with page break for major sections
-                add_page_break = True  # Add page break after each major section
-                self._add_section_divider(doc, add_page_break)
-            else:
-                logger.warning(f"Missing section: {section_name}")
-                self.missing_sections.add(section_name)
-                
-                # Add a placeholder message for missing sections
-                section_title = self.SECTION_MAPPING.get(section_name, section_name.replace("_", " ").title())
-                heading = doc.add_heading(section_title, level=1)
-                
-                missing_para = doc.add_paragraph(style='Quote')
-                missing_para.add_run("❓ MISSING SECTION: ").bold = True
-                missing_para.add_run(f"No data was found for this section.")
-                
-                # Add divider with page break for major sections
-                add_page_break = True  # Add page break after each major section
-                self._add_section_divider(doc, add_page_break)
-        
-        # Add a report generation summary with error information
-        if self.formatting_errors or self.missing_sections or data_quality_issues:
-            doc.add_heading("Report Generation Summary", level=1)
-            
-            if self.missing_sections:
-                doc.add_heading("Missing Sections", level=2)
-                doc.add_paragraph("The following sections were missing from the data and could not be included:")
-                for section in sorted(self.missing_sections):
-                    doc.add_paragraph(f"• {section.replace('_', ' ').title()}", style='List Bullet')
-            
-            if data_quality_issues:
-                doc.add_heading("Data Quality Issues", level=2)
-                doc.add_paragraph("The following sections had data quality issues identified during processing:")
-                
-                # Create a table to show data quality issues
-                table = doc.add_table(rows=1, cols=2)
-                table.style = 'Table Grid'
-                
-                # Add headers
-                header_cells = table.rows[0].cells
-                header_cells[0].text = "Section"
-                header_cells[1].text = "Issues"
-                
-                for cell in header_cells:
-                    for paragraph in cell.paragraphs:
-                        for run in paragraph.runs:
-                            run.font.bold = True
-                
-                # Add data rows
-                for section, issues in sorted(data_quality_issues.items()):
-                    row = table.add_row().cells
-                    row[0].text = section.replace('_', ' ').title()
-                    row[1].text = "\n• ".join([""] + issues)
-            
-            if self.formatting_errors:
-                doc.add_heading("Formatting Errors", level=2)
-                doc.add_paragraph("The following sections encountered errors during formatting:")
-                for section, error in sorted(self.formatting_errors.items()):
-                    p = doc.add_paragraph(style='List Bullet')
-                    p.add_run(f"{section.replace('_', ' ').title()}: ").bold = True
-                    p.add_run(error)
-            
-            # Add troubleshooting information
-            doc.add_heading("Troubleshooting Information", level=2)
-            doc.add_paragraph(
-                "If you encounter issues with this report, please check the following:\n"
-                "• Verify that all required data is present in the report_raw_data table\n"
-                "• Ensure that the data format matches the expected structure for each section\n"
-                "• Check the application logs for more detailed error information\n"
-                "• Consider rerunning the report generation with corrected data"
-            )
-            
-            # Log issues to process_logs
-            await self.log_report_generation_issues(run_id)
-        
-        # Save the document with a Supabase-friendly name format
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{run_id}_{timestamp}.docx"
-        doc_path = os.path.join(output_dir, filename)
-        doc.save(doc_path)
-        logger.info(f"Report saved to {doc_path}")
-        
-        # Upload to Supabase Storage if requested
-        if upload_to_storage:
-            try:
-                public_url = await self.upload_report_to_storage(doc_path, run_id)
-                logger.info(f"Report accessible at: {public_url}")
-            except Exception as e:
-                logger.error(f"Failed to upload report to storage: {str(e)}")
-                # Continue even if upload fails
-        
-        return doc_path
-
-    async def _add_executive_summary(self, doc: Document, raw_data: Dict[str, Any]) -> None:
-        """
-        Add the executive summary section to the document.
-        Uses LLM to generate a well-formatted executive summary from the raw data.
-        
-        Args:
-            doc: The document to add the section to
-            raw_data: All the raw data for the report
-        """
-        try:
-            logger.info("Generating executive summary")
-            
-            # Extract executive_summary from raw_data if it exists
-            exec_summary_data = raw_data.get("executive_summary", {})
-            
-            # Format prompt with the current run ID
-            formatted_prompt = self.prompts["executive_summary"].format(
-                run_id=self.current_run_id,
-                raw_data=json.dumps(raw_data, indent=2)
-            )
-            
-            # Call LLM to generate the executive summary
-            summary_content = await self._safe_llm_invoke([
-                SystemMessage(content=self.prompts["system"].format()),
-                HumanMessage(content=formatted_prompt)
-            ])
-            
-            # Parse the response
-            try:
-                content = json.loads(summary_content.content)
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse executive summary response as JSON")
-                # Fallback to raw response
-                doc.add_paragraph(summary_content.content)
-                return
-                
-            # Add the content to the document
-            if "summary" in content:
-                doc.add_paragraph(content["summary"])
-                
-            if "key_points" in content and content["key_points"]:
-                doc.add_heading("Key Points", level=2)
-                for point in content["key_points"]:
-                    bullet = doc.add_paragraph(style='List Bullet')
-                    bullet.add_run(point)
-                    
-            if "brand_context_summary" in content:
-                doc.add_heading("Brand Context", level=2)
-                doc.add_paragraph(content["brand_context_summary"])
-                
-            if "name_options_summary" in content:
-                doc.add_heading("Name Options Overview", level=2)
-                doc.add_paragraph(content["name_options_summary"])
-                
-            if "recommendations_summary" in content:
-                doc.add_heading("Recommendations", level=2)
-                doc.add_paragraph(content["recommendations_summary"])
+            # Add a style for tables
+            if 'Table Grid' not in styles:
+                table_style = styles.add_style('Table Grid', 1)
+                table_style.base_style = styles['Table Grid']
+                table_style.font.size = Pt(10)
+                table_style.paragraph_format.space_before = Pt(6)
+                table_style.paragraph_format.space_after = Pt(6)
                 
         except Exception as e:
-            logger.error(f"Error adding executive summary: {str(e)}")
-            doc.add_paragraph("Error generating executive summary. Using available data instead.")
-            
-            # Fallback to basic formatting
-            if exec_summary_data:
-                for key, value in exec_summary_data.items():
-                    if isinstance(value, str) and value:
-                        doc.add_heading(key.replace("_", " ").title(), level=2)
-                        doc.add_paragraph(value)
-
-    async def _add_recommendations(self, doc: Document, raw_data: Dict[str, Any]) -> None:
-        """
-        Add the recommendations section to the document.
-        Uses LLM to generate well-formatted recommendations from the raw data.
-        
-        Args:
-            doc: The document to add the section to
-            raw_data: All the raw data for the report
-        """
-        try:
-            logger.info("Generating recommendations section")
-            
-            # Extract recommendations from raw_data if it exists
-            recommendations_data = raw_data.get("recommendations", {})
-            
-            # Format prompt with the current run ID
-            formatted_prompt = self.prompts["recommendations"].format(
-                run_id=self.current_run_id,
-                raw_data=json.dumps(raw_data, indent=2)
-            )
-            
-            # Call LLM to generate the recommendations
-            recommendations_content = await self._safe_llm_invoke([
-                SystemMessage(content=self.prompts["system"].format()),
-                HumanMessage(content=formatted_prompt)
-            ])
-            
-            # Parse the response
-            try:
-                content = json.loads(recommendations_content.content)
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse recommendations response as JSON")
-                # Fallback to raw response
-                doc.add_paragraph(recommendations_content.content)
-                return
-                
-            # Add the content to the document
-            if "top_recommendations" in content and content["top_recommendations"]:
-                doc.add_heading("Top Name Recommendations", level=2)
-                for i, rec in enumerate(content["top_recommendations"], 1):
-                    name = rec.get("name", f"Recommendation {i}")
-                    doc.add_heading(name, level=3)
-                    
-                    if "rationale" in rec:
-                        doc.add_paragraph(rec["rationale"])
-                    
-                    if "strengths" in rec and rec["strengths"]:
-                        doc.add_heading("Strengths", level=4)
-                        for strength in rec["strengths"]:
-                            bullet = doc.add_paragraph(style='List Bullet')
-                            bullet.add_run(strength)
-                    
-                    if "considerations" in rec and rec["considerations"]:
-                        doc.add_heading("Considerations", level=4)
-                        for consideration in rec["considerations"]:
-                            bullet = doc.add_paragraph(style='List Bullet')
-                            bullet.add_run(consideration)
-            
-            if "implementation_strategy" in content:
-                doc.add_heading("Implementation Strategy", level=2)
-                doc.add_paragraph(content["implementation_strategy"])
-                
-            if "alternative_options" in content and content["alternative_options"]:
-                doc.add_heading("Alternative Options", level=2)
-                doc.add_paragraph(content["alternative_options"])
-                
-            if "final_thoughts" in content:
-                doc.add_heading("Final Thoughts", level=2)
-                doc.add_paragraph(content["final_thoughts"])
-                
-        except Exception as e:
-            logger.error(f"Error adding recommendations: {str(e)}")
-            doc.add_paragraph("Error generating recommendations. Using available data instead.")
-            
-            # Fallback to basic formatting
-            if recommendations_data:
-                for key, value in recommendations_data.items():
-                    if isinstance(value, str) and value:
-                        doc.add_heading(key.replace("_", " ").title(), level=2)
-                        doc.add_paragraph(value)
-
-    async def _format_section(self, doc: Document, section_name: str, raw_data: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
-        """
-        Format a specific section of the report document based on section name.
-        
-        Args:
-            doc: The document to add content to
-            section_name: Name of the section to format (database field name)
-            raw_data: All the raw data for the report
-            
-        Returns:
-            Tuple of (success, error_message)
-        """
-        try:
-            # Get section-specific data
-            section_data = raw_data.get(section_name, {})
-            
-            if not section_data:
-                logger.warning(f"No data available for section: {section_name}")
-                doc.add_paragraph(f"No data available for this section.", style='Quote')
-                return False, "No data available"
-            
-            # Handle different section types with specific formatting based on database field names
-            if section_name == "brand_context":
-                await self._format_brand_context(doc, section_data)
-            elif section_name == "brand_name_generation":
-                await self._format_name_generation(doc, section_data)
-            elif section_name == "linguistic_analysis":
-                await self._format_linguistic_analysis(doc, section_data)
-            elif section_name == "semantic_analysis":
-                await self._format_semantic_analysis(doc, section_data)
-            elif section_name == "cultural_sensitivity_analysis":
-                await self._format_cultural_sensitivity(doc, section_data)
-            elif section_name == "translation_analysis":
-                await self._format_translation_analysis(doc, section_data)
-            elif section_name == "brand_name_evaluation":
-                await self._format_name_evaluation(doc, section_data)
-            elif section_name == "domain_analysis":
-                await self._format_domain_analysis(doc, section_data)
-            elif section_name == "seo_online_discoverability":
-                await self._format_seo_analysis(doc, section_data)
-            elif section_name == "competitor_analysis":
-                await self._format_competitor_analysis(doc, section_data)
-            elif section_name == "market_research":
-                await self._format_market_research(doc, section_data)
-            elif section_name == "survey_simulation":
-                await self._format_survey_simulation(doc, section_data)
-            elif section_name == "exec_summary":
-                await self._add_executive_summary(doc, raw_data)
-            elif section_name == "final_recommendations":
-                await self._add_recommendations(doc, raw_data)
-            else:
-                # For any other section type, use generic LLM-based formatting
-                await self._format_generic_section(doc, section_name, section_data)
-            
-            return True, None
-            
-        except Exception as e:
-            error_msg = f"Error formatting section {section_name}: {str(e)}"
-            logger.error(error_msg)
-            doc.add_paragraph(f"Error occurred while formatting this section: {str(e)}", style='Intense Quote')
-            return False, error_msg
-            
-    async def _format_generic_section(self, doc: Document, section_name: str, data: Dict[str, Any]) -> None:
-        """Format a section using LLM when no specific formatter is available."""
-        try:
-            # Generate a section prompt template key based on section name
-            prompt_key = section_name.lower().replace(" ", "_")
-            
-            # Try to find a matching prompt template
-            if prompt_key in self.prompts:
-                prompt_template = self.prompts[prompt_key]
-                logger.info(f"Using prompt template '{prompt_key}' for section {section_name}")
-                
-                # Format the prompt with section data and run_id
-                try:
-                    formatted_prompt = prompt_template.format(
-                        run_id=self.current_run_id,
-                        section_data=json.dumps(data, indent=2)
-                    )
-                    logger.debug(f"Formatted prompt for {section_name} with variables: run_id, section_data")
-                except Exception as e:
-                    logger.error(f"Error formatting prompt for {section_name}: {str(e)}")
-                    # Try with different variable names that might be in the template
-                    try:
-                        # Check what variables the template expects
-                        expected_vars = prompt_template.input_variables
-                        logger.debug(f"Template expects variables: {expected_vars}")
-                        
-                        # Create a variables dict with all possible variations
-                        variables = {
-                            "run_id": self.current_run_id,
-                            "section_data": json.dumps(data, indent=2),
-                            "data": json.dumps(data, indent=2),
-                            section_name: json.dumps(data, indent=2)
-                        }
-                        
-                        # Only include variables the template expects
-                        filtered_vars = {k: v for k, v in variables.items() if k in expected_vars}
-                        logger.debug(f"Using filtered variables: {list(filtered_vars.keys())}")
-                        
-                        formatted_prompt = prompt_template.format(**filtered_vars)
-                    except Exception as e2:
-                        logger.error(f"Second attempt at formatting prompt failed: {str(e2)}")
-                        doc.add_paragraph(f"Error formatting section: Could not prepare prompt", style='Intense Quote')
-                        return
-                
-                # Log before LLM call
-                logger.info(f"Making LLM call for section: {section_name}")
-                
-                # Call LLM with the formatted prompt
-                try:
-                    system_content = self.prompts["system"].format() if "system" in self.prompts else "You are an expert report formatter."
-                    messages = [
-                        SystemMessage(content=system_content),
-                        HumanMessage(content=formatted_prompt)
-                    ]
-                    
-                    # Make the LLM call with error handling
-                    response = await self.llm.ainvoke(messages)
-                    logger.info(f"Received LLM response for {section_name} section (length: {len(response.content) if hasattr(response, 'content') else 'unknown'})")
-                    
-                except Exception as e:
-                    logger.error(f"Error during LLM call for {section_name}: {str(e)}")
-                    logger.error(f"Error details: {traceback.format_exc()}")
-                    doc.add_paragraph(f"Error generating content: LLM call failed - {str(e)}", style='Intense Quote')
-                    
-                    # Add basic formatting as fallback
-                    self._format_generic_section_fallback(doc, section_name, data)
-                    return
-                
-                # Try to parse the response as JSON
-                try:
-                    content = response.content if hasattr(response, 'content') else str(response)
-                    
-                    # Look for JSON in code blocks
-                    json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
-                    if json_match:
-                        # Extract the content from the code block
-                        json_str = json_match.group(1)
-                        content = json.loads(json_str)
-                        logger.debug(f"Successfully parsed JSON from code block in LLM response")
-                    else:
-                        # Try to parse the whole response as JSON
-                        content = json.loads(content)
-                        logger.debug(f"Successfully parsed entire LLM response as JSON")
-                    
-                    # Process the structured content
-                    for key, value in content.items():
-                        if isinstance(value, str) and value:
-                            heading_text = key.replace("_", " ").title()
-                            doc.add_heading(heading_text, level=2)
-                            doc.add_paragraph(value)
-                        elif isinstance(value, list) and value:
-                            heading_text = key.replace("_", " ").title()
-                            doc.add_heading(heading_text, level=2)
-                            for item in value:
-                                bullet = doc.add_paragraph(style='List Bullet')
-                                if isinstance(item, str):
-                                    bullet.add_run(item)
-                                elif isinstance(item, dict) and "title" in item and "description" in item:
-                                    bullet.add_run(f"{item['title']}: ").bold = True
-                                    bullet.add_run(item["description"])
-                                    
-                except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse LLM response as JSON for {section_name} - using raw text")
-                    # Fallback to using raw text if not valid JSON
-                    raw_content = response.content if hasattr(response, 'content') else str(response)
-                    
-                    # Remove any markdown code block markers
-                    cleaned_content = re.sub(r'```(?:json)?\s*([\s\S]*?)\s*```', r'\1', raw_content)
-                    
-                    doc.add_paragraph(cleaned_content)
-            else:
-                logger.warning(f"No prompt template found for section {section_name}, using fallback formatting")
-                # If no specific prompt template is found, use a generic approach
-                self._format_generic_section_fallback(doc, section_name, data)
-                    
-        except Exception as e:
-            logger.error(f"Error in generic section formatting for {section_name}: {str(e)}")
-            logger.error(f"Error details: {traceback.format_exc()}")
-            doc.add_paragraph(f"Error formatting section: {str(e)}", style='Intense Quote')
+            logger.error(f"Error setting up document styles: {str(e)}")
+            # Add a basic error message to the document
+            doc.add_paragraph("Error setting up document styles. Some formatting may be incorrect.", style='Intense Quote')
     
     def _format_generic_section_fallback(self, doc: Document, section_name: str, data: Dict[str, Any]) -> None:
         """Fallback method for formatting a section when LLM or other approaches fail."""
@@ -1625,13 +851,13 @@ class ReportFormatter:
         """Format cultural sensitivity analysis section."""
         try:
             # Get the LLM to format this section
-            response = await self.llm.ainvoke([
+            response = await self._safe_llm_invoke([
                 SystemMessage(content="You are an expert report formatter creating a professional section on cultural sensitivity analysis for brand names."),
                 HumanMessage(content=str(self.prompts["format_section"].format(
                     section_name="Cultural Sensitivity Analysis",
                     section_data=data
                 )))
-            ])
+            ], section_name="Cultural Sensitivity Analysis")
             
             # Parse the response
             try:
@@ -1680,13 +906,13 @@ class ReportFormatter:
         """Format brand name evaluation section."""
         try:
             # Get the LLM to format this section
-            response = await self.llm.ainvoke([
+            response = await self._safe_llm_invoke([
                 SystemMessage(content="You are an expert report formatter creating a professional section on brand name evaluation."),
                 HumanMessage(content=str(self.prompts["format_section"].format(
                     section_name="Brand Name Evaluation",
                     section_data=data
                 )))
-            ])
+            ], section_name="Brand Name Evaluation")
             
             # Parse the response
             try:
@@ -1735,13 +961,13 @@ class ReportFormatter:
         """Format SEO analysis section."""
         try:
             # Get the LLM to format this section
-            response = await self.llm.ainvoke([
+            response = await self._safe_llm_invoke([
                 SystemMessage(content="You are an expert report formatter creating a professional section on SEO and online discoverability analysis for brand names."),
                 HumanMessage(content=str(self.prompts["format_section"].format(
                     section_name="SEO Analysis",
                     section_data=data
                 )))
-            ])
+            ], section_name="SEO Analysis")
             
             # Parse the response
             try:
@@ -2283,6 +1509,691 @@ class ReportFormatter:
         except Exception as e:
             logger.error(f"Error formatting market research: {str(e)}")
             doc.add_paragraph(f"Error formatting market research section: {str(e)}", style='Intense Quote')
+
+    async def generate_report(self, run_id: str, upload_to_storage: bool = True) -> str:
+        """
+        Generate a formatted report document for the specified run_id.
+        
+        Args:
+            run_id: The run ID to generate a report for
+            upload_to_storage: Whether to upload the report to Supabase storage
+            
+        Returns:
+            The path to the generated report file
+        """
+        logger.info(f"Generating report for run_id: {run_id}")
+        
+        # Store the current run ID
+        self.current_run_id = run_id
+        
+        try:
+            # Create a new document
+            doc = Document()
+            
+            # Set up document styles
+            self._setup_document_styles(doc)
+            
+            # Fetch raw data for the run
+            logger.info(f"Fetching raw data for run_id: {run_id}")
+            sections_data = await self.fetch_raw_data(run_id)
+            
+            if not sections_data:
+                logger.error(f"No data found for run_id: {run_id}")
+                # Create an error document
+                doc.add_heading("Error: No Data Found", level=1)
+                doc.add_paragraph(f"No data was found for run ID: {run_id}")
+                doc.add_paragraph("Please check that the run ID is correct and that data has been stored for this run.")
+            else:
+                logger.info(f"Found {len(sections_data)} sections for run_id: {run_id}")
+                logger.debug(f"Available sections: {list(sections_data.keys())}")
+                
+                # Add title page
+                await self._add_title_page(doc, sections_data)
+                
+                # Add table of contents
+                await self._add_table_of_contents(doc)
+                
+                # Add executive summary if available
+                if "exec_summary" in sections_data:
+                    logger.info("Adding executive summary")
+                    await self._add_executive_summary(doc, sections_data["exec_summary"])
+                else:
+                    logger.warning("Executive summary data not found")
+                    doc.add_heading("Executive Summary", level=1)
+                    doc.add_paragraph("Executive summary data not available for this report.", style='Intense Quote')
+                
+                # Process each section in the defined order
+                for section_name in self.SECTION_ORDER:
+                    # Skip executive summary as it's already added
+                    if section_name == "exec_summary":
+                        continue
+                        
+                    # Get the display name for the section
+                    section_title = self.SECTION_MAPPING.get(section_name, section_name.replace("_", " ").title())
+                    
+                    logger.info(f"Processing section: {section_name} (Title: {section_title})")
+                    
+                    # Check if we have data for this section
+                    if section_name in sections_data:
+                        section_data = sections_data[section_name]
+                        
+                        # Add a page break before each main section
+                        doc.add_page_break()
+                        
+                        # Check if we have a specific formatter for this section
+                        formatter_method_name = f"_format_{section_name}"
+                        if hasattr(self, formatter_method_name):
+                            logger.info(f"Using specific formatter for {section_name}")
+                            formatter_method = getattr(self, formatter_method_name)
+                            try:
+                                await formatter_method(doc, section_data)
+                            except Exception as e:
+                                logger.error(f"Error formatting section {section_name}: {str(e)}")
+                                logger.error(traceback.format_exc())
+                                # Add error message to document
+                                doc.add_heading(section_title, level=1)
+                                doc.add_paragraph(f"Error formatting section: {str(e)}", style='Intense Quote')
+                                # Try generic formatter as fallback
+                                try:
+                                    await self._format_generic_section(doc, section_name, section_data)
+                                except Exception as e2:
+                                    logger.error(f"Generic formatter also failed for {section_name}: {str(e2)}")
+                                    # Use the most basic fallback
+                                    self._format_generic_section_fallback(doc, section_name, section_data)
+                        else:
+                            # Use generic formatter
+                            logger.info(f"Using generic formatter for {section_name}")
+                            try:
+                                await self._format_generic_section(doc, section_name, section_data)
+                            except Exception as e:
+                                logger.error(f"Error in generic formatting for {section_name}: {str(e)}")
+                                logger.error(traceback.format_exc())
+                                # Use the most basic fallback
+                                self._format_generic_section_fallback(doc, section_name, section_data)
+                    else:
+                        logger.warning(f"No data found for section: {section_name}")
+                        # Add a placeholder for missing sections
+                        doc.add_page_break()
+                        doc.add_heading(section_title, level=1)
+                        doc.add_paragraph(f"No data available for this section.", style='Intense Quote')
+                
+                # Add recommendations if available
+                if "final_recommendations" in sections_data:
+                    logger.info("Adding recommendations")
+                    await self._add_recommendations(doc, sections_data["final_recommendations"])
+                else:
+                    logger.warning("Recommendations data not found")
+            
+            # Save the document to a temporary file
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_dir = Path("./output")
+            output_dir.mkdir(exist_ok=True)
+            
+            output_filename = f"brand_naming_report_{run_id}_{timestamp}.docx"
+            output_path = str(output_dir / output_filename)
+            
+            logger.info(f"Saving report to: {output_path}")
+            doc.save(output_path)
+            
+            # Upload to storage if requested
+            if upload_to_storage and self.supabase:
+                try:
+                    logger.info("Uploading report to storage")
+                    report_url = await self.upload_report_to_storage(output_path, run_id)
+                    logger.info(f"Report uploaded to: {report_url}")
+                except Exception as e:
+                    logger.error(f"Error uploading report to storage: {str(e)}")
+                    logger.error(traceback.format_exc())
+            
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Error generating report: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise
+            
+    async def _add_title_page(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Add a title page to the document."""
+        logger.info("Adding title page")
+        
+        try:
+            # Get brand context data if available
+            brand_context = data.get("brand_context", {})
+            brand_name = brand_context.get("brand_name", "")
+            industry = brand_context.get("industry", "")
+            
+            # Try to get title page content from LLM
+            title_content = await self._safe_llm_invoke([
+                SystemMessage(content="You are a professional report formatter creating a title page for a brand naming report."),
+                HumanMessage(content=str(self.prompts["title_page"].format(
+                    brand_name=brand_name,
+                    industry=industry
+                )))
+            ], section_name="Title Page")
+            
+            # Try to parse the response
+            try:
+                content = json.loads(title_content.content)
+                title = content.get("title", "Brand Naming Report")
+                subtitle = content.get("subtitle", "Generated by Mae Brand Naming Expert")
+            except (json.JSONDecodeError, AttributeError):
+                # Default values if parsing fails
+                title = "Brand Naming Report"
+                subtitle = "Generated by Mae Brand Naming Expert"
+                
+            # Add title page content
+            doc.add_paragraph()  # Add some space at the top
+            
+            # Add logo if available
+            # logo_path = Path(__file__).parent / "assets" / "logo.png"
+            # if logo_path.exists():
+            #     doc.add_picture(str(logo_path), width=Inches(2.5))
+            
+            # Add title
+            title_para = doc.add_paragraph()
+            title_run = title_para.add_run(title)
+            title_run.font.size = Pt(24)
+            title_run.font.bold = True
+            title_run.font.color.rgb = RGBColor(0, 70, 127)  # Dark blue
+            
+            # Add subtitle
+            subtitle_para = doc.add_paragraph()
+            subtitle_run = subtitle_para.add_run(subtitle)
+            subtitle_run.font.size = Pt(16)
+            subtitle_run.font.italic = True
+            
+            # Add date
+            date_para = doc.add_paragraph()
+            date_run = date_para.add_run(f"Generated on: {datetime.now().strftime('%B %d, %Y')}")
+            date_run.font.size = Pt(12)
+            
+            # Add run ID
+            run_id_para = doc.add_paragraph()
+            run_id_run = run_id_para.add_run(f"Report ID: {self.current_run_id}")
+            run_id_run.font.size = Pt(10)
+            
+            # Add page break
+            doc.add_page_break()
+            
+        except Exception as e:
+            logger.error(f"Error adding title page: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            # Add a simple title page as fallback
+            doc.add_heading("Brand Naming Report", level=0)
+            doc.add_paragraph(f"Generated on: {datetime.now().strftime('%B %d, %Y')}")
+            doc.add_paragraph(f"Report ID: {self.current_run_id}")
+            doc.add_page_break()
+            
+    async def _add_table_of_contents(self, doc: Document) -> None:
+        """Add a table of contents to the document."""
+        logger.info("Adding table of contents")
+        
+        # Add TOC heading
+        doc.add_heading("Table of Contents", level=1)
+        
+        # Define the exact section list according to notepad requirements
+        # Use the same section order as in generate_report but with display names
+        toc_sections = [self.SECTION_MAPPING.get(section_name, section_name.replace("_", " ").title()) 
+                       for section_name in self.SECTION_ORDER]
+        
+        # Add TOC entries with consistent styling
+        for i, section in enumerate(toc_sections, 1):
+            p = doc.add_paragraph(style='TOC 1')
+            p.add_run(f"{i}. {section}")
+            
+            # Add page number placeholder (would be replaced in a real TOC)
+            tab = p.add_run("\t")
+            p.add_run("___")
+        
+        # Optional: Get any additional TOC information from LLM for section descriptions
+        try:
+            toc_content = await self._safe_llm_invoke([
+                SystemMessage(content="You are an expert report formatter creating a professional table of contents for a brand naming report."),
+                HumanMessage(content=str(self.prompts["table_of_contents"]))
+            ], section_name="Table of Contents")
+            
+            # Try to extract section descriptions
+            try:
+                content = json.loads(toc_content.content)
+                if "sections" in content and isinstance(content["sections"], list):
+                    # Add section descriptions if available, but keep the original TOC order
+                    doc.add_paragraph()
+                    doc.add_heading("Section Descriptions", level=2)
+                    
+                    for section in content["sections"]:
+                        if "title" in section and "description" in section:
+                            p = doc.add_paragraph()
+                            p.add_run(f"{section['title']}: ").bold = True
+                            p.add_run(section["description"])
+            except json.JSONDecodeError:
+                # Skip descriptions if parsing fails
+                pass
+        except Exception as e:
+            logger.error(f"Error getting TOC descriptions from LLM: {str(e)}")
+            # Continue without descriptions
+        
+        # Add page break
+        doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+        
+    async def _add_executive_summary(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Add an executive summary to the document."""
+        logger.info("Adding executive summary")
+        
+        try:
+            # Format the prompt with the data
+            formatted_prompt = self.prompts["executive_summary"].format(
+                data=json.dumps(data, indent=2)
+            )
+            
+            # Call LLM to generate executive summary
+            response = await self._safe_llm_invoke([
+                SystemMessage(content=str(self.prompts["system"].format())),
+                HumanMessage(content=formatted_prompt)
+            ], section_name="Executive Summary")
+            
+            # Parse the response
+            try:
+                content = json.loads(response.content)
+                
+                # Add the title
+                doc.add_heading(content.get("title", "Executive Summary"), level=1)
+                
+                # Add the main content
+                if "content" in content and content["content"]:
+                    doc.add_paragraph(content["content"])
+                
+                # Add sections if available
+                if "sections" in content and isinstance(content["sections"], list):
+                    for section in content["sections"]:
+                        if "heading" in section and "content" in section:
+                            doc.add_heading(section["heading"], level=2)
+                            doc.add_paragraph(section["content"])
+                
+                # Add key points if available
+                if "key_points" in content and isinstance(content["key_points"], list):
+                    doc.add_heading("Key Points", level=2)
+                    for point in content["key_points"]:
+                        bullet = doc.add_paragraph(style='List Bullet')
+                        bullet.add_run(point)
+                
+                # Add recommendations if available
+                if "recommendations" in content and isinstance(content["recommendations"], list):
+                    doc.add_heading("Recommendations", level=2)
+                    for rec in content["recommendations"]:
+                        bullet = doc.add_paragraph(style='List Bullet')
+                        bullet.add_run(rec)
+                
+            except json.JSONDecodeError:
+                # Fallback to using raw text
+                doc.add_heading("Executive Summary", level=1)
+                doc.add_paragraph(response.content)
+                
+        except Exception as e:
+            logger.error(f"Error adding executive summary: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            # Add a simple executive summary as fallback
+            doc.add_heading("Executive Summary", level=1)
+            doc.add_paragraph("An error occurred while generating the executive summary.")
+            
+            # Try to add some basic information from the raw data
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    if isinstance(value, str) and value:
+                        doc.add_paragraph(f"{key}: {value}")
+                        
+    async def _add_recommendations(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Add recommendations to the document."""
+        logger.info("Adding recommendations section")
+        
+        try:
+            # Format the prompt with the data
+            formatted_prompt = self.prompts["recommendations"].format(
+                data=json.dumps(data, indent=2)
+            )
+            
+            # Call LLM to generate recommendations
+            response = await self._safe_llm_invoke([
+                SystemMessage(content=str(self.prompts["system"].format())),
+                HumanMessage(content=formatted_prompt)
+            ], section_name="Recommendations")
+            
+            # Parse the response
+            try:
+                content = json.loads(response.content)
+                
+                # Add the title
+                doc.add_heading(content.get("title", "Strategic Recommendations"), level=1)
+                
+                # Add the main content
+                if "content" in content and content["content"]:
+                    doc.add_paragraph(content["content"])
+                
+                # Add top recommendations if available
+                if "top_recommendations" in content and isinstance(content["top_recommendations"], list):
+                    doc.add_heading("Top Recommendations", level=2)
+                    for i, rec in enumerate(content["top_recommendations"], 1):
+                        if isinstance(rec, str):
+                            bullet = doc.add_paragraph(style='List Bullet')
+                            bullet.add_run(f"{i}. {rec}")
+                        elif isinstance(rec, dict) and "title" in rec and "description" in rec:
+                            bullet = doc.add_paragraph(style='List Bullet')
+                            bullet.add_run(f"{i}. {rec['title']}: ").bold = True
+                            bullet.add_run(rec["description"])
+                
+                # Add implementation strategy if available
+                if "implementation_strategy" in content and content["implementation_strategy"]:
+                    doc.add_heading("Implementation Strategy", level=2)
+                    doc.add_paragraph(content["implementation_strategy"])
+                
+                # Add alternative options if available
+                if "alternative_options" in content and isinstance(content["alternative_options"], list):
+                    doc.add_heading("Alternative Options", level=2)
+                    for option in content["alternative_options"]:
+                        if isinstance(option, str):
+                            bullet = doc.add_paragraph(style='List Bullet')
+                            bullet.add_run(option)
+                        elif isinstance(option, dict) and "title" in option and "description" in option:
+                            bullet = doc.add_paragraph(style='List Bullet')
+                            bullet.add_run(f"{option['title']}: ").bold = True
+                            bullet.add_run(option["description"])
+                
+                # Add sections if available
+                if "sections" in content and isinstance(content["sections"], list):
+                    for section in content["sections"]:
+                        if "heading" in section and "content" in section:
+                            doc.add_heading(section["heading"], level=2)
+                            doc.add_paragraph(section["content"])
+                
+            except json.JSONDecodeError:
+                # Fallback to using raw text
+                doc.add_heading("Strategic Recommendations", level=1)
+                doc.add_paragraph(response.content)
+                
+        except Exception as e:
+            logger.error(f"Error adding recommendations: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            # Add a simple recommendations section as fallback
+            doc.add_heading("Strategic Recommendations", level=1)
+            doc.add_paragraph("An error occurred while generating the recommendations section.")
+            
+            # Try to add some basic information from the raw data
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    if isinstance(value, str) and value:
+                        doc.add_paragraph(f"{key}: {value}")
+                    elif isinstance(value, list):
+                        doc.add_heading(key.replace("_", " ").title(), level=2)
+                        for item in value:
+                            bullet = doc.add_paragraph(style='List Bullet')
+                            if isinstance(item, str):
+                                bullet.add_run(item)
+                            elif isinstance(item, dict) and "name" in item:
+                                bullet.add_run(item["name"])
+
+    async def _format_generic_section(self, doc: Document, section_name: str, data: Dict[str, Any]) -> None:
+        """Format a section using LLM when no specific formatter is available."""
+        try:
+            # Generate a section prompt template key based on section name
+            prompt_key = section_name.lower().replace(" ", "_")
+            
+            # Try to find a matching prompt template
+            if prompt_key in self.prompts:
+                prompt_template = self.prompts[prompt_key]
+                logger.info(f"Using prompt template '{prompt_key}' for section {section_name}")
+                
+                # Format the prompt with section data and run_id
+                try:
+                    formatted_prompt = prompt_template.format(
+                        run_id=self.current_run_id,
+                        section_data=json.dumps(data, indent=2)
+                    )
+                    logger.debug(f"Formatted prompt for {section_name} with variables: run_id, section_data")
+                except Exception as e:
+                    logger.error(f"Error formatting prompt for {section_name}: {str(e)}")
+                    # Try with different variable names that might be in the template
+                    try:
+                        # Check what variables the template expects
+                        expected_vars = prompt_template.input_variables
+                        logger.debug(f"Template expects variables: {expected_vars}")
+                        
+                        # Create a variables dict with all possible variations
+                        variables = {
+                            "run_id": self.current_run_id,
+                            "section_data": json.dumps(data, indent=2),
+                            "data": json.dumps(data, indent=2),
+                            section_name: json.dumps(data, indent=2)
+                        }
+                        
+                        # Only include variables the template expects
+                        filtered_vars = {k: v for k, v in variables.items() if k in expected_vars}
+                        logger.debug(f"Using filtered variables: {list(filtered_vars.keys())}")
+                        
+                        formatted_prompt = prompt_template.format(**filtered_vars)
+                    except Exception as e2:
+                        logger.error(f"Second attempt at formatting prompt failed: {str(e2)}")
+                        doc.add_paragraph(f"Error formatting section: Could not prepare prompt", style='Intense Quote')
+                        return
+                
+                # Log before LLM call
+                logger.info(f"Making LLM call for section: {section_name}")
+                
+                # Call LLM with the formatted prompt
+                try:
+                    system_content = self.prompts["system"].format() if "system" in self.prompts else "You are an expert report formatter."
+                    messages = [
+                        SystemMessage(content=system_content),
+                        HumanMessage(content=formatted_prompt)
+                    ]
+                    
+                    # Make the LLM call with improved error handling
+                    response = await self._safe_llm_invoke(messages, section_name=section_name)
+                    logger.info(f"Received LLM response for {section_name} section (length: {len(response.content) if hasattr(response, 'content') else 'unknown'})")
+                    
+                except Exception as e:
+                    logger.error(f"Error during LLM call for {section_name}: {str(e)}")
+                    logger.error(f"Error details: {traceback.format_exc()}")
+                    doc.add_paragraph(f"Error generating content: LLM call failed - {str(e)}", style='Intense Quote')
+                    
+                    # Add basic formatting as fallback
+                    self._format_generic_section_fallback(doc, section_name, data)
+                    return
+                
+                # Try to parse the response as JSON
+                try:
+                    content = response.content if hasattr(response, 'content') else str(response)
+                    
+                    # Look for JSON in code blocks
+                    json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
+                    if json_match:
+                        # Extract the content from the code block
+                        json_str = json_match.group(1)
+                        content = json.loads(json_str)
+                        logger.debug(f"Successfully parsed JSON from code block in LLM response")
+                    else:
+                        # Try to parse the whole response as JSON
+                        content = json.loads(content)
+                        logger.debug(f"Successfully parsed entire LLM response as JSON")
+                    
+                    # Add the section title
+                    section_title = self.SECTION_MAPPING.get(section_name, section_name.replace("_", " ").title())
+                    if "title" in content and content["title"]:
+                        doc.add_heading(content["title"], level=1)
+                    else:
+                        doc.add_heading(section_title, level=1)
+                    
+                    # Add the main content if available
+                    if "content" in content and content["content"]:
+                        doc.add_paragraph(content["content"])
+                    
+                    # Add subsections if available
+                    if "sections" in content and isinstance(content["sections"], list):
+                        for section in content["sections"]:
+                            if "heading" in section and "content" in section:
+                                doc.add_heading(section["heading"], level=2)
+                                doc.add_paragraph(section["content"])
+                    
+                    # Process other structured content
+                    for key, value in content.items():
+                        # Skip already processed keys
+                        if key in ["title", "content", "sections"]:
+                            continue
+                            
+                        if isinstance(value, str) and value:
+                            heading_text = key.replace("_", " ").title()
+                            doc.add_heading(heading_text, level=2)
+                            doc.add_paragraph(value)
+                        elif isinstance(value, list) and value:
+                            heading_text = key.replace("_", " ").title()
+                            doc.add_heading(heading_text, level=2)
+                            for item in value:
+                                bullet = doc.add_paragraph(style='List Bullet')
+                                if isinstance(item, str):
+                                    bullet.add_run(item)
+                                elif isinstance(item, dict) and "title" in item and "description" in item:
+                                    bullet.add_run(f"{item['title']}: ").bold = True
+                                    bullet.add_run(item["description"])
+                                    
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse LLM response as JSON for {section_name} - using raw text")
+                    # Fallback to using raw text if not valid JSON
+                    raw_content = response.content if hasattr(response, 'content') else str(response)
+                    
+                    # Remove any markdown code block markers
+                    cleaned_content = re.sub(r'```(?:json)?\s*([\s\S]*?)\s*```', r'\1', raw_content)
+                    
+                    # Add the section title
+                    section_title = self.SECTION_MAPPING.get(section_name, section_name.replace("_", " ").title())
+                    doc.add_heading(section_title, level=1)
+                    
+                    # Add the content
+                    doc.add_paragraph(cleaned_content)
+            else:
+                logger.warning(f"No prompt template found for section {section_name}, using fallback formatting")
+                # If no specific prompt template is found, use a generic approach
+                self._format_generic_section_fallback(doc, section_name, data)
+                    
+        except Exception as e:
+            logger.error(f"Error in generic section formatting for {section_name}: {str(e)}")
+            logger.error(f"Error details: {traceback.format_exc()}")
+            doc.add_paragraph(f"Error formatting section: {str(e)}", style='Intense Quote')
+
+    async def upload_report_to_storage(self, file_path: str, run_id: str) -> str:
+        """
+        Upload the generated report to Supabase Storage.
+        
+        Args:
+            file_path: Path to the local report file
+            run_id: The run ID associated with the report
+            
+        Returns:
+            The URL of the uploaded report
+        """
+        logger.info(f"Uploading report to Supabase Storage: {file_path}")
+        
+        # Extract filename from path
+        filename = os.path.basename(file_path)
+        
+        # Define the storage path - organize by run_id
+        storage_path = f"{run_id}/{filename}"
+        
+        # Get file size in KB
+        file_size_kb = os.path.getsize(file_path) // 1024
+        
+        try:
+            # Read the file content
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+            
+            # Upload to Supabase Storage with proper content type
+            result = await self.supabase.storage_upload_with_retry(
+                bucket=self.STORAGE_BUCKET,
+                path=storage_path,
+                file=file_content,
+                file_options={"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+            )
+            
+            # Get the public URL
+            public_url = await self.supabase.storage_get_public_url(
+                bucket=self.STORAGE_BUCKET,
+                path=storage_path
+            )
+            
+            logger.info(f"Report uploaded successfully to: {public_url}")
+            
+            # Store metadata in report_metadata table
+            await self.store_report_metadata(
+                run_id=run_id,
+                report_url=public_url,
+                file_size_kb=file_size_kb,
+                format=self.FORMAT_DOCX
+            )
+            
+            return public_url
+            
+        except Exception as e:
+            logger.error(f"Error uploading report to storage: {str(e)}")
+            logger.error(f"Error details: {traceback.format_exc()}")
+            raise
+            
+    async def store_report_metadata(self, run_id: str, report_url: str, file_size_kb: float, format: str) -> None:
+        """
+        Store metadata about the generated report in the report_metadata table.
+        
+        Args:
+            run_id: The run ID associated with the report
+            report_url: The URL where the report is accessible
+            file_size_kb: The size of the report file in kilobytes
+            format: The format of the report (e.g., 'docx')
+        """
+        logger.info(f"Storing report metadata for run_id: {run_id}")
+        
+        try:
+            # Get the current timestamp
+            timestamp = datetime.now().isoformat()
+            
+            # Get the current version number
+            version = 1
+            try:
+                # Query for existing versions
+                query = f"""
+                SELECT MAX(version) as max_version FROM report_metadata 
+                WHERE run_id = '{run_id}'
+                """
+                result = await self.supabase.execute_with_retry(query, {})
+                if result and len(result) > 0 and result[0]['max_version'] is not None:
+                    version = int(result[0]['max_version']) + 1
+                    logger.info(f"Found existing reports, using version: {version}")
+            except Exception as e:
+                logger.warning(f"Error getting version number: {str(e)}")
+                # Continue with default version 1
+            
+            # Insert metadata into the report_metadata table
+            metadata = {
+                "run_id": run_id,
+                "report_url": report_url,
+                "created_at": timestamp,
+                "last_updated": timestamp,
+                "format": format,
+                "file_size_kb": file_size_kb,
+                "version": version,
+                "notes": f"Generated by ReportFormatter v{settings.version}"
+            }
+            
+            result = await self.supabase.execute_with_retry(
+                "insert",
+                "report_metadata",
+                metadata
+            )
+            
+            logger.info(f"Report metadata stored successfully for run_id: {run_id}, version: {version}")
+            
+        except Exception as e:
+            logger.error(f"Error storing report metadata: {str(e)}")
+            logger.error(f"Error details: {traceback.format_exc()}")
+            # Don't raise the exception - this is not critical for report generation
 
 async def main(run_id: str = None):
     """Main function to run the formatter."""

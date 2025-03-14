@@ -554,6 +554,7 @@ def create_workflow(config: dict) -> StateGraph:
     
     workflow.add_node("format_report", 
         wrap_async_node(lambda state: process_report_formatting(state, ReportFormatter(
+            run_id=state.run_id,
             dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
         )), "format_report")
     )
