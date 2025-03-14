@@ -1786,6 +1786,504 @@ class ReportFormatter:
             logger.error(f"Error formatting SEO analysis section: {str(e)}")
             doc.add_paragraph(f"Error occurred while formatting SEO analysis section: {str(e)}", style='Intense Quote')
 
+    async def _format_brand_context(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Format the brand context section."""
+        try:
+            # Add introduction
+            doc.add_paragraph(
+                "This section provides the foundational context for the brand naming process, "
+                "including information about the company, industry, target audience, and brand values."
+            )
+            
+            # Extract brand context information
+            brand_context = data.get("brand_context", data)  # Handle both wrapped and unwrapped data
+            
+            if isinstance(brand_context, dict):
+                # Add company information
+                if "company_name" in brand_context or "company_description" in brand_context:
+                    doc.add_heading("Company Information", level=2)
+                    
+                    if "company_name" in brand_context:
+                        p = doc.add_paragraph()
+                        p.add_run("Company Name: ").bold = True
+                        p.add_run(brand_context["company_name"])
+                        
+                    if "company_description" in brand_context:
+                        doc.add_paragraph(brand_context["company_description"])
+                
+                # Add industry information
+                if "industry" in brand_context or "industry_description" in brand_context:
+                    doc.add_heading("Industry Context", level=2)
+                    
+                    if "industry" in brand_context:
+                        p = doc.add_paragraph()
+                        p.add_run("Industry: ").bold = True
+                        p.add_run(brand_context["industry"])
+                        
+                    if "industry_description" in brand_context:
+                        doc.add_paragraph(brand_context["industry_description"])
+                
+                # Add target audience
+                if "target_audience" in brand_context:
+                    doc.add_heading("Target Audience", level=2)
+                    doc.add_paragraph(brand_context["target_audience"])
+                
+                # Add brand values
+                if "brand_values" in brand_context:
+                    doc.add_heading("Brand Values", level=2)
+                    values = brand_context["brand_values"]
+                    if isinstance(values, list):
+                        for value in values:
+                            bullet = doc.add_paragraph(style='List Bullet')
+                            bullet.add_run(value)
+                    else:
+                        doc.add_paragraph(values)
+                
+                # Add user prompt
+                if "user_prompt" in brand_context:
+                    doc.add_heading("Original User Prompt", level=2)
+                    doc.add_paragraph(brand_context["user_prompt"])
+                
+                # Add any other fields
+                for key, value in brand_context.items():
+                    if key not in ["company_name", "company_description", "industry", 
+                                  "industry_description", "target_audience", "brand_values", 
+                                  "user_prompt"] and isinstance(value, str) and value:
+                        doc.add_heading(key.replace("_", " ").title(), level=2)
+                        doc.add_paragraph(value)
+            else:
+                # Fallback for non-dict data
+                if isinstance(brand_context, str):
+                    doc.add_paragraph(brand_context)
+                else:
+                    doc.add_paragraph("Brand context data is not in expected format.")
+                    
+        except Exception as e:
+            logger.error(f"Error formatting brand context: {str(e)}")
+            doc.add_paragraph(f"Error formatting brand context section: {str(e)}", style='Intense Quote')
+
+    async def _format_name_generation(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Format the name generation section."""
+        try:
+            # Add introduction
+            doc.add_paragraph(
+                "This section presents the generated brand name options categorized by naming approach. "
+                "Each name includes its rationale and relevant characteristics."
+            )
+            
+            # Process name generations
+            if "name_generations" in data and isinstance(data["name_generations"], list):
+                # Group names by category
+                categories = {}
+                for name in data["name_generations"]:
+                    if "brand_name" in name:
+                        category = name.get("naming_category", "General")
+                        if category not in categories:
+                            categories[category] = []
+                        categories[category].append(name)
+                
+                # Add each category and its names
+                for category, names in categories.items():
+                    doc.add_heading(category, level=2)
+                    
+                    for name in names:
+                        # Add name as subheading
+                        doc.add_heading(name["brand_name"], level=3)
+                        
+                        # Add rationale if available
+                        if "rationale" in name:
+                            doc.add_paragraph(name["rationale"])
+                        
+                        # Add additional info in a structured format
+                        for key, value in name.items():
+                            if key not in ["brand_name", "rationale", "naming_category"] and value:
+                                p = doc.add_paragraph()
+                                p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
+                                p.add_run(str(value))
+            else:
+                # Fallback for unstructured data
+                for key, value in data.items():
+                    if isinstance(value, str) and value:
+                        doc.add_heading(key.replace("_", " ").title(), level=2)
+                        doc.add_paragraph(value)
+                        
+        except Exception as e:
+            logger.error(f"Error formatting name generation: {str(e)}")
+            doc.add_paragraph(f"Error formatting name generation section: {str(e)}", style='Intense Quote')
+
+    async def _format_semantic_analysis(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Format the semantic analysis section."""
+        try:
+            # Add introduction
+            doc.add_paragraph(
+                "This section analyzes the semantic aspects of the brand name options, "
+                "including meaning associations, connotations, and semantic fields."
+            )
+            
+            # Process semantic analyses
+            if "semantic_analyses" in data and isinstance(data["semantic_analyses"], list):
+                analyses = data["semantic_analyses"]
+                
+                for analysis in analyses:
+                    # Add a heading for each brand name
+                    if "brand_name" in analysis:
+                        doc.add_heading(analysis["brand_name"], level=2)
+                        
+                        # Add meaning analysis
+                        if "meaning" in analysis:
+                            doc.add_heading("Meaning Analysis", level=3)
+                            doc.add_paragraph(analysis["meaning"])
+                        
+                        # Add connotations
+                        if "connotations" in analysis:
+                            doc.add_heading("Connotations", level=3)
+                            connotations = analysis["connotations"]
+                            if isinstance(connotations, list):
+                                for connotation in connotations:
+                                    bullet = doc.add_paragraph(style='List Bullet')
+                                    bullet.add_run(connotation)
+                            else:
+                                doc.add_paragraph(connotations)
+                        
+                        # Add semantic fields
+                        if "semantic_fields" in analysis:
+                            doc.add_heading("Semantic Fields", level=3)
+                            fields = analysis["semantic_fields"]
+                            if isinstance(fields, list):
+                                for field in fields:
+                                    bullet = doc.add_paragraph(style='List Bullet')
+                                    bullet.add_run(field)
+                            else:
+                                doc.add_paragraph(fields)
+                        
+                        # Add other analyses
+                        for key, value in analysis.items():
+                            if key not in ["brand_name", "meaning", "connotations", "semantic_fields"] and value:
+                                doc.add_heading(key.replace("_", " ").title(), level=3)
+                                if isinstance(value, list):
+                                    for item in value:
+                                        bullet = doc.add_paragraph(style='List Bullet')
+                                        bullet.add_run(str(item))
+                                else:
+                                    doc.add_paragraph(str(value))
+            else:
+                # Fallback for unstructured data
+                for key, value in data.items():
+                    if isinstance(value, str) and value:
+                        doc.add_heading(key.replace("_", " ").title(), level=2)
+                        doc.add_paragraph(value)
+                        
+        except Exception as e:
+            logger.error(f"Error formatting semantic analysis: {str(e)}")
+            doc.add_paragraph(f"Error formatting semantic analysis section: {str(e)}", style='Intense Quote')
+
+    async def _format_translation_analysis(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Format the translation analysis section."""
+        try:
+            # Add introduction
+            doc.add_paragraph(
+                "This section examines how the brand name options translate across different languages, "
+                "identifying potential issues or advantages in global contexts."
+            )
+            
+            # Process translation analyses
+            if "translation_analyses" in data and isinstance(data["translation_analyses"], list):
+                analyses = data["translation_analyses"]
+                
+                for analysis in analyses:
+                    # Add a heading for each brand name
+                    if "brand_name" in analysis:
+                        doc.add_heading(analysis["brand_name"], level=2)
+                        
+                        # Add translations
+                        if "translations" in analysis and isinstance(analysis["translations"], list):
+                            doc.add_heading("Translations", level=3)
+                            
+                            # Create a table for translations
+                            table = doc.add_table(rows=1, cols=2)
+                            table.style = 'Table Grid'
+                            
+                            # Add headers
+                            header_cells = table.rows[0].cells
+                            header_cells[0].text = "Language"
+                            header_cells[1].text = "Translation"
+                            
+                            for cell in header_cells:
+                                for paragraph in cell.paragraphs:
+                                    for run in paragraph.runs:
+                                        run.font.bold = True
+                            
+                            # Add data rows
+                            for translation in analysis["translations"]:
+                                if "language" in translation and "text" in translation:
+                                    row = table.add_row().cells
+                                    row[0].text = translation["language"]
+                                    row[1].text = translation["text"]
+                        
+                        # Add cultural considerations
+                        if "cultural_considerations" in analysis:
+                            doc.add_heading("Cultural Considerations", level=3)
+                            considerations = analysis["cultural_considerations"]
+                            if isinstance(considerations, list):
+                                for consideration in considerations:
+                                    bullet = doc.add_paragraph(style='List Bullet')
+                                    bullet.add_run(consideration)
+                            else:
+                                doc.add_paragraph(considerations)
+                        
+                        # Add recommendations
+                        if "recommendations" in analysis:
+                            doc.add_heading("Recommendations", level=3)
+                            doc.add_paragraph(analysis["recommendations"])
+            else:
+                # Fallback for unstructured data
+                for key, value in data.items():
+                    if isinstance(value, str) and value:
+                        doc.add_heading(key.replace("_", " ").title(), level=2)
+                        doc.add_paragraph(value)
+                        
+        except Exception as e:
+            logger.error(f"Error formatting translation analysis: {str(e)}")
+            doc.add_paragraph(f"Error formatting translation analysis section: {str(e)}", style='Intense Quote')
+
+    async def _format_domain_analysis(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Format the domain analysis section."""
+        try:
+            # Add introduction
+            doc.add_paragraph(
+                "This section evaluates the domain name availability and alternatives for each brand name option, "
+                "providing insights into online presence opportunities."
+            )
+            
+            # Process domain analyses
+            if "domain_analyses" in data and isinstance(data["domain_analyses"], list):
+                analyses = data["domain_analyses"]
+                
+                for analysis in analyses:
+                    # Add a heading for each brand name
+                    if "brand_name" in analysis:
+                        doc.add_heading(analysis["brand_name"], level=2)
+                        
+                        # Add primary domain availability
+                        if "primary_domain" in analysis:
+                            doc.add_heading("Primary Domain", level=3)
+                            primary = analysis["primary_domain"]
+                            p = doc.add_paragraph()
+                            p.add_run(f"{primary.get('domain', '')}: ").bold = True
+                            
+                            # Format availability with color
+                            availability = primary.get('available', False)
+                            if availability:
+                                run = p.add_run("Available")
+                                run.font.color.rgb = RGBColor(0, 128, 0)  # Green
+                            else:
+                                run = p.add_run("Not Available")
+                                run.font.color.rgb = RGBColor(255, 0, 0)  # Red
+                            
+                            # Add price if available
+                            if "price" in primary:
+                                p.add_run(f" (Price: {primary['price']})")
+                        
+                        # Add alternative domains
+                        if "alternative_domains" in analysis and isinstance(analysis["alternative_domains"], list):
+                            doc.add_heading("Alternative Domains", level=3)
+                            
+                            for domain in analysis["alternative_domains"]:
+                                p = doc.add_paragraph(style='List Bullet')
+                                p.add_run(f"{domain.get('domain', '')}: ").bold = True
+                                
+                                # Format availability with color
+                                availability = domain.get('available', False)
+                                if availability:
+                                    run = p.add_run("Available")
+                                    run.font.color.rgb = RGBColor(0, 128, 0)  # Green
+                                else:
+                                    run = p.add_run("Not Available")
+                                    run.font.color.rgb = RGBColor(255, 0, 0)  # Red
+                                
+                                # Add price if available
+                                if "price" in domain:
+                                    p.add_run(f" (Price: {domain['price']})")
+                        
+                        # Add recommendations
+                        if "recommendations" in analysis:
+                            doc.add_heading("Domain Recommendations", level=3)
+                            doc.add_paragraph(analysis["recommendations"])
+            else:
+                # Fallback for unstructured data
+                for key, value in data.items():
+                    if isinstance(value, str) and value:
+                        doc.add_heading(key.replace("_", " ").title(), level=2)
+                        doc.add_paragraph(value)
+                        
+        except Exception as e:
+            logger.error(f"Error formatting domain analysis: {str(e)}")
+            doc.add_paragraph(f"Error formatting domain analysis section: {str(e)}", style='Intense Quote')
+
+    async def _format_competitor_analysis(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Format the competitor analysis section."""
+        try:
+            # Add introduction
+            doc.add_paragraph(
+                "This section analyzes competitors' brand names to provide context and differentiation "
+                "strategies for the proposed brand name options."
+            )
+            
+            # Process competitor analyses
+            if "competitor_analyses" in data and isinstance(data["competitor_analyses"], list):
+                analyses = data["competitor_analyses"]
+                
+                # Add overview first
+                doc.add_heading("Competitive Landscape Overview", level=2)
+                overview_added = False
+                
+                for analysis in analyses:
+                    if "overview" in analysis:
+                        doc.add_paragraph(analysis["overview"])
+                        overview_added = True
+                        break
+                
+                if not overview_added:
+                    doc.add_paragraph("No overview information available.")
+                
+                # Add individual competitor analyses
+                doc.add_heading("Competitor Brand Names", level=2)
+                
+                for analysis in analyses:
+                    if "competitor_name" in analysis:
+                        # Add a heading for each competitor
+                        doc.add_heading(analysis["competitor_name"], level=3)
+                        
+                        # Add brand name analysis
+                        if "brand_name_analysis" in analysis:
+                            doc.add_paragraph(analysis["brand_name_analysis"])
+                        
+                        # Add strengths
+                        if "strengths" in analysis:
+                            doc.add_heading("Strengths", level=4)
+                            strengths = analysis["strengths"]
+                            if isinstance(strengths, list):
+                                for strength in strengths:
+                                    bullet = doc.add_paragraph(style='List Bullet')
+                                    bullet.add_run(strength)
+                            else:
+                                doc.add_paragraph(strengths)
+                        
+                        # Add weaknesses
+                        if "weaknesses" in analysis:
+                            doc.add_heading("Weaknesses", level=4)
+                            weaknesses = analysis["weaknesses"]
+                            if isinstance(weaknesses, list):
+                                for weakness in weaknesses:
+                                    bullet = doc.add_paragraph(style='List Bullet')
+                                    bullet.add_run(weakness)
+                            else:
+                                doc.add_paragraph(weaknesses)
+                
+                # Add differentiation strategy
+                doc.add_heading("Differentiation Strategy", level=2)
+                strategy_added = False
+                
+                for analysis in analyses:
+                    if "differentiation_strategy" in analysis:
+                        doc.add_paragraph(analysis["differentiation_strategy"])
+                        strategy_added = True
+                        break
+                
+                if not strategy_added:
+                    doc.add_paragraph("No differentiation strategy information available.")
+            else:
+                # Fallback for unstructured data
+                for key, value in data.items():
+                    if isinstance(value, str) and value:
+                        doc.add_heading(key.replace("_", " ").title(), level=2)
+                        doc.add_paragraph(value)
+                        
+        except Exception as e:
+            logger.error(f"Error formatting competitor analysis: {str(e)}")
+            doc.add_paragraph(f"Error formatting competitor analysis section: {str(e)}", style='Intense Quote')
+
+    async def _format_market_research(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Format the market research section."""
+        try:
+            # Add introduction
+            doc.add_paragraph(
+                "This section presents market research findings related to the brand naming process, "
+                "including target audience insights and market trends."
+            )
+            
+            # Process market research data
+            if "market_researches" in data and isinstance(data["market_researches"], list):
+                researches = data["market_researches"]
+                
+                # Add overview first
+                doc.add_heading("Market Research Overview", level=2)
+                overview_added = False
+                
+                for research in researches:
+                    if "overview" in research:
+                        doc.add_paragraph(research["overview"])
+                        overview_added = True
+                        break
+                
+                if not overview_added:
+                    doc.add_paragraph("No overview information available.")
+                
+                # Add target audience insights
+                doc.add_heading("Target Audience Insights", level=2)
+                insights_added = False
+                
+                for research in researches:
+                    if "target_audience_insights" in research:
+                        doc.add_paragraph(research["target_audience_insights"])
+                        insights_added = True
+                        break
+                
+                if not insights_added:
+                    doc.add_paragraph("No target audience insights available.")
+                
+                # Add market trends
+                doc.add_heading("Market Trends", level=2)
+                trends_added = False
+                
+                for research in researches:
+                    if "market_trends" in research:
+                        trends = research["market_trends"]
+                        if isinstance(trends, list):
+                            for trend in trends:
+                                bullet = doc.add_paragraph(style='List Bullet')
+                                bullet.add_run(trend)
+                        else:
+                            doc.add_paragraph(trends)
+                        trends_added = True
+                        break
+                
+                if not trends_added:
+                    doc.add_paragraph("No market trends information available.")
+                
+                # Add implications for naming
+                doc.add_heading("Implications for Brand Naming", level=2)
+                implications_added = False
+                
+                for research in researches:
+                    if "implications_for_naming" in research:
+                        doc.add_paragraph(research["implications_for_naming"])
+                        implications_added = True
+                        break
+                
+                if not implications_added:
+                    doc.add_paragraph("No implications for naming information available.")
+            else:
+                # Fallback for unstructured data
+                for key, value in data.items():
+                    if isinstance(value, str) and value:
+                        doc.add_heading(key.replace("_", " ").title(), level=2)
+                        doc.add_paragraph(value)
+                        
+        except Exception as e:
+            logger.error(f"Error formatting market research: {str(e)}")
+            doc.add_paragraph(f"Error formatting market research section: {str(e)}", style='Intense Quote')
+
 async def main(run_id: str = None):
     """Main function to run the formatter."""
     if not run_id:
