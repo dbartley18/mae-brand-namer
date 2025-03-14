@@ -1818,6 +1818,16 @@ class ReportFormatter:
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
             
+            # Add TOC data with section information
+            sections_info = []
+            for section_name in self.SECTION_ORDER:
+                display_name = self.SECTION_MAPPING.get(section_name, section_name.replace("_", " ").title())
+                sections_info.append(display_name)
+            
+            # Format the toc_data with the sections
+            toc_data = "Sections in this report:\n- " + "\n- ".join(sections_info)
+            format_data["toc_data"] = toc_data
+            
             # Format the template
             formatted_template = self._format_template("table_of_contents", format_data, "Table of Contents")
             
