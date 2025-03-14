@@ -25,7 +25,7 @@ from src.mae_brand_namer.utils.supabase_utils import SupabaseManager
 from src.mae_brand_namer.config.dependencies import Dependencies
 from src.mae_brand_namer.config.settings import settings
 from src.mae_brand_namer.utils.logging import get_logger
-from langchain.prompts import load_prompt, load_prompt_templates
+from langchain.prompts import load_prompt
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import SystemMessage, HumanMessage
 
@@ -106,16 +106,16 @@ class ReportFormatter:
             "brand_name_generation": "name_generation",
             "linguistic_analysis": "linguistic_analysis",
             "semantic_analysis": "semantic_analysis",
-            "cultural_sensitivity_analysis": "cultural_sensitivity",
+            "cultural_sensitivity": "cultural_sensitivity",
             "translation_analysis": "translation_analysis",
             "survey_simulation": "survey_simulation",
-            "brand_name_evaluation": "name_evaluation",
+            "name_evaluation": "name_evaluation",
             "domain_analysis": "domain_analysis",
             "seo_online_discoverability": "seo_analysis",  # Updated to match our section name
             "competitor_analysis": "competitor_analysis",
             "market_research": "market_research",
-            "exec_summary": "executive_summary",
-            "final_recommendations": "recommendations"
+            "executive_summary": "executive_summary",
+            "recommendations": "recommendations"
         }
         
         # Create transformers mapping
@@ -419,14 +419,16 @@ class ReportFormatter:
         """Fetch all raw data for a specific run_id from the report_raw_data table."""
         logger.info(f"Fetching all raw data for run_id: {run_id}")
         
-        query = f"""
-        SELECT section_name, raw_data
-        FROM report_raw_data
-        WHERE run_id = '{run_id}'
-        ORDER BY section_name
-        """
-        
-        result = await self.supabase.execute_with_retry(query, {})
+        # Update to use the new execute_with_retry API
+        result = await self.supabase.execute_with_retry(
+            "select",
+            "report_raw_data",
+            {
+                "run_id": f"eq.{run_id}",
+                "select": "section_name,raw_data",
+                "order": "section_name"
+            }
+        )
         
         if not result:
             logger.warning(f"No data found for run_id: {run_id}")
@@ -773,28 +775,33 @@ class ReportFormatter:
         logger.info(f"Storing report metadata for run_id: {run_id}")
         
         # Check if a report already exists for this run_id to determine version
-        query = f"""
-        SELECT MAX(version) as current_version 
-        FROM report_metadata 
-        WHERE run_id = '{run_id}'
-        """
-        
-        result = await self.supabase.execute_with_retry(query, {})
+        result = await self.supabase.execute_with_retry(
+            "select",
+            "report_metadata",
+            {
+                "run_id": f"eq.{run_id}",
+                "select": "MAX(version) as current_version"
+            }
+        )
         current_version = 1  # Default to version 1
         
         if result and result[0]['current_version']:
             current_version = result[0]['current_version'] + 1
         
         # Insert metadata into the report_metadata table
-        insert_query = f"""
-        INSERT INTO report_metadata 
-        (run_id, report_url, version, format, file_size_kb, notes, created_at)
-        VALUES
-        ('{run_id}', '{report_url}', {current_version}, '{format}', {file_size_kb}, 
-        {'NULL' if notes is None else f"'{notes}'"}, NOW())
-        """
-        
-        await self.supabase.execute_with_retry(insert_query, {})
+        await self.supabase.execute_with_retry(
+            "insert",
+            "report_metadata",
+            {
+                "run_id": run_id,
+                "report_url": report_url,
+                "version": current_version,
+                "format": format,
+                "file_size_kb": file_size_kb,
+                "notes": notes,
+                "created_at": "NOW()"
+            }
+        )
         logger.info(f"Report metadata stored successfully for run_id: {run_id}, version: {current_version}")
 
     def _handle_section_error(self, doc: Document, section_name: str, error: Exception) -> None:
@@ -2506,7 +2513,11 @@ class ReportFormatter:
                                 doc.add_heading("Qualitative Feedback", level=4)
                                 doc.add_paragraph(name_analysis["participant_feedback"])
                             
-                            if "recommendations" in name_analysis:
+                            # Handle recommendations - check for new field name first, then fall back to old name
+                            if "final_recommendations" in name_analysis:
+                                doc.add_heading("Final Recommendations", level=4)
+                                doc.add_paragraph(name_analysis["final_recommendations"])
+                            elif "recommendations" in name_analysis:
                                 doc.add_heading("Recommendations", level=4)
                                 doc.add_paragraph(name_analysis["recommendations"])
                     
