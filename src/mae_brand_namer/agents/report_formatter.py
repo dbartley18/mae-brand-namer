@@ -23,6 +23,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.parser import parse_xml
 from docx.enum.section import WD_SECTION
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 from src.mae_brand_namer.utils.supabase_utils import SupabaseManager
 from src.mae_brand_namer.config.dependencies import Dependencies
@@ -251,24 +253,88 @@ class ReportFormatter:
     def _initialize_llm(self):
         """Initialize the LLM with Google Generative AI."""
         try:
-            # Verify API key is available
-            if not settings.gemini_api_key:
-                raise ValueError("Gemini API key is not set in settings")
-                
             # Create LLM instance
             self.llm = ChatGoogleGenerativeAI(
                 model="gemini-2.0-flash",
-                temperature=1.0,
+                temperature=settings.model_temperature,
                 google_api_key=settings.gemini_api_key,
-                convert_system_message_to_human=True
+                convert_system_message_to_human=True,
+                callbacks=settings.get_langsmith_callbacks()
             )
             logger.info(f"Initialized LLM: {type(self.llm).__name__}")
-            
         except Exception as e:
             logger.error(f"Failed to initialize LLM: {str(e)}")
-            logger.error(traceback.format_exc())
             raise ValueError(f"Could not initialize LLM: {str(e)}")
-
+            
+    def _format_template(self, template_name: str, format_data: Dict[str, Any], section_name: str = None) -> str:
+        """Helper method to standardize template formatting across the class.
+        
+        Args:
+            template_name: Name of the template in self.prompts
+            format_data: Dictionary of variables to format the template with
+            section_name: Optional section name for logging
+            
+        Returns:
+            Formatted template string
+        """
+        context = f" for {section_name}" if section_name else ""
+        logger.debug(f"Formatting template {template_name}{context}")
+        
+        # Get template content
+        template_content = ""
+        if template_name in self.prompts:
+            if hasattr(self.prompts[template_name], "template"):
+                template_content = self.prompts[template_name].template
+            else:
+                # Try to access as dictionary
+                template_content = self.prompts[template_name].get("template", "")
+        
+        if not template_content:
+            logger.warning(f"Template {template_name} not found or empty{context}")
+            return f"Please format the following data: {format_data.get('data', '')}"
+        
+        # Format the template with data
+        formatted_template = template_content
+        original_template = template_content
+        
+        # Try Jinja2-style placeholders first
+        for key, value in format_data.items():
+            placeholder = "{{" + key + "}}"
+            if placeholder in formatted_template:
+                formatted_template = formatted_template.replace(placeholder, str(value))
+                logger.debug(f"Replaced placeholder '{placeholder}' in template {template_name}{context}")
+        
+        # Then try Python-style placeholders
+        for key, value in format_data.items():
+            placeholder = "{" + key + "}"
+            if placeholder in formatted_template:
+                formatted_template = formatted_template.replace(placeholder, str(value))
+                logger.debug(f"Replaced placeholder '{placeholder}' in template {template_name}{context}")
+        
+        # Check if any replacements were made
+        if original_template == formatted_template:
+            logger.warning(f"No placeholders were replaced in {template_name} template{context}!")
+        else:
+            logger.info(f"Template placeholders were successfully replaced for {template_name}{context}")
+            
+        return formatted_template
+    
+    def _get_system_content(self, fallback: str = None) -> str:
+        """Get system prompt content with fallback.
+        
+        Args:
+            fallback: Fallback content if system prompt not found
+            
+        Returns:
+            System prompt content
+        """
+        if "system" in self.prompts:
+            if hasattr(self.prompts["system"], "template"):
+                return self.prompts["system"].template
+            else:
+                return self.prompts["system"].get("template", "")
+        return fallback or "You are an expert report formatter."
+            
     async def _safe_llm_invoke(self, messages, section_name=None, fallback_response=None):
         """Safe wrapper for LLM invocation with error handling.
         
@@ -720,6 +786,14 @@ class ReportFormatter:
                 table_style.paragraph_format.space_before = Pt(6)
                 table_style.paragraph_format.space_after = Pt(6)
                 
+            # Add a style for TOC entries
+            if 'TOC 1' not in styles:
+                toc_style = styles.add_style('TOC 1', 1)
+                toc_style.base_style = styles['Normal']
+                toc_style.font.size = Pt(12)
+                toc_style.paragraph_format.left_indent = Inches(0.25)
+                toc_style.paragraph_format.space_after = Pt(6)
+                
         except Exception as e:
             logger.error(f"Error setting up document styles: {str(e)}")
             # Add a basic error message to the document
@@ -1065,10 +1139,10 @@ class ReportFormatter:
                     else:
                         doc.add_paragraph(values)
                 
-                # Add user prompt
-                if "user_prompt" in brand_context:
+                # Add user prompt - access from state instead of brand_context
+                if "state" in data and "user_prompt" in data["state"]:
                     doc.add_heading("Original User Prompt", level=2)
-                    doc.add_paragraph(brand_context["user_prompt"])
+                    doc.add_paragraph(data["state"]["user_prompt"])
                 
                 # Add any other fields
                 for key, value in brand_context.items():
@@ -1662,13 +1736,21 @@ class ReportFormatter:
             brand_name = brand_context.get("brand_name", "")
             industry = brand_context.get("industry", "")
             
+            # Create comprehensive format data for the template
+            format_data = {
+                "run_id": self.current_run_id,
+                "brand_name": brand_name,
+                "industry": industry,
+                "brand_context": json.dumps(brand_context, indent=2)
+            }
+            
+            # Format the template using the helper method
+            formatted_template = self._format_template("title_page", format_data, "Title Page")
+            
             # Try to get title page content from LLM
             title_content = await self._safe_llm_invoke([
                 SystemMessage(content="You are a professional report formatter creating a title page for a brand naming report."),
-                HumanMessage(content=str(self.prompts["title_page"].format(
-                    brand_name=brand_name,
-                    industry=industry
-                )))
+                HumanMessage(content=formatted_template)
             ], section_name="Title Page")
             
             # Try to parse the response
@@ -1729,106 +1811,147 @@ class ReportFormatter:
         """Add a table of contents to the document."""
         logger.info("Adding table of contents")
         
-        # Add TOC heading
-        doc.add_heading("Table of Contents", level=1)
-        
-        # Define the exact section list according to notepad requirements
-        # Use the same section order as in generate_report but with display names
-        toc_sections = [self.SECTION_MAPPING.get(section_name, section_name.replace("_", " ").title()) 
-                       for section_name in self.SECTION_ORDER]
-        
-        # Add TOC entries with consistent styling
-        for i, section in enumerate(toc_sections, 1):
-            p = doc.add_paragraph(style='TOC 1')
-            p.add_run(f"{i}. {section}")
-            
-            # Add page number placeholder (would be replaced in a real TOC)
-            tab = p.add_run("\t")
-            p.add_run("___")
-        
-        # Optional: Get any additional TOC information from LLM for section descriptions
         try:
-            toc_content = await self._safe_llm_invoke([
-                SystemMessage(content="You are an expert report formatter creating a professional table of contents for a brand naming report."),
-                HumanMessage(content=str(self.prompts["table_of_contents"]))
-            ], section_name="Table of Contents")
+            # Create format data for the template
+            format_data = {
+                "run_id": self.current_run_id,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
             
-            # Try to extract section descriptions
+            # Format the template
+            formatted_template = self._format_template("table_of_contents", format_data, "Table of Contents")
+            
+            # Get system content
+            system_content = self._get_system_content("You are a professional report formatter creating a table of contents.")
+            
+            # Optional: Get any additional TOC information from LLM
             try:
-                content = json.loads(toc_content.content)
-                if "sections" in content and isinstance(content["sections"], list):
-                    # Add section descriptions if available, but keep the original TOC order
-                    doc.add_paragraph()
-                    doc.add_heading("Section Descriptions", level=2)
-                    
-                    for section in content["sections"]:
-                        if "title" in section and "description" in section:
-                            p = doc.add_paragraph()
-                            p.add_run(f"{section['title']}: ").bold = True
-                            p.add_run(section["description"])
-            except json.JSONDecodeError:
-                # Skip descriptions if parsing fails
-                pass
+                toc_content = await self._safe_llm_invoke([
+                    SystemMessage(content=system_content),
+                    HumanMessage(content=formatted_template)
+                ], section_name="Table of Contents")
+                
+                # Add a heading for the TOC
+                doc.add_heading("Table of Contents", level=1)
+                
+                # Add a paragraph before the TOC (optional)
+                if hasattr(toc_content, 'content') and toc_content.content:
+                    try:
+                        # Try to parse as JSON if formatted that way
+                        content = json.loads(toc_content.content)
+                        if "introduction" in content:
+                            doc.add_paragraph(content["introduction"])
+                    except json.JSONDecodeError:
+                        # Just use the raw content
+                        doc.add_paragraph(toc_content.content)
+                
+                # Add the actual table of contents field
+                paragraph = doc.add_paragraph()
+                run = paragraph.add_run()
+                fld_char = OxmlElement('w:fldChar')
+                fld_char.set(qn('w:fldCharType'), 'begin')
+                
+                instr_text = OxmlElement('w:instrText')
+                instr_text.set(qn('xml:space'), 'preserve')
+                instr_text.text = 'TOC \\o "1-3" \\h \\z \\u'
+                
+                fld_char_end = OxmlElement('w:fldChar')
+                fld_char_end.set(qn('w:fldCharType'), 'end')
+                
+                r_element = run._r
+                r_element.append(fld_char)
+                r_element.append(instr_text)
+                r_element.append(fld_char_end)
+                
+                # Add a page break after TOC
+                doc.add_page_break()
+                
+            except Exception as e:
+                logger.error(f"Error getting TOC descriptions from LLM: {str(e)}")
+                
+                # Fallback: Add a basic TOC without LLM content
+                doc.add_heading("Table of Contents", level=1)
+                
+                paragraph = doc.add_paragraph()
+                run = paragraph.add_run()
+                fld_char = OxmlElement('w:fldChar')
+                fld_char.set(qn('w:fldCharType'), 'begin')
+                
+                instr_text = OxmlElement('w:instrText')
+                instr_text.set(qn('xml:space'), 'preserve')
+                instr_text.text = 'TOC \\o "1-3" \\h \\z \\u'
+                
+                fld_char_end = OxmlElement('w:fldChar')
+                fld_char_end.set(qn('w:fldCharType'), 'end')
+                
+                r_element = run._r
+                r_element.append(fld_char)
+                r_element.append(instr_text)
+                r_element.append(fld_char_end)
+                
+                # Add a page break after TOC
+                doc.add_page_break()
+                
         except Exception as e:
-            logger.error(f"Error getting TOC descriptions from LLM: {str(e)}")
-            # Continue without descriptions
-        
-        # Add page break
-        doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
-        
+            logger.error(f"Error adding table of contents: {str(e)}")
+            doc.add_paragraph("Error generating table of contents", style='Intense Quote')
+    
     async def _add_executive_summary(self, doc: Document, data: Dict[str, Any]) -> None:
         """Add an executive summary to the document."""
         logger.info("Adding executive summary")
         
         try:
-            # Format the prompt with the data
-            formatted_prompt = self.prompts["executive_summary"].format(
-                data=json.dumps(data, indent=2)
-            )
+            # Extract brand context
+            brand_context = data.get("brand_context", {})
+            brand_name = brand_context.get("brand_name", "")
+            industry = brand_context.get("industry", "")
+            
+            # Create format data
+            format_data = {
+                "run_id": self.current_run_id,
+                "brand_name": brand_name,
+                "industry": industry,
+                "brand_context": json.dumps(brand_context, indent=2),
+                "data": json.dumps(data, indent=2)
+            }
+            
+            # Format the template using the helper method
+            formatted_prompt = self._format_template("executive_summary", format_data, "Executive Summary")
+            
+            # Get system content
+            system_content = self._get_system_content("You are an expert report formatter creating a professional executive summary.")
             
             # Call LLM to generate executive summary
             response = await self._safe_llm_invoke([
-                SystemMessage(content=str(self.prompts["system"].format())),
+                SystemMessage(content=system_content),
                 HumanMessage(content=formatted_prompt)
             ], section_name="Executive Summary")
             
-            # Parse the response
-            try:
-                content = json.loads(response.content)
-                
-                # Add the title
-                doc.add_heading(content.get("title", "Executive Summary"), level=1)
-                
-                # Add the main content
-                if "content" in content and content["content"]:
-                    doc.add_paragraph(content["content"])
-                
-                # Add sections if available
-                if "sections" in content and isinstance(content["sections"], list):
-                    for section in content["sections"]:
-                        if "heading" in section and "content" in section:
-                            doc.add_heading(section["heading"], level=2)
-                            doc.add_paragraph(section["content"])
-                
-                # Add key points if available
-                if "key_points" in content and isinstance(content["key_points"], list):
-                    doc.add_heading("Key Points", level=2)
-                    for point in content["key_points"]:
-                        bullet = doc.add_paragraph(style='List Bullet')
-                        bullet.add_run(point)
-                
-                # Add recommendations if available
-                if "recommendations" in content and isinstance(content["recommendations"], list):
-                    doc.add_heading("Recommendations", level=2)
-                    for rec in content["recommendations"]:
-                        bullet = doc.add_paragraph(style='List Bullet')
-                        bullet.add_run(rec)
-                
-            except json.JSONDecodeError:
-                # Fallback to using raw text
-                doc.add_heading("Executive Summary", level=1)
-                doc.add_paragraph(response.content)
-                
+            # Add the executive summary to the document
+            doc.add_heading("Executive Summary", level=1)
+            doc.add_paragraph(response.content)
+            
+            # Add sections if available
+            if "sections" in data and isinstance(data["sections"], list):
+                for section in data["sections"]:
+                    if "heading" in section and "content" in section:
+                        doc.add_heading(section["heading"], level=2)
+                        doc.add_paragraph(section["content"])
+            
+            # Add key points if available
+            if "key_points" in data and isinstance(data["key_points"], list):
+                doc.add_heading("Key Points", level=2)
+                for point in data["key_points"]:
+                    bullet = doc.add_paragraph(style='List Bullet')
+                    bullet.add_run(point)
+            
+            # Add recommendations if available
+            if "recommendations" in data and isinstance(data["recommendations"], list):
+                doc.add_heading("Recommendations", level=2)
+                for rec in data["recommendations"]:
+                    bullet = doc.add_paragraph(style='List Bullet')
+                    bullet.add_run(rec)
+            
         except Exception as e:
             logger.error(f"Error adding executive summary: {str(e)}")
             logger.error(traceback.format_exc())
@@ -1844,94 +1967,77 @@ class ReportFormatter:
                         doc.add_paragraph(f"{key}: {value}")
                         
     async def _add_recommendations(self, doc: Document, data: Dict[str, Any]) -> None:
-        """Add recommendations to the document."""
-        logger.info("Adding recommendations section")
+        """Add strategic recommendations to the document."""
+        logger.info("Adding strategic recommendations")
         
         try:
-            # Format the prompt with the data
-            formatted_prompt = self.prompts["recommendations"].format(
-                data=json.dumps(data, indent=2)
-            )
+            # Extract brand context
+            brand_context = data.get("brand_context", {})
+            brand_name = brand_context.get("brand_name", "")
+            industry = brand_context.get("industry", "")
+            
+            # Create format data
+            format_data = {
+                "run_id": self.current_run_id,
+                "brand_name": brand_name,
+                "industry": industry,
+                "brand_context": json.dumps(brand_context, indent=2),
+                "data": json.dumps(data, indent=2)
+            }
+            
+            # Format the template using the helper method
+            formatted_prompt = self._format_template("recommendations", format_data, "Strategic Recommendations")
+            
+            # Get system content
+            system_content = self._get_system_content("You are an expert report formatter creating professional strategic recommendations.")
             
             # Call LLM to generate recommendations
             response = await self._safe_llm_invoke([
-                SystemMessage(content=str(self.prompts["system"].format())),
+                SystemMessage(content=system_content),
                 HumanMessage(content=formatted_prompt)
-            ], section_name="Recommendations")
+            ], section_name="Strategic Recommendations")
+            
+            # Add the recommendations to the document
+            doc.add_heading("Strategic Recommendations", level=1)
             
             # Parse the response
             try:
                 content = json.loads(response.content)
                 
-                # Add the title
-                doc.add_heading(content.get("title", "Strategic Recommendations"), level=1)
+                # Add introduction if available
+                if "introduction" in content and content["introduction"]:
+                    doc.add_paragraph(content["introduction"])
                 
-                # Add the main content
-                if "content" in content and content["content"]:
-                    doc.add_paragraph(content["content"])
+                # Add recommendations if available
+                if "recommendations" in content and isinstance(content["recommendations"], list):
+                    for i, rec in enumerate(content["recommendations"]):
+                        if isinstance(rec, dict) and "title" in rec and "details" in rec:
+                            # Rich recommendation format
+                            doc.add_heading(f"{i+1}. {rec['title']}", level=2)
+                            doc.add_paragraph(rec["details"])
+                            
+                            # Add sub-recommendations if available
+                            if "steps" in rec and isinstance(rec["steps"], list):
+                                for step in rec["steps"]:
+                                    bullet = doc.add_paragraph(style='List Bullet')
+                                    bullet.add_run(step)
+                        else:
+                            # Simple recommendation format
+                            doc.add_heading(f"Recommendation {i+1}", level=2)
+                            doc.add_paragraph(str(rec))
                 
-                # Add top recommendations if available
-                if "top_recommendations" in content and isinstance(content["top_recommendations"], list):
-                    doc.add_heading("Top Recommendations", level=2)
-                    for i, rec in enumerate(content["top_recommendations"], 1):
-                        if isinstance(rec, str):
-                            bullet = doc.add_paragraph(style='List Bullet')
-                            bullet.add_run(f"{i}. {rec}")
-                        elif isinstance(rec, dict) and "title" in rec and "description" in rec:
-                            bullet = doc.add_paragraph(style='List Bullet')
-                            bullet.add_run(f"{i}. {rec['title']}: ").bold = True
-                            bullet.add_run(rec["description"])
-                
-                # Add implementation strategy if available
-                if "implementation_strategy" in content and content["implementation_strategy"]:
-                    doc.add_heading("Implementation Strategy", level=2)
-                    doc.add_paragraph(content["implementation_strategy"])
-                
-                # Add alternative options if available
-                if "alternative_options" in content and isinstance(content["alternative_options"], list):
-                    doc.add_heading("Alternative Options", level=2)
-                    for option in content["alternative_options"]:
-                        if isinstance(option, str):
-                            bullet = doc.add_paragraph(style='List Bullet')
-                            bullet.add_run(option)
-                        elif isinstance(option, dict) and "title" in option and "description" in option:
-                            bullet = doc.add_paragraph(style='List Bullet')
-                            bullet.add_run(f"{option['title']}: ").bold = True
-                            bullet.add_run(option["description"])
-                
-                # Add sections if available
-                if "sections" in content and isinstance(content["sections"], list):
-                    for section in content["sections"]:
-                        if "heading" in section and "content" in section:
-                            doc.add_heading(section["heading"], level=2)
-                            doc.add_paragraph(section["content"])
-                
+                # Add conclusion if available
+                if "conclusion" in content and content["conclusion"]:
+                    doc.add_heading("Conclusion", level=2)
+                    doc.add_paragraph(content["conclusion"])
+                    
             except json.JSONDecodeError:
                 # Fallback to using raw text
-                doc.add_heading("Strategic Recommendations", level=1)
                 doc.add_paragraph(response.content)
                 
         except Exception as e:
             logger.error(f"Error adding recommendations: {str(e)}")
-            logger.error(traceback.format_exc())
-            
-            # Add a simple recommendations section as fallback
-            doc.add_heading("Strategic Recommendations", level=1)
-            doc.add_paragraph("An error occurred while generating the recommendations section.")
-            
-            # Try to add some basic information from the raw data
-            if isinstance(data, dict):
-                for key, value in data.items():
-                    if isinstance(value, str) and value:
-                        doc.add_paragraph(f"{key}: {value}")
-                    elif isinstance(value, list):
-                        doc.add_heading(key.replace("_", " ").title(), level=2)
-                        for item in value:
-                            bullet = doc.add_paragraph(style='List Bullet')
-                            if isinstance(item, str):
-                                bullet.add_run(item)
-                            elif isinstance(item, dict) and "name" in item:
-                                bullet.add_run(item["name"])
+            doc.add_paragraph(f"Error occurred while adding recommendations: {str(e)}", style='Intense Quote')
 
     async def _format_generic_section(self, doc: Document, section_name: str, data: Dict[str, Any]) -> None:
         """Format a section using LLM when no specific formatter is available."""
@@ -1941,48 +2047,74 @@ class ReportFormatter:
             
             # Try to find a matching prompt template
             if prompt_key in self.prompts:
-                prompt_template = self.prompts[prompt_key]
                 logger.info(f"Using prompt template '{prompt_key}' for section {section_name}")
                 
-                # Format the prompt with section data and run_id
-                try:
-                    formatted_prompt = prompt_template.format(
-                        run_id=self.current_run_id,
-                        section_data=json.dumps(data, indent=2)
-                    )
-                    logger.debug(f"Formatted prompt for {section_name} with variables: run_id, section_data")
-                except Exception as e:
-                    logger.error(f"Error formatting prompt for {section_name}: {str(e)}")
-                    # Try with different variable names that might be in the template
-                    try:
-                        # Check what variables the template expects
-                        expected_vars = prompt_template.input_variables
-                        logger.debug(f"Template expects variables: {expected_vars}")
-                        
-                        # Create a variables dict with all possible variations
-                        variables = {
-                            "run_id": self.current_run_id,
-                            "section_data": json.dumps(data, indent=2),
-                            "data": json.dumps(data, indent=2),
-                            section_name: json.dumps(data, indent=2)
-                        }
-                        
-                        # Only include variables the template expects
-                        filtered_vars = {k: v for k, v in variables.items() if k in expected_vars}
-                        logger.debug(f"Using filtered variables: {list(filtered_vars.keys())}")
-                        
-                        formatted_prompt = prompt_template.format(**filtered_vars)
-                    except Exception as e2:
-                        logger.error(f"Second attempt at formatting prompt failed: {str(e2)}")
-                        doc.add_paragraph(f"Error formatting section: Could not prepare prompt", style='Intense Quote')
-                        return
+                # Create a comprehensive format data dictionary
+                format_data = {
+                    "run_id": self.current_run_id,
+                    "data": json.dumps(data, indent=2),
+                    "section_data": json.dumps(data, indent=2),
+                    section_name.lower().replace(" ", "_"): json.dumps(data, indent=2)
+                }
                 
-                # Log before LLM call
-                logger.info(f"Making LLM call for section: {section_name}")
+                # Special handling for survey_simulation
+                if prompt_key == "survey_simulation":
+                    survey_data = data.get("survey_simulation", {})
+                    if survey_data:
+                        # Extract brand names from the survey_simulation data
+                        brand_names = list(survey_data.keys())
+                        format_data["brand_names"] = ", ".join(brand_names)
+                        format_data["survey_data"] = json.dumps(survey_data, indent=2)
+                        logger.info(f"Special handling for survey_simulation: found {len(brand_names)} brand names: {format_data['brand_names']}")
+                    else:
+                        logger.warning(f"survey_simulation key not found in section data")
+                        # Try to find brand names in the top level if possible
+                        if isinstance(data, dict) and len(data) > 0:
+                            keys = list(data.keys())
+                            if not any(k for k in keys if k.startswith("_") or k in ["metadata", "info", "config"]):
+                                # These might be brand names
+                                format_data["brand_names"] = ", ".join(keys)
+                                format_data["survey_data"] = json.dumps(data, indent=2)
+                                logger.info(f"Fallback for survey_simulation: using top-level keys as brand names: {format_data['brand_names']}")
                 
-                # Call LLM with the formatted prompt
+                # Special handling for translation_analysis
+                elif prompt_key == "translation_analysis":
+                    translation_data = data.get("translation_analysis", {})
+                    if translation_data:
+                        # Extract brand names from the translation_analysis data
+                        brand_names = list(translation_data.keys()) if isinstance(translation_data, dict) else []
+                        format_data["brand_names"] = ", ".join(brand_names)
+                        format_data["translation_analysis"] = json.dumps(translation_data, indent=2)
+                        logger.info(f"Special handling for translation_analysis: found {len(brand_names)} brand names: {format_data['brand_names']}")
+                    else:
+                        logger.warning(f"translation_analysis key not found in section data")
+                        # Try to find brand names in the top level if possible
+                        if isinstance(data, dict) and len(data) > 0:
+                            keys = list(data.keys())
+                            if not any(k for k in keys if k.startswith("_") or k in ["metadata", "info", "config"]):
+                                # These might be brand names
+                                format_data["brand_names"] = ", ".join(keys)
+                                format_data["translation_analysis"] = json.dumps(data, indent=2)
+                                logger.info(f"Fallback for translation_analysis: using top-level keys as brand names: {format_data['brand_names']}")
+                
+                # For more complex data structures, extract specific fields
+                if isinstance(data, dict):
+                    for key, value in data.items():
+                        # Only include scalar values or simple lists
+                        if isinstance(value, (str, int, float, bool)) or (
+                            isinstance(value, list) and all(isinstance(x, (str, int, float, bool)) for x in value)
+                        ):
+                            format_data[key] = value
+                
+                # Format the template using the helper method
                 try:
-                    system_content = self.prompts["system"].format() if "system" in self.prompts else "You are an expert report formatter."
+                    formatted_prompt = self._format_template(prompt_key, format_data, section_name)
+                    
+                    # Log before LLM call
+                    logger.info(f"Making LLM call for section: {section_name}")
+                    
+                    # Call LLM with the formatted prompt
+                    system_content = self._get_system_content(f"You are an expert report formatter creating a professional {section_name} section.")
                     messages = [
                         SystemMessage(content=system_content),
                         HumanMessage(content=formatted_prompt)

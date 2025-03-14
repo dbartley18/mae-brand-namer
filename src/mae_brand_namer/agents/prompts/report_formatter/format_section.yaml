@@ -1,0 +1,25 @@
+_type: prompt
+input_variables: [section_name, section_data]
+template: |
+  Please format the "{section_name}" section based on this data:
+  
+  ```json
+  {section_data}
+  ```
+  
+  Provide a formatted response in JSON format with the following structure:
+  
+  ```json
+  {
+    "title": "Section Title",
+    "content": "Main section content/introduction",
+    "sections": [
+      {
+        "heading": "Subsection heading",
+        "content": "Subsection content"
+      }
+    ]
+  }
+  ```
+  
+  Be informative, professional and structure the content logically.

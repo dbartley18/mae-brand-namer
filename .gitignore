@@ -165,3 +165,7 @@ simple_report_20250312_160803/survey_simulation_data.json
 simple_report_20250312_160803/translation_analysis_data.json
 check_tables.py
 docs/notepad.md
+output/formatted_prompts_mae_20250314_150319_d30ba0e7.json
+output/llm_results_mae_20250314_150319_d30ba0e7.json
+output/brand_naming_report_mae_20250314_150319_d30ba0e7_20250314_124713.docx
+output/raw_data_mae_20250314_150319_d30ba0e7.json
