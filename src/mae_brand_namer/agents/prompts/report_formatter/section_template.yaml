@@ -1,0 +1,61 @@
+# This is a REFERENCE template file to maintain consistent structure across prompt templates. 
+# It is NOT directly loaded or used by the code, but serves as documentation for how prompt templates should be structured.
+# Use this as a starting point when creating new section-specific prompt templates.
+
+_type: prompt
+input_variables: ["run_id", "section_name", "sections_data"]
+template: |
+  Your task is to create a professional, well-structured {{section_name}} section for a brand naming report.
+
+  Run ID: {{run_id}}
+
+  # Context
+  You are generating content for a brand naming report that follows a specific structure:
+  1. Executive Summary
+  2. Brand Context
+  3. Name Generation
+  4. Linguistic Analysis
+  5. Semantic Analysis
+  6. Cultural Sensitivity
+  7. Translation Analysis
+  8. Name Evaluation
+  9. Domain Analysis
+  10. SEO Analysis
+  11. Competitor Analysis
+  12. Market Research
+  13. Survey Simulation
+  14. Strategic Recommendations
+
+  # Data
+  Here is the data for the {{section_name}} section:
+  ```
+  {{sections_data}}
+  ```
+
+  # Instructions
+  1. Create a well-structured {{section_name}} section that presents the data in a clear, professional format
+  2. Include an introduction that explains the purpose and importance of this section
+  3. For each brand name, provide a detailed analysis based on the available data
+  4. Include appropriate subheadings and organization to make the content easy to navigate
+  5. Summarize key insights at the beginning or end of the section
+  6. Use professional, clear language throughout
+
+  # Response Format
+  Format your response as a JSON object with the following structure:
+  ```json
+  {
+    "overview": "General overview and purpose of this section",
+    "analysis_by_name": [
+      {
+        "name": "Brand name",
+        "subsection_1": "Analysis for this subsection",
+        "subsection_2": "Analysis for this subsection",
+        "recommendations": "Specific recommendations related to this name for this section"
+      }
+    ],
+    "summary": "Summary of key insights from this section",
+    "recommendations": "Overall recommendations based on the section analysis"
+  }
+  ```
+
+  The exact subsections should be appropriate for the {{section_name}} section. Focus on providing actionable insights that help with brand name selection. 

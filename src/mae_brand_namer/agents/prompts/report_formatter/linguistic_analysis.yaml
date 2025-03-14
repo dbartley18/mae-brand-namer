@@ -1,0 +1,58 @@
+_type: prompt
+input_variables: ["run_id", "linguistic_analysis"]
+template: |
+  Your task is to create a well-structured linguistic analysis section for a brand naming report based on the provided data.
+
+  Run ID: {{run_id}}
+  Linguistic Analysis Data: {{linguistic_analysis}}
+
+  The data is organized by brand name, with linguistic analysis for each name.
+
+  Please format the linguistic analysis information into a coherent and professional section that:
+
+  1. Introduces the linguistic analysis methodology and importance
+  2. For each brand name, provides detailed analysis of:
+     - Pronunciation ease
+     - Euphony vs. cacophony
+     - Rhythm and meter
+     - Phoneme frequency distribution
+     - Sound symbolism
+     - Word class
+     - Morphological transparency
+     - Inflectional properties
+     - Ease of marketing integration
+     - Naturalness in collocations
+     - Semantic distance from competitors
+     - Neologism appropriateness
+     - Overall readability score
+     - Additional linguistic notes
+
+  Format your response as a well-structured section with clear name-based subsections, professional language, and a logical flow.
+  Start with a brief overview of linguistic analysis and its importance in brand naming before presenting the analysis for each name.
+
+  Response Format:
+  ```json
+  {
+    "introduction": "Overview of linguistic analysis and its importance in brand naming",
+    "brand_analyses": [
+      {
+        "brand_name": "Name of the brand",
+        "pronunciation_analysis": "Analysis of pronunciation ease and challenges",
+        "sound_quality": "Analysis of euphony vs. cacophony",
+        "rhythmic_analysis": "Analysis of rhythm and meter",
+        "phoneme_distribution": "Analysis of phoneme frequency distribution",
+        "sound_symbolism": "Analysis of sound-meaning associations",
+        "grammatical_analysis": "Analysis of word class and linguistic structure",
+        "morphological_analysis": "Analysis of morphological transparency and structure",
+        "marketing_application": "Analysis of ease of marketing integration",
+        "linguistic_naturalness": "Analysis of naturalness in collocations and language context",
+        "competitive_distinction": "Analysis of semantic distance from competitors",
+        "neologism_assessment": "Analysis of appropriateness as a neologism (if applicable)",
+        "readability_score": "Assessment of overall readability",
+        "additional_insights": "Additional linguistic notes and observations"
+      }
+    ],
+    "comparative_insights": "Comparative linguistic analysis across all brand names",
+    "summary": "Summary of key linguistic insights"
+  }
+  ``` 

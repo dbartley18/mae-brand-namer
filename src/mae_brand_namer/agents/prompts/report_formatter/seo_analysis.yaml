@@ -1,0 +1,29 @@
+_type: prompt
+input_variables: ["run_id", "brand_name", "seo_data"]
+template: |
+  Your task is to create a comprehensive SEO analysis for a brand name based on the provided data.
+
+  Brand Name: {{brand_name}}
+  SEO Data: {{seo_data}}
+
+  Please provide a detailed analysis of the SEO potential for this brand name, including:
+
+  1. Overall SEO viability assessment
+  2. Analysis of search volume and competition
+  3. Branded vs. non-branded keyword potential
+  4. Recommendations for improving online discoverability
+  5. Content marketing opportunities specific to this brand name
+
+  Format your response as a well-structured analysis with clear sections and actionable insights.
+  Focus on practical recommendations that would help the brand maximize its online visibility.
+
+  Response Format:
+  ```json
+  {
+    "seo_viability_assessment": "Detailed assessment of the brand name's SEO potential",
+    "search_landscape_analysis": "Analysis of search volume, competition, and keyword potential",
+    "content_strategy_recommendations": "Specific content marketing recommendations",
+    "technical_seo_considerations": "Technical aspects to consider for optimal SEO performance",
+    "action_plan": ["Prioritized list of actions to improve online discoverability"]
+  }
+  ``` 

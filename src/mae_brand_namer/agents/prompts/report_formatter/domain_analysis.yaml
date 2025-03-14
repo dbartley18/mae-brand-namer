@@ -1,0 +1,72 @@
+_type: prompt
+input_variables: ["run_id", "brand_names", "domain_data"]
+template: |
+  Your task is to create a comprehensive domain analysis section for a brand naming report.
+
+  Run ID: {{run_id}}
+  Brand Names: {{brand_names}}
+  Domain Data: {{domain_data}}
+
+  # IMPORTANT: Include as much specific data as possible from the provided domain_data in your analysis.
+
+  Please analyze the domain availability and digital presence potential for each brand name. Your analysis should include:
+
+  1. **Domain Availability Assessment**: 
+     - Evaluate availability of primary domains (.com, .net, .org) for each name
+     - Check for exact matches and close variations
+     - Analyze the potential impact of unavailable domains on brand strength
+
+  2. **Alternative TLDs Exploration**: 
+     - Recommend industry-specific or innovative TLDs that might be suitable
+     - Assess the viability of country-specific domains if relevant for international markets
+     - Consider non-traditional TLDs (e.g., .io, .co, .ai) that might enhance brand positioning
+
+  3. **Domain History Investigation**: 
+     - Research the history of any previously registered domains with the same or similar names
+     - Evaluate any potential reputation issues or SEO advantages/disadvantages
+     - Assess whether acquiring previously used domains is feasible or recommended
+
+  4. **SEO Potential Analysis**: 
+     - Evaluate keyword value and search volume potential
+     - Assess how each domain might perform in search results
+     - Consider domain length, memorability, and typability for SEO impact
+
+  5. **Social Media Availability**: 
+     - Check username availability across major platforms (Twitter/X, Instagram, Facebook, LinkedIn, TikTok, etc.)
+     - Assess the impact of unavailable usernames on brand consistency
+     - Recommend strategies for maintaining brand consistency across platforms
+
+  6. **Technical Considerations**: 
+     - Identify potential technical issues with certain domain names
+     - Assess email deliverability considerations
+     - Evaluate potential for typosquatting or cybersquatting risks
+
+  7. **Future-proofing Strategy**: 
+     - Recommend comprehensive domain portfolio strategies
+     - Suggest preemptive registrations to protect the brand
+     - Outline a long-term domain management approach
+
+  For each brand name, provide a thorough domain analysis with actionable recommendations that decision-makers can use to assess the digital viability of each name option.
+
+  Response Format:
+  ```json
+  {
+    "overview": "Comprehensive assessment of domain landscape for the proposed names, including key findings and patterns observed across all names",
+    "analysis_by_name": [
+      {
+        "name": "Brand name",
+        "domain_availability": "Detailed analysis of primary domain availability including exact matches and close variations",
+        "alternative_tlds": "Specific recommendations for alternative TLDs with reasoning for each suggestion",
+        "domain_history": "Detailed findings about any historical usage of the domain name",
+        "seo_potential": "Comprehensive assessment of SEO advantages/disadvantages with specific keywords analysis",
+        "social_media_availability": "Platform-by-platform assessment of username availability",
+        "technical_considerations": "Analysis of technical advantages or challenges with specific recommendations",
+        "future_proofing": "Detailed strategy recommendations for domain acquisition and protection"
+      }
+    ],
+    "comparative_analysis": "In-depth comparison of domain viability across all names with specific rankings",
+    "recommendations": "Prioritized domain acquisition and protection recommendations with implementation timeline"
+  }
+  ```
+
+  Your analysis should be extremely detailed, data-driven, and provide actionable insights for domain acquisition and digital presence strategy. Whenever possible, include specific findings from your analysis of the domain data rather than general statements. 

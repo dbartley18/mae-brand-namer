@@ -1,0 +1,53 @@
+_type: prompt
+input_variables: ["run_id", "cultural_sensitivity_analysis"]
+template: |
+  Your task is to create a well-structured cultural sensitivity analysis section for a brand naming report based on the provided data.
+
+  Run ID: {{run_id}}
+  Cultural Sensitivity Analysis Data: {{cultural_sensitivity_analysis}}
+
+  The data is organized by brand name, with cultural sensitivity analysis for each name.
+
+  Please format the cultural sensitivity analysis information into a coherent and professional section that:
+
+  1. Introduces the cultural sensitivity analysis methodology and importance
+  2. For each brand name, provides detailed analysis of:
+     - Cultural connotations
+     - Symbolic meanings
+     - Alignment with cultural values
+     - Religious sensitivities
+     - Social and political taboos
+     - Age-related connotations
+     - Regional variations
+     - Historical meaning
+     - Current event relevance
+     - Overall risk rating
+     - Additional cultural sensitivity notes
+
+  Format your response as a well-structured section with clear name-based subsections, professional language, and a logical flow.
+  Start with a brief overview of cultural sensitivity analysis and its importance in global brand naming before presenting the analysis for each name.
+
+  Response Format:
+  ```json
+  {
+    "introduction": "Overview of cultural sensitivity analysis and its importance in global branding",
+    "brand_analyses": [
+      {
+        "brand_name": "Name of the brand",
+        "cultural_connotations": "Analysis of cultural connotations across different regions",
+        "symbolic_meanings": "Analysis of symbolic interpretations in different cultures",
+        "cultural_values_alignment": "How the name aligns with different cultural value systems",
+        "religious_considerations": "Analysis of potential religious sensitivities",
+        "social_political_considerations": "Analysis of social and political taboos or sensitivities",
+        "age_related_factors": "Analysis of how different age groups might perceive the name",
+        "regional_analysis": "Analysis of regional variations in interpretation",
+        "historical_context": "Analysis of historical meanings or associations",
+        "current_relevance": "Analysis of current event relevance or associations",
+        "risk_assessment": "Overall cultural risk rating and justification",
+        "additional_insights": "Additional cultural sensitivity notes and observations"
+      }
+    ],
+    "risk_mitigation_strategies": "Strategies for mitigating identified cultural risks",
+    "summary": "Summary of key cultural sensitivity insights"
+  }
+  ``` 

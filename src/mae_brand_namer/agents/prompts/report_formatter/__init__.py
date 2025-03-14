@@ -68,9 +68,25 @@ def get_toc_prompt(**kwargs) -> Dict[str, Any]:
         kwargs
     )
 
+def get_seo_analysis_prompt(**kwargs) -> Dict[str, Any]:
+    """
+    Get the SEO analysis prompt template with variables replaced.
+    
+    Args:
+        **kwargs: Variables to substitute in the template
+        
+    Returns:
+        Processed template with variables replaced
+    """
+    return load_and_process_template(
+        os.path.join(TEMPLATE_DIR, 'seo_analysis.yaml'),
+        kwargs
+    )
+
 __all__ = [
     'get_executive_summary_prompt',
     'get_recommendations_prompt',
     'get_title_page_prompt',
-    'get_toc_prompt'
+    'get_toc_prompt',
+    'get_seo_analysis_prompt'
 ] 

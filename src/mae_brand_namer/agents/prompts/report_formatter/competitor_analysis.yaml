@@ -1,0 +1,53 @@
+_type: prompt
+input_variables: ["run_id", "competitor_analysis"]
+template: |
+  Your task is to create a well-structured competitor analysis section for a brand naming report based on the provided data.
+
+  Run ID: {{run_id}}
+  Competitor Analysis Data: {{competitor_analysis}}
+
+  The data is organized by brand name, then by competitor name, with analysis for each brand name's relationship to various competitors.
+
+  Please format the competitor analysis information into a coherent and professional section that:
+
+  1. Introduces the competitor analysis methodology and its importance for brand naming strategy
+  2. For each brand name, provides a consolidated analysis of its competitive landscape including:
+     - Overview of relevant competitors
+     - Competitor positioning assessment
+     - Analysis of competitor strengths and weaknesses
+     - Differentiation opportunities against competitors
+     - Risk of confusion with competitors
+     - Target audience perception in competitive context
+     - Trademark conflict risk assessment
+
+  Format your response as a well-structured section with clear name-based subsections, professional language, and a logical flow.
+  Start with an overview of the competitive landscape before presenting the specific analysis for each brand name.
+
+  Response Format:
+  ```json
+  {
+    "introduction": "Overview of competitive analysis methodology and importance",
+    "competitive_landscape_overview": "General overview of the competitive environment",
+    "brand_analyses": [
+      {
+        "brand_name": "Name of the brand",
+        "competitive_context_summary": "Summary of this name's competitive positioning",
+        "competitor_analyses": [
+          {
+            "competitor_name": "Name of the competitor",
+            "positioning_comparison": "How competitor is positioned relative to proposed brand",
+            "strength_weakness_analysis": "Analysis of competitor's strengths and weaknesses",
+            "differentiation_opportunities": "Specific differentiation opportunities against this competitor",
+            "confusion_risk": "Assessment of risk of confusion with this competitor",
+            "audience_perception": "How target audience perceives this name vs. competitor",
+            "trademark_risk": "Assessment of trademark conflict risk with this competitor"
+          }
+        ],
+        "overall_competitive_position": "Summary of overall competitive positioning",
+        "differentiation_strategy": "Recommended strategy for differentiation in the competitive landscape"
+      }
+    ],
+    "comparative_competitive_analysis": "Comparative analysis of names in competitive context",
+    "summary": "Summary of key competitive insights and implications for brand naming"
+  }
+  ``` 

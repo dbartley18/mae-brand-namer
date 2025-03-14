@@ -35,6 +35,7 @@ from mae_brand_namer.agents import (
     SurveySimulationExpert,
     MarketResearchExpert,
     ReportCompiler,
+    ReportFormatter,
     
     ProcessSupervisor,
     BrandNameEvaluator
@@ -64,6 +65,7 @@ NODE_AGENT_TASK_MAPPING = {
     "process_competitor_analysis": ("CompetitorAnalysisExpert", "Analyze_Competition"),
     "process_survey_simulation": ("SurveySimulationExpert", "Simulate_Survey"),
     "compile_report": ("ReportCompiler", "Compile_Report"),
+    "format_report": ("ReportFormatter", "Format_Report"),
 }
 
 class ProcessSupervisorCallbackHandler(BaseCallbackHandler):
@@ -550,6 +552,12 @@ def create_workflow(config: dict) -> StateGraph:
         )), "compile_report")
     )
     
+    workflow.add_node("format_report", 
+        wrap_async_node(lambda state: process_report_formatting(state, ReportFormatter(
+            dependencies=Dependencies(supabase=supabase_manager, langsmith=langsmith_client)
+        )), "format_report")
+    )
+    
     # Add edges to connect nodes in the workflow
     workflow.add_edge("generate_uid", "understand_brand_context")
     workflow.add_edge("understand_brand_context", "generate_brand_names")
@@ -569,6 +577,7 @@ def create_workflow(config: dict) -> StateGraph:
     workflow.add_edge("process_seo_analysis", "process_competitor_analysis")
     workflow.add_edge("process_competitor_analysis", "process_survey_simulation")
     workflow.add_edge("process_survey_simulation", "compile_report")
+    workflow.add_edge("compile_report", "format_report")
     
     # Define entry point
     workflow.set_entry_point("generate_uid")
@@ -1913,11 +1922,56 @@ async def process_report(state: BrandNameGenerationState, agent: ReportCompiler)
             "status": "error"
         }
 
-            
+async def process_report_formatting(state: BrandNameGenerationState, agent: ReportFormatter) -> Dict[str, Any]:
+    """Format the compiled report into a polished document."""
+    try:
+        # Generate the formatted report
+        formatted_report_path = await agent.generate_report(
+            run_id=state.run_id,
+            upload_to_storage=True  # Ensure we upload to Supabase storage
+        )
+        
+        # We need to query the metadata table to get the report URL
+        # This is a workaround since generate_report doesn't return the URL directly
+        report_url = ""
+        try:
+            if agent.supabase:
+                query = f"""
+                SELECT report_url FROM report_metadata 
+                WHERE run_id = '{state.run_id}' 
+                ORDER BY version DESC LIMIT 1
+                """
+                result = await agent.supabase.execute_with_retry(query, {})
+                if result and len(result) > 0 and 'report_url' in result[0]:
+                    report_url = result[0]['report_url']
+                    logger.info(f"Retrieved report URL from metadata: {report_url}")
+        except Exception as e:
+            logger.warning(f"Failed to retrieve report URL from metadata: {str(e)}")
+        
+        # Return the formatted report and metadata
+        current_time = datetime.now().isoformat()
+        
+        # Get file size in KB if path exists
+        file_size_kb = 0
+        if formatted_report_path and os.path.exists(formatted_report_path):
+            file_size_kb = os.path.getsize(formatted_report_path) // 1024
+        
+        return {
+            "formatted_report_path": formatted_report_path,
+            "run_id": state.run_id,
+            "report_url": report_url,
+            "created_at": current_time,
+            "last_updated": current_time,
+            "format": "docx",  # Hardcode to docx format
+            "file_size_kb": file_size_kb,
+            "notes": ""
+        }
+        
     except Exception as e:
-        logger.error(f"Error in process_report_storage: {str(e)}")
+        logger.error(f"Error in process_report_formatting: {str(e)}")
         return {
             "errors": [{
+                "step": "format_report",
                 "error": str(e),
                 "traceback": traceback.format_exc(),
                 "timestamp": datetime.now().isoformat()

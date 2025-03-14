@@ -1,0 +1,53 @@
+_type: prompt
+input_variables: ["run_id", "brand_name_generation"]
+template: |
+  Your task is to create a well-structured brand name generation section for a brand naming report based on the provided data.
+
+  Run ID: {{run_id}}
+  Brand Name Generation Data: {{brand_name_generation}}
+
+  The data is organized by naming category, with multiple brand names in each category.
+
+  Please format the brand name generation information into a coherent and professional section that:
+
+  1. Introduces the brand name generation process
+  2. Organizes names by category (e.g., Descriptive, Evocative, Invented, etc.)
+  3. For each name, provides key information on:
+     - Brand personality alignment
+     - Brand promise alignment
+     - Name generation methodology
+     - Memorability score details
+     - Pronounceability score details
+     - Visual branding potential
+     - Target audience relevance
+     - Market differentiation
+
+  Format your response as a well-structured section with clear category headings, professional language, and a logical flow.
+  Start with a brief overview of the naming approach and methodology before presenting the names by category.
+
+  Response Format:
+  ```json
+  {
+    "introduction": "Overview of the brand name generation process and methodology",
+    "categories": [
+      {
+        "category_name": "Name of the category (e.g., Descriptive)",
+        "category_description": "Brief description of this naming approach",
+        "names": [
+          {
+            "name": "Brand name",
+            "personality_alignment": "Formatted content about brand personality alignment",
+            "promise_alignment": "Formatted content about brand promise alignment",
+            "methodology": "Formatted content about name generation methodology",
+            "memorability": "Formatted content about memorability score and details",
+            "pronounceability": "Formatted content about pronounceability score and details",
+            "visual_potential": "Formatted content about visual branding potential",
+            "audience_relevance": "Formatted content about target audience relevance",
+            "market_differentiation": "Formatted content about market differentiation"
+          }
+        ]
+      }
+    ],
+    "summary": "Summary of the overall brand name generation outcomes"
+  }
+  ``` 

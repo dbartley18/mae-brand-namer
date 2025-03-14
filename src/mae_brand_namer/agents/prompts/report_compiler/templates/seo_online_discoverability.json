@@ -1,0 +1,40 @@
+{
+  "seo_online_discoverability": {
+    "brand_name_1": {
+      "seo_viability_score": "string",
+      "search_volume": "string",
+      "keyword_competition": "string",
+      "branded_keyword_potential": "string",
+      "keyword_alignment": "string",
+      "non_branded_keyword_potential": "string",
+      "exact_match_search_results": "string",
+      "competitor_domain_strength": "string",
+      "name_length_searchability": "string",
+      "unusual_spelling_impact": "string",
+      "content_marketing_opportunities": "string",
+      "social_media_availability": "string",
+      "social_media_discoverability": "string",
+      "negative_keyword_associations": "string",
+      "negative_search_results": "string",
+      "seo_recommendations": "string"
+    },
+    "brand_name_2": {
+      "seo_viability_score": "string",
+      "search_volume": "string",
+      "keyword_competition": "string",
+      "branded_keyword_potential": "string",
+      "keyword_alignment": "string",
+      "non_branded_keyword_potential": "string",
+      "exact_match_search_results": "string",
+      "competitor_domain_strength": "string",
+      "name_length_searchability": "string",
+      "unusual_spelling_impact": "string",
+      "content_marketing_opportunities": "string",
+      "social_media_availability": "string",
+      "social_media_discoverability": "string",
+      "negative_keyword_associations": "string",
+      "negative_search_results": "string",
+      "seo_recommendations": "string"
+    }
+  }
+} 

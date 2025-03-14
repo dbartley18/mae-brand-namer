@@ -13,6 +13,7 @@ from .competitor_analysis_expert import CompetitorAnalysisExpert
 from .survey_simulation_expert import SurveySimulationExpert
 from .market_research_expert import MarketResearchExpert
 from .report_compiler import ReportCompiler
+from .report_formatter import ReportFormatter
 from .process_supervisor import ProcessSupervisor
 from .brand_name_evaluator import BrandNameEvaluator
 
@@ -45,6 +46,7 @@ __all__ = [
     "SurveySimulationExpert",
     "MarketResearchExpert",
     "ReportCompiler",
+    "ReportFormatter",
     "ProcessSupervisor",
     "BrandNameEvaluator",
     

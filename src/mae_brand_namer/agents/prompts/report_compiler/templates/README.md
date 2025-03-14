@@ -111,3 +111,24 @@ The `survey_simulation.json` template simulates market response:
 - `qualitative_feedback_summary`: Summary of feedback
 - `raw_qualitative_feedback`: Detailed feedback data
 - `final_survey_recommendation`: Overall recommendation 
+
+## SEO Online Discoverability Template
+
+The `seo_online_discoverability.json` template evaluates search engine optimization potential:
+
+- `seo_viability_score`: Overall SEO potential score
+- `search_volume`: Expected search volume for brand-related terms
+- `keyword_competition`: Level of competition for relevant keywords
+- `branded_keyword_potential`: Potential for branded search terms
+- `keyword_alignment`: How well the name aligns with target keywords
+- `non_branded_keyword_potential`: Potential for non-branded search terms
+- `exact_match_search_results`: Analysis of exact match search results
+- `competitor_domain_strength`: SEO strength of competitor domains
+- `name_length_searchability`: Impact of name length on searchability
+- `unusual_spelling_impact`: Impact of any unusual spellings
+- `content_marketing_opportunities`: Content strategy opportunities
+- `social_media_availability`: Social media handle availability
+- `social_media_discoverability`: Social media search potential
+- `negative_keyword_associations`: Potential negative keyword associations
+- `negative_search_results`: Analysis of negative search results
+- `seo_recommendations`: Specific SEO recommendations 

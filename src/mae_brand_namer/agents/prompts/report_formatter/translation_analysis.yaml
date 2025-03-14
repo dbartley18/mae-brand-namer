@@ -1,0 +1,54 @@
+_type: prompt
+input_variables: ["run_id", "translation_analysis"]
+template: |
+  Your task is to create a well-structured translation analysis section for a brand naming report based on the provided data.
+
+  Run ID: {{run_id}}
+  Translation Analysis Data: {{translation_analysis}}
+
+  The data is organized by brand name, then by target language, with translation analysis for each name in multiple languages.
+
+  Please format the translation analysis information into a coherent and professional section that:
+
+  1. Introduces the translation analysis methodology and its importance for global branding
+  2. For each brand name, provides a consolidated analysis across all target languages including:
+     - Direct translation issues and opportunities
+     - Semantic shift across languages
+     - Pronunciation difficulties in different language groups
+     - Phonetic retention across languages
+     - Cultural acceptability in different regions
+     - Adaptation needs and proposed adaptations
+     - Assessment of how well brand essence is preserved in translation
+     - Recommendations for global consistency vs. localization
+     - Additional translation notes
+
+  Format your response as a well-structured section with clear name-based subsections, professional language, and a logical flow.
+  Start with a brief overview of translation considerations in global brand deployment before presenting the analysis for each name.
+
+  Response Format:
+  ```json
+  {
+    "introduction": "Overview of translation analysis and its importance in global branding",
+    "brand_analyses": [
+      {
+        "brand_name": "Name of the brand",
+        "global_translation_summary": "Overall summary of how the name performs across languages",
+        "language_specific_analyses": [
+          {
+            "language": "Target language name",
+            "direct_translation": "Analysis of direct translation result and implications",
+            "semantic_issues": "Analysis of semantic shift in this language",
+            "pronunciation_factors": "Analysis of pronunciation difficulties and phonetic retention",
+            "cultural_factors": "Analysis of cultural acceptability in this language region",
+            "adaptation_strategy": "Proposed adaptation strategy if needed",
+            "brand_essence_preservation": "Assessment of how well brand essence is preserved"
+          }
+        ],
+        "global_consistency_assessment": "Analysis of global consistency vs. localization needs",
+        "overall_translation_viability": "Overall assessment of translation viability globally"
+      }
+    ],
+    "translation_recommendations": "Strategic recommendations for managing translations",
+    "summary": "Summary of key translation insights and global deployment strategy"
+  }
+  ``` 

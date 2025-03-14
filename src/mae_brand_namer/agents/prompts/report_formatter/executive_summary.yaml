@@ -1,71 +1,38 @@
 _type: prompt
 input_variables: ["run_id", "sections_data", "brand_context", "total_names", "shortlisted_names", "user_prompt"]
 template: |
-  Your task is to create an executive summary for a brand naming report.
+  Your task is to create an executive summary for a brand naming report with the following information:
 
-  Original User Request: "{user_prompt}"
   Run ID: {run_id}
+  Original User Request: "{user_prompt}"
   Total Brand Names Generated: {total_names}
   Number of Shortlisted Names: {len(shortlisted_names) if shortlisted_names else 0}
   
-  Brand Context Summary:
-  ```
+  Brand Context:
   {brand_context}
-  ```
+  
+  Sections Data:
+  {sections_data}
 
-  Based on the data provided, craft a professional executive summary that includes:
+  Based on this data, create a comprehensive yet concise executive summary that covers:
+  1. The brand's context, mission, and goals
+  2. The naming process conducted
+  3. Key findings from the analysis
+  4. Top recommendations with rationale
+  5. Strategic implications for the business
 
-  1. Introduction and Brand Overview
-     - Begin with a clear statement of what this report covers: "This report summarizes the brand naming analysis conducted to identify a compelling and effective name for [type of business based on brand context]."
-     - Describe the brand's mission and purpose (e.g., "The brand empowers [target audience] to achieve [key benefits] through [services/solutions].")
-     - List the key brand personality traits that the name needs to reflect
-     - Explain the broader business context for this naming project
+  Your executive summary should be professional, insightful, and targeted at C-level executives.
+  Focus on business impact and strategic value rather than technical details.
+  Maintain a formal tone appropriate for business documentation.
 
-  2. Project Overview and Objectives
-     - Clearly articulate the key objectives of the naming project (3-4 bullet points)
-     - Examples: "Develop a brand name that reflects the brand's mission, values, and target audience"
-     - "Identify a name that is memorable, unique, and relevant to the [specific market]"
-     - "Ensure the name aligns with the brand's desired positioning as [positioning statement]"
-     - Highlight the key parameters that guided the brand naming process
-
-  3. Methodology Summary
-     - Describe the systematic approach used in the naming process, mentioning:
-     - Understanding brand context (personality, promise, target audience)
-     - Generation of diverse name options ({total_names} names generated)
-     - Evaluation criteria (relevance, memorability, uniqueness, availability)
-     - Shortlisting process ({len(shortlisted_names) if shortlisted_names else 0} names shortlisted)
-
-  4. Key Findings and Insights
-     - Present the most significant discoveries from the naming process
-     - Highlight patterns or trends observed across analysis types
-     - Note the total number of brand names generated and evaluated
-     - Introduce the shortlisted names with a sentence like: "{len(shortlisted_names) if shortlisted_names else 0} names were shortlisted as strong candidates:"
-     - For each shortlisted name (up to 3), include:
-       * The name itself (in bold)
-       * A one-sentence description of what the name communicates
-       * Key strengths of the name based on analysis
-
-  5. Top Recommendations
-     - Identify the most suitable brand name(s) based on comprehensive analysis
-     - Provide clear rationale for these recommendations
-     - Include any relevant implementation considerations
-
-  6. Strategic Implications
-     - Explain how the recommended name(s) align with business objectives
-     - Discuss potential market impact and competitive advantages
-     - Address any risks or challenges to consider
-
-  The executive summary should be comprehensive yet concise, approximately 500-700 words.
-  Use formal business language appropriate for C-level executives.
-  Do not include extraneous details or technical jargon without explanation.
-  Focus on insights rather than methodology.
-
-  Return the executive summary as a JSON object with these keys:
+  Return your response in this JSON format:
   {
-    "introduction": "text",
-    "project_overview": "text",
-    "methodology": "text",
-    "key_findings": "text",
-    "top_recommendations": "text",
-    "strategic_implications": "text"
+    "summary": "The full executive summary text (500-700 words)",
+    "key_points": [
+      "Key point 1 - important finding or recommendation",
+      "Key point 2 - important finding or recommendation",
+      "Key point 3 - important finding or recommendation",
+      "Key point 4 - important finding or recommendation",
+      "Key point 5 - important finding or recommendation"
+    ]
   } 

@@ -1,35 +1,35 @@
+#!/usr/bin/env python3
 """
 Report Formatter
 
-This module handles the second step of the two-step report generation process.
 It pulls raw data from the report_raw_data table and formats it into a polished report.
 """
 
 import os
 import json
-import asyncio
+import re
 import logging
-import traceback
+import argparse
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple, Callable, Set
+from pathlib import Path
 
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.parser import parse_xml
+from docx.enum.section import WD_SECTION
 
 from src.mae_brand_namer.utils.supabase_utils import SupabaseManager
-from src.mae_brand_namer.agents.prompts.report_formatter import (
-    get_executive_summary_prompt,
-    get_recommendations_prompt,
-    get_title_page_prompt,
-    get_toc_prompt
-)
+from src.mae_brand_namer.config.dependencies import Dependencies
+from src.mae_brand_namer.config.settings import settings
+from src.mae_brand_namer.utils.logging import get_logger
+from langchain.prompts import load_prompt, load_prompt_templates
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.schema import SystemMessage, HumanMessage
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ReportFormatter:
@@ -42,16 +42,17 @@ class ReportFormatter:
     SECTION_MAPPING = {
         # DB section name -> Formatter section name
         "brand_context": "brand_context",
-        "name_gen": "name_generation",
-        "name_semantics": "semantic_analysis",
-        "name_linguistics": "linguistic_analysis",
-        "cultural_check": "cultural_sensitivity",
-        "name_eval": "brand_name_evaluation",
-        "translation_check": "translation_analysis",
-        "market_analysis": "market_research",
-        "competitor_check": "competitor_analysis",
-        "domain_check": "domain_analysis",
-        "survey_results": "survey_simulation",
+        "brand_name_generation": "name_generation",
+        "linguistic_analysis": "linguistic_analysis",
+        "semantic_analysis": "semantic_analysis",
+        "cultural_sensitivity_analysis": "cultural_sensitivity",
+        "translation_analysis": "translation_analysis",
+        "survey_simulation": "survey_simulation",
+        "brand_name_evaluation": "name_evaluation",
+        "domain_analysis": "domain_analysis",
+        "seo_online_discoverability": "seo_analysis",  # Updated to match our section name
+        "competitor_analysis": "competitor_analysis",
+        "market_research": "market_research",
         "exec_summary": "executive_summary",
         "final_recommendations": "recommendations"
     }
@@ -64,35 +65,156 @@ class ReportFormatter:
     
     # Report formats
     FORMAT_DOCX = "docx"
-
-    def __init__(self, supabase_client=None, llm_client=None):
-        """Initialize the ReportFormatter with a Supabase connection and optional LLM client."""
-        if supabase_client:
-            self.supabase = supabase_client
+    
+    def __init__(self, dependencies: Optional[Dependencies] = None):
+        """Initialize the ReportFormatter with dependencies."""
+        # Extract clients from dependencies if available
+        if dependencies:
+            self.supabase = dependencies.supabase
+            # Safely try to get LLM from dependencies, with fallback if not available
+            try:
+                self.llm = dependencies.llm
+            except AttributeError:
+                # Log the issue and create a new LLM instance
+                print("Warning: 'llm' attribute not found in Dependencies, creating new instance")
+                self.llm = ChatGoogleGenerativeAI(
+                    model="gemini-1.5-pro",
+                    temperature=0.5,
+                    google_api_key=settings.gemini_api_key,
+                    convert_system_message_to_human=True
+                )
         else:
-            # Create a new connection if none was provided
-            logger.info("Initializing ReportFormatter with a new Supabase connection")
+            # Create clients if not provided
             self.supabase = SupabaseManager()
+            self.llm = ChatGoogleGenerativeAI(
+                model="gemini-1.5-pro",
+                temperature=0.2,
+                google_api_key=settings.gemini_api_key,
+                convert_system_message_to_human=True
+            )
             
-        self.llm_client = llm_client
+        # Initialize error tracking
+        self.formatting_errors = {}
+        self.missing_sections = set()
         
-        # Register data transformers
-        self.data_transformers = {
+        # Initialize current run ID
+        self.current_run_id = None
+        
+        # Define section mapping from DB to formatter
+        self.SECTION_MAPPING = {
+            "brand_context": "brand_context",
+            "brand_name_generation": "name_generation",
+            "linguistic_analysis": "linguistic_analysis",
+            "semantic_analysis": "semantic_analysis",
+            "cultural_sensitivity_analysis": "cultural_sensitivity",
+            "translation_analysis": "translation_analysis",
+            "survey_simulation": "survey_simulation",
+            "brand_name_evaluation": "name_evaluation",
+            "domain_analysis": "domain_analysis",
+            "seo_online_discoverability": "seo_analysis",  # Updated to match our section name
+            "competitor_analysis": "competitor_analysis",
+            "market_research": "market_research",
+            "exec_summary": "executive_summary",
+            "final_recommendations": "recommendations"
+        }
+        
+        # Create transformers mapping
+        self.transformers = {
             "brand_context": self._transform_brand_context,
             "name_generation": self._transform_name_generation,
             "semantic_analysis": self._transform_semantic_analysis,
             "linguistic_analysis": self._transform_linguistic_analysis,
             "cultural_sensitivity": self._transform_cultural_sensitivity,
-            "brand_name_evaluation": self._transform_name_evaluation,
+            "name_evaluation": self._transform_name_evaluation,
             "translation_analysis": self._transform_translation_analysis,
             "market_research": self._transform_market_research,
             "competitor_analysis": self._transform_competitor_analysis,
             "domain_analysis": self._transform_domain_analysis,
             "survey_simulation": self._transform_survey_simulation,
+            # Add transformers as needed
         }
         
-        # Track formatting errors for report summary
-        self.formatting_errors = {}
+        # Load prompts from YAML files
+        try:
+            self.prompts = {
+                # Title page and TOC
+                "title_page": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "title_page.yaml")),
+                "table_of_contents": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "table_of_contents.yaml")),
+                
+                # Main section prompts
+                "executive_summary": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "executive_summary.yaml")),
+                "recommendations": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "recommendations.yaml")),
+                "seo_analysis": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "seo_analysis.yaml")),
+                "brand_context": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "brand_context.yaml")),
+                "brand_name_generation": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "brand_name_generation.yaml")),
+                "semantic_analysis": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "semantic_analysis.yaml")),
+                "linguistic_analysis": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "linguistic_analysis.yaml")),
+                "cultural_sensitivity": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "cultural_sensitivity.yaml")),
+                "translation_analysis": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "translation_analysis.yaml")),
+                "market_research": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "market_research.yaml")),
+                "competitor_analysis": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "competitor_analysis.yaml")),
+                "name_evaluation": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "brand_name_evaluation.yaml")),
+                "domain_analysis": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "domain_analysis.yaml")),
+                "survey_simulation": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "survey_simulation.yaml")),
+                "system": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "system.yaml")),
+                "shortlisted_names_summary": load_prompt(str(Path(__file__).parent / "prompts" / "report_formatter" / "shortlisted_names_summary.yaml"))
+            }
+            
+            logger.info("Successfully loaded report formatter prompts")
+        except Exception as e:
+            logger.error(f"Error loading prompts: {str(e)}")
+            # Create an empty dictionary as fallback
+            self.prompts = {}
+        
+    async def _generate_seo_content(self, brand_name: str, seo_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate SEO content using the LLM."""
+        try:
+            # Prepare the prompt
+            prompt = self.prompts["seo_analysis"].format(
+                run_id=self.current_run_id,
+                brand_name=brand_name,
+                seo_data=json.dumps(seo_data, indent=2)
+            )
+            
+            # Get response from LLM
+            messages = [
+                SystemMessage(content="You are an expert SEO analyst providing insights for brand names."),
+                HumanMessage(content=prompt)
+            ]
+            
+            response = await self.llm.ainvoke(messages)
+            
+            # Extract JSON from response
+            content = response.content
+            json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+            
+            if json_match:
+                json_str = json_match.group(1)
+                return json.loads(json_str)
+            else:
+                # Try to find any JSON object in the response
+                json_match = re.search(r'({.*})', content, re.DOTALL)
+                if json_match:
+                    return json.loads(json_match.group(1))
+                else:
+                    logger.warning("Could not extract JSON from LLM response for SEO analysis")
+                    return {
+                        "seo_viability_assessment": "Error extracting structured content from LLM response.",
+                        "search_landscape_analysis": content,
+                        "content_strategy_recommendations": "",
+                        "technical_seo_considerations": "",
+                        "action_plan": []
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Error generating SEO content: {str(e)}")
+            return {
+                "seo_viability_assessment": f"Error generating SEO content: {str(e)}",
+                "search_landscape_analysis": "",
+                "content_strategy_recommendations": "",
+                "technical_seo_considerations": "",
+                "action_plan": []
+            }
 
     def _transform_brand_context(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Transform brand context data to the expected format."""
@@ -323,8 +445,8 @@ class ReportFormatter:
             formatter_section_name = self.SECTION_MAPPING.get(db_section_name, db_section_name)
             
             # Apply transformation if available
-            if formatter_section_name in self.data_transformers:
-                transformer = self.data_transformers[formatter_section_name]
+            if formatter_section_name in self.transformers:
+                transformer = self.transformers[formatter_section_name]
                 try:
                     transformed_data = transformer(raw_data)
                     
@@ -445,46 +567,137 @@ class ReportFormatter:
             # Just add some space
             doc.add_paragraph()
 
-    def _add_title_page(self, doc: Document, run_id: str, brand_context: Dict[str, Any]) -> None:
+    async def _add_title_page(self, doc: Document, run_id: str, brand_context: Dict[str, Any]) -> None:
         """Add a professional title page to the document."""
-        # Get title page content from LLM
-        title_content = self.llm_client.generate(
-            get_title_page_prompt(run_id=run_id, brand_context=brand_context)
-        )
+        # Get title page content from LLM for any customizations
+        try:
+            title_content = await self.llm.ainvoke([
+                SystemMessage(content="You are an expert report formatter creating a professional title page for a brand naming report."),
+                HumanMessage(content=str(self.prompts["title_page"].format(
+                    run_id=run_id,
+                    brand_context=brand_context
+                )))
+            ])
+            
+            # Try to parse the response for any customizations
+            try:
+                content = json.loads(title_content.content)
+            except json.JSONDecodeError:
+                # Use default values if parsing fails
+                content = {
+                    "title": "Brand Naming Report",
+                    "subtitle": "Generated by Mae Brand Naming Expert"
+                }
+        except Exception as e:
+            logger.error(f"Error getting title page from LLM: {str(e)}")
+            # Use default values if LLM fails
+            content = {
+                "title": "Brand Naming Report",
+                "subtitle": "Generated by Mae Brand Naming Expert"
+            }
         
-        # Add title
-        title = doc.add_heading(title_content["title"], level=0)
+        # Add main title - always use "Brand Naming Report" as specified in notepad
+        title = doc.add_heading("Brand Naming Report", level=0)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        # Add subtitle
+        # Add subtitle - always use "Generated by Mae Brand Naming Expert" as specified in notepad
         subtitle = doc.add_paragraph()
         subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        subtitle.add_run(title_content["subtitle"]).italic = True
+        subtitle.add_run("Generated by Mae Brand Naming Expert").bold = True
         
-        # Add metadata
+        # Add date and run ID
         metadata = doc.add_paragraph()
         metadata.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        metadata.add_run(f"Run ID: {run_id}\n")
-        metadata.add_run(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}").italic = True
+        metadata.add_run(f"Date: {datetime.now().strftime('%B %d, %Y')}\n")
+        metadata.add_run(f"Run ID: {run_id}")
+        
+        # Add space 
+        doc.add_paragraph()
+        
+        # Add note about AI generation with user prompt in the exact format specified
+        user_prompt = brand_context.get("user_prompt", "Not available")
+        note = doc.add_paragraph()
+        note.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # First line
+        note_text = note.add_run(
+            f"This report was generated through the Mae Brand Naming Expert Agent Simulation. "
+            f"The only input provided was the initial user prompt:\n\n"
+        )
+        note_text.italic = True
+        
+        # User prompt in quotes, emphasized
+        prompt_text = note.add_run(f"\"{user_prompt}\"\n\n")
+        prompt_text.italic = True
+        prompt_text.bold = True
+        
+        # Final line
+        final_text = note.add_run(
+            f"All additional context, analysis, and insights were autonomously generated by the AI Agent Simulation"
+        )
+        final_text.italic = True
         
         # Add page break
         doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
 
-    def _add_table_of_contents(self, doc: Document) -> None:
+    async def _add_table_of_contents(self, doc: Document) -> None:
         """Add a table of contents to the document."""
-        # Get TOC content from LLM
-        toc_content = self.llm_client.generate(get_toc_prompt())
-        
         # Add TOC heading
         doc.add_heading("Table of Contents", level=1)
-        doc.add_paragraph()
         
-        # Add TOC entries
-        for entry in toc_content["sections"]:
-            p = doc.add_paragraph()
-            p.add_run(entry["title"]).bold = True
-            p.add_run(" " * 2)
-            p.add_run(entry["description"])
+        # Define the exact section list according to notepad requirements
+        toc_sections = [
+            "Executive Summary",
+            "Brand Context",
+            "Name Generation",
+            "Linguistic Analysis",
+            "Semantic Analysis",
+            "Cultural Sensitivity",
+            "Translation Analysis",
+            "Name Evaluation",
+            "Domain Analysis",
+            "SEO Analysis",
+            "Competitor Analysis",
+            "Market Research",
+            "Survey Simulation",
+            "Strategic Recommendations"
+        ]
+        
+        # Add TOC entries with consistent styling
+        for i, section in enumerate(toc_sections, 1):
+            p = doc.add_paragraph(style='TOC 1')
+            p.add_run(f"{i}. {section}")
+            
+            # Add page number placeholder (would be replaced in a real TOC)
+            tab = p.add_run("\t")
+            p.add_run("___")
+        
+        # Optional: Get any additional TOC information from LLM for section descriptions
+        try:
+            toc_content = await self.llm.ainvoke([
+                SystemMessage(content="You are an expert report formatter creating a professional table of contents for a brand naming report."),
+                HumanMessage(content=str(self.prompts["table_of_contents"]))
+            ])
+            
+            # Try to extract section descriptions
+            try:
+                content = json.loads(toc_content.content)
+                if "sections" in content and isinstance(content["sections"], list):
+                    # Add section descriptions if available, but keep the original TOC order
+                    doc.add_paragraph()
+                    doc.add_heading("Section Descriptions", level=2)
+                    
+                    for section in content["sections"]:
+                        if "title" in section and "description" in section:
+                            p = doc.add_paragraph()
+                            p.add_run(f"{section['title']}: ").bold = True
+                            p.add_run(section["description"])
+            except json.JSONDecodeError:
+                # Skip descriptions if parsing fails
+                pass
+        except Exception as e:
+            logger.error(f"Error getting TOC descriptions from LLM: {str(e)}")
+            # Continue without descriptions
         
         # Add page break
         doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
@@ -505,7 +718,7 @@ class ReportFormatter:
         # Extract filename from path
         filename = os.path.basename(file_path)
         
-        # Define the storage path - organize by run_id and timestamp
+        # Define the storage path - organize by run_id
         storage_path = f"{run_id}/{filename}"
         
         # Get file size in KB
@@ -516,11 +729,12 @@ class ReportFormatter:
             with open(file_path, 'rb') as f:
                 file_content = f.read()
             
-            # Upload to Supabase Storage
+            # Upload to Supabase Storage with proper content type
             result = await self.supabase.storage_upload_with_retry(
                 bucket=self.STORAGE_BUCKET,
                 path=storage_path,
-                file=file_content
+                file=file_content,
+                file_options={"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
             )
             
             # Get the public URL
@@ -663,6 +877,9 @@ class ReportFormatter:
         Returns:
             Path to the generated report document
         """
+        # Set current run ID for use in LLM prompts
+        self.current_run_id = run_id
+        
         # Reset error tracking for this run
         self.formatting_errors = {}
         self.missing_sections = set()  # Track missing sections
@@ -670,8 +887,8 @@ class ReportFormatter:
         # Create output directory if needed
         if not output_dir:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_dir = f"formatted_report_{timestamp}"
-            
+            output_dir = f"reports/{run_id}"
+        
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f"Report generation for {run_id} - Output in {output_dir}")
         
@@ -680,96 +897,67 @@ class ReportFormatter:
             sections_data = await self.fetch_raw_data(run_id)
         except Exception as e:
             logger.error(f"Critical error fetching data for run_id {run_id}: {str(e)}")
-            error_msg = f"Failed to fetch data for run_id: {run_id}. Error: {str(e)}"
-            # Create a minimal document with error information
-            doc = Document()
-            self._setup_document_styles(doc)
-            doc.add_heading(f"Error Report for Run ID: {run_id}", level=0)
-            doc.add_paragraph(error_msg, style='Intense Quote')
-            doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            
-            doc_path = os.path.join(output_dir, f"Error_Report_{run_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx")
-            doc.save(doc_path)
-            logger.info(f"Error report saved to {doc_path}")
-            
-            # Log error to process_logs
-            await self.log_report_generation_issues(run_id)
-            
-            return doc_path
-            
-        if not sections_data:
-            error_msg = f"No data found for run_id: {run_id}. Cannot generate report."
-            logger.error(error_msg)
-            
-            # Create a minimal document with error information
-            doc = Document()
-            self._setup_document_styles(doc)
-            doc.add_heading(f"Empty Report for Run ID: {run_id}", level=0)
-            doc.add_paragraph(error_msg, style='Intense Quote')
-            doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            
-            doc_path = os.path.join(output_dir, f"Empty_Report_{run_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx")
-            doc.save(doc_path)
-            logger.info(f"Empty report saved to {doc_path}")
-            
-            # Log error to process_logs
-            await self.log_report_generation_issues(run_id)
-            
-            return doc_path
-            
-        # Extract and remove data quality issues if present
-        data_quality_issues = {}
-        if "_data_quality_issues" in sections_data:
-            data_quality_issues = sections_data.pop("_data_quality_issues")
-            logger.info(f"Found {len(data_quality_issues)} sections with data quality issues")
-            # Store for logging
-            self._data_quality_issues = data_quality_issues
+            error_msg = f"Failed to fetch report data: {str(e)}"
+            raise ValueError(error_msg)
         
         # Create a new document
         doc = Document()
         
-        # Set up document styles
-        self._setup_document_styles(doc)
+        # Extract brand context for title page
+        brand_context = sections_data.get("brand_context", {})
         
         # Add title page
         try:
-            brand_context = sections_data.get("brand_context", {})
-            self._add_title_page(doc, run_id, brand_context)
+            await self._add_title_page(doc, run_id, brand_context)
         except Exception as e:
-            logger.error(f"Error creating title page: {str(e)}")
-            self._handle_section_error(doc, "title_page", e)
+            logger.error(f"Error adding title page: {str(e)}")
+            doc.add_heading(f"Brand Name Analysis Report - {run_id}", level=0)
         
         # Add table of contents
         try:
-            self._add_table_of_contents(doc)
+            await self._add_table_of_contents(doc)
         except Exception as e:
-            logger.error(f"Error creating table of contents: {str(e)}")
-            self._handle_section_error(doc, "table_of_contents", e)
+            logger.error(f"Error adding table of contents: {str(e)}")
+            doc.add_heading("Table of Contents", level=1)
+            doc.add_paragraph("Error generating table of contents")
         
-        # Define the order of sections - updated to match requirements
-        section_order = [
-            "executive_summary",  # Moved to front
-            "brand_context",
-            "name_generation",
-            "semantic_analysis",
-            "linguistic_analysis",
-            "cultural_sensitivity",
-            "brand_name_evaluation",
-            "translation_analysis",
-            "market_research",
-            "competitor_analysis",
-            "domain_analysis", 
-            "survey_simulation",
-            "recommendations"  # Moved to end
-        ]
-        
-        # Define which sections should have page breaks
-        major_sections = [
+        # Define section order
+        major_sections = {
             "executive_summary",
             "brand_context",
             "name_generation",
+            "linguistic_analysis",
+            "semantic_analysis",
+            "cultural_sensitivity",
+            "translation_analysis",
+            "name_evaluation",
+            "domain_analysis",
+            "seo_online_discoverability",
+            "competitor_analysis",
+            "market_research",
+            "survey_simulation",
+            "recommendations"
+        }
+        
+        section_order = [
+            "executive_summary",
+            "brand_context",
+            "name_generation",
+            "linguistic_analysis",
+            "semantic_analysis",
+            "cultural_sensitivity",
+            "translation_analysis",
+            "name_evaluation",
+            "domain_analysis",
+            "seo_online_discoverability",
+            "competitor_analysis",
+            "market_research",
+            "survey_simulation",
             "recommendations"
         ]
+        
+        # Track data quality issues
+        data_quality_issues = {}
         
         # Process each section in order
         for section_name in section_order:
@@ -790,29 +978,12 @@ class ReportFormatter:
                 try:
                     if section_name == "executive_summary":
                         # Generate executive summary using LLM
-                        summary_content = self.llm_client.generate(
-                            get_executive_summary_prompt(
-                                run_id=run_id,
-                                sections_data=sections_data,
-                                brand_context=brand_context,
-                                total_names=len(sections_data.get("name_generation", {}).get("name_generations", [])),
-                                shortlisted_names=sections_data.get("shortlisted_names", []),
-                                user_prompt=sections_data.get("user_prompt", "")
-                            )
-                        )
-                        self._format_executive_summary(doc, summary_content)
+                        await self._add_executive_summary(doc, sections_data[section_name])
                     elif section_name == "recommendations":
                         # Generate recommendations using LLM
-                        recommendations_content = self.llm_client.generate(
-                            get_recommendations_prompt(
-                                run_id=run_id,
-                                sections_data=sections_data,
-                                brand_context=brand_context
-                            )
-                        )
-                        self._format_recommendations(doc, recommendations_content)
+                        await self._add_recommendations(doc, sections_data[section_name])
                     else:
-                        self._format_section(doc, section_name, sections_data[section_name])
+                        await self._format_section(doc, section_name, sections_data[section_name])
                 except Exception as e:
                     self._handle_section_error(doc, section_name, e)
                 
@@ -890,8 +1061,10 @@ class ReportFormatter:
             # Log issues to process_logs
             await self.log_report_generation_issues(run_id)
         
-        # Save the document
-        doc_path = os.path.join(output_dir, f"Report_{run_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx")
+        # Save the document with a Supabase-friendly name format
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{run_id}_{timestamp}.docx"
+        doc_path = os.path.join(output_dir, filename)
         doc.save(doc_path)
         logger.info(f"Report saved to {doc_path}")
         
@@ -906,173 +1079,117 @@ class ReportFormatter:
         
         return doc_path
 
-    def _format_executive_summary(self, doc: Document, data: Dict[str, Any]) -> None:
-        """Format the executive summary section using LLM-generated content."""
-        # Check for required fields
-        required_fields = ["introduction", "project_overview", "methodology", 
-                          "key_findings", "top_recommendations", "strategic_implications"]
+    async def _add_executive_summary(self, doc: Document, raw_data: Dict[str, Any]) -> None:
+        """Add executive summary section to the document."""
+        # Extract relevant data for the executive summary
+        brand_context = raw_data.get("brand_context", {})
+        total_names = len(raw_data.get("name_generation", {}).get("brand_names", []))
+        shortlisted_names = [name for name in raw_data.get("name_evaluation", {}).values() 
+                            if name.get("shortlist_status") == True]
         
-        for field in required_fields:
-            if field not in data:
-                raise ValueError(f"Missing required field '{field}' in executive summary data")
+        # Get executive summary from LLM
+        summary_content = await self.llm.ainvoke([
+            SystemMessage(content="You are an expert report writer creating an executive summary for a brand naming report."),
+            HumanMessage(content=str(self.prompts["executive_summary"].format(
+                run_id=self.current_run_id,
+                sections_data=raw_data,
+                brand_context=brand_context,
+                total_names=total_names,
+                shortlisted_names=shortlisted_names,
+                user_prompt=brand_context.get("user_prompt", "No user prompt available")
+            )))
+        ])
         
-        # Introduction and Brand Overview
-        doc.add_heading("Introduction and Brand Overview", level=2)
-        doc.add_paragraph(data["introduction"])
+        # Parse the response
+        try:
+            content = json.loads(summary_content.content)
+        except json.JSONDecodeError:
+            # Fallback to error message if parsing fails
+            content = {
+                "summary": "Error generating executive summary. Please check the raw data and try again.",
+                "key_points": []
+            }
         
-        # Project Overview and Objectives
-        doc.add_heading("Project Overview and Objectives", level=2)
-        doc.add_paragraph(data["project_overview"])
+        # Add executive summary heading
+        doc.add_heading("Executive Summary", level=1)
         
-        # Methodology Summary
-        doc.add_heading("Methodology Summary", level=2)
-        doc.add_paragraph(data["methodology"])
+        # Add summary text
+        summary_para = doc.add_paragraph()
+        summary_para.add_run(content["summary"])
         
-        # Key Findings and Insights
-        doc.add_heading("Key Findings and Insights", level=2)
-        doc.add_paragraph(data["key_findings"])
-        
-        # Top Recommendations
-        doc.add_heading("Top Recommendations", level=2)
-        doc.add_paragraph(data["top_recommendations"])
-        
-        # Strategic Implications
-        doc.add_heading("Strategic Implications", level=2)
-        doc.add_paragraph(data["strategic_implications"])
-
-    def _format_brand_context(self, doc: Document, data: Dict[str, Any]) -> None:
-        """Format the brand context section according to requirements."""
-        # Extract brand context data
-        context = data.get("brand_context", {})
-        if not context:
-            doc.add_paragraph("No brand context data available.", style='Quote')
-            return
-        
-        # Check if context is properly formatted
-        if not isinstance(context, dict):
-            raise TypeError(f"Brand context data must be a dictionary, got {type(context).__name__}")
-            
-        # Add key elements of brand context in the required order
-        for field in [
-            "brand_promise", 
-            "brand_personality", 
-            "brand_tone_of_voice", 
-            "brand_values", 
-            "brand_purpose", 
-            "brand_mission", 
-            "target_audience",
-            "customer_needs", 
-            "market_positioning", 
-            "competitive_landscape",
-            "industry_focus", 
-            "industry_trends", 
-            "brand_identity_brief"
-        ]:
-            if field in context:
-                heading = field.replace("_", " ").title()
-                doc.add_heading(heading, level=2)
-                
-                # Handle arrays vs text fields
-                if isinstance(context[field], list):
-                    if not context[field]:  # Empty list
-                        doc.add_paragraph("No data available for this field.", style='Quote')
-                    else:
-                        for item in context[field]:
-                            doc.add_paragraph(f"• {item}", style='List Bullet')
-                elif isinstance(context[field], dict):
-                    # Handle JSON fields
-                    if not context[field]:  # Empty dict
-                        doc.add_paragraph("No data available for this field.", style='Quote')
-                    else:
-                        for key, value in context[field].items():
-                            p = doc.add_paragraph(style='List Bullet')
-                            p.add_run(f"{key}: ").bold = True
-                            p.add_run(str(value))
-                else:
-                    # Handle None or empty string
-                    if context[field] is None or (isinstance(context[field], str) and not context[field].strip()):
-                        doc.add_paragraph("No data available for this field.", style='Quote')
-                    else:
-                        doc.add_paragraph(context[field])
-
-    def _format_name_generation(self, doc: Document, data: Dict[str, Any]) -> None:
-        """Format the name generation section according to requirements."""
-        # Extract name generation data
-        names = data.get("name_generations", [])
-        if not names:
-            doc.add_paragraph("No name generation data available.", style='Quote')
-            return
-            
-        # Verify names is a list
-        if not isinstance(names, list):
-            raise TypeError(f"Name generations data must be a list, got {type(names).__name__}")
-            
-        # Add summary
-        doc.add_paragraph(
-            f"A total of {len(names)} brand names were generated across {len(set(name.get('naming_category', 'Uncategorized') for name in names if isinstance(name, dict)))} different categories.",
-            style='Quote'
-        )
-        
-        # Group names by category as required - handle invalid items
-        categories = {}
-        invalid_items = 0
-        
-        for name in names:
-            if not isinstance(name, dict):
-                invalid_items += 1
-                continue
-                
-            category = name.get("naming_category", "Uncategorized")
-            if category not in categories:
-                categories[category] = []
-            categories[category].append(name)
-            
-        if invalid_items > 0:
-            doc.add_paragraph(f"⚠️ Warning: {invalid_items} name entries were skipped due to invalid format.", style='Intense Quote')
-            
-        # Add each category with all required fields
-        for category, names_list in categories.items():
-            doc.add_heading(f"{category}", level=2)
-            
-            # Create a table for names in this category with all required fields
-            table = doc.add_table(rows=1, cols=5)
-            table.style = 'Table Grid'
-            
-            # Add headers and style them
-            header_cells = table.rows[0].cells
-            for i, header in enumerate(["Brand Name", "Personality Alignment", "Promise Alignment", "Memorability", "Market Differentiation"]):
-                header_cells[i].text = header
-                # Make headers bold with light blue background
-                for paragraph in header_cells[i].paragraphs:
-                    for run in paragraph.runs:
-                        run.font.bold = True
-                        run.font.color.rgb = RGBColor(255, 255, 255)  # White text
-                header_cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                # Set cell background color (if possible)
-                try:
-                    header_cells[i]._element.tcPr.append(parse_xml(f'<w:shd w:fill="4472C4" w:val="clear"/>'))
-                except Exception as e:
-                    logger.warning(f"Could not set cell background color: {str(e)}")
-            
-            # Add rows with all the required data
-            for name in names_list:
-                row = table.add_row().cells
-                row[0].text = name.get("brand_name", "N/A")
-                row[1].text = name.get("brand_personality_alignment", "N/A")
-                row[2].text = name.get("brand_promise_alignment", "N/A")
-                row[3].text = name.get("memorability_score_details", "N/A")
-                row[4].text = name.get("market_differentiation_details", "N/A")
-                
-                # Make brand name column bold
-                for paragraph in row[0].paragraphs:
-                    for run in paragraph.runs:
-                        run.font.bold = True
-                
-            # Add table caption
-            caption = doc.add_paragraph(f"Table: {category} Brand Name Options", style='Caption')
-            
-            # Add some space after the table
+        # Add key points if available
+        if content.get("key_points"):
             doc.add_paragraph()
+            doc.add_heading("Key Points", level=2)
+            for point in content["key_points"]:
+                p = doc.add_paragraph(style="List Bullet")
+                p.add_run(point)
+        
+        # Add page break
+        doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+
+    async def _add_recommendations(self, doc: Document, raw_data: Dict[str, Any]) -> None:
+        """Add recommendations section to the document."""
+        # Extract relevant data for recommendations
+        brand_context = raw_data.get("brand_context", {})
+        name_evaluation = raw_data.get("name_evaluation", {})
+        shortlisted_names = [name for name, data in name_evaluation.items() 
+                            if data.get("shortlist_status") == True]
+        
+        # Get recommendations from LLM
+        recommendations_content = await self.llm.ainvoke([
+            SystemMessage(content="You are an expert brand consultant providing strategic recommendations based on a brand naming analysis."),
+            HumanMessage(content=str(self.prompts["recommendations"].format(
+                run_id=self.current_run_id,
+                sections_data=raw_data,
+                brand_context=brand_context,
+                shortlisted_names=shortlisted_names,
+                user_prompt=brand_context.get("user_prompt", "No user prompt available")
+            )))
+        ])
+        
+        # Parse the response
+        try:
+            content = json.loads(recommendations_content.content)
+        except json.JSONDecodeError:
+            # Fallback to error message if parsing fails
+            content = {
+                "overview": "Error generating recommendations. Please check the raw data and try again.",
+                "recommendations": []
+            }
+        
+        # Add recommendations heading
+        doc.add_heading("Recommendations", level=1)
+        
+        # Add overview
+        overview_para = doc.add_paragraph()
+        overview_para.add_run(content["overview"])
+        
+        # Add recommendations
+        if content.get("recommendations"):
+            doc.add_paragraph()
+            for i, rec in enumerate(content["recommendations"], 1):
+                # Add recommendation heading
+                doc.add_heading(f"Recommendation {i}: {rec['title']}", level=2)
+                
+                # Add recommendation details
+                details_para = doc.add_paragraph()
+                details_para.add_run(rec["details"])
+                
+                # Add rationale if available
+                if "rationale" in rec:
+                    rationale_para = doc.add_paragraph()
+                    rationale_para.add_run("Rationale: ").bold = True
+                    rationale_para.add_run(rec["rationale"])
+                
+                # Add next steps if available
+                if "next_steps" in rec:
+                    next_steps_para = doc.add_paragraph()
+                    next_steps_para.add_run("Next Steps: ").bold = True
+                    next_steps_para.add_run(rec["next_steps"])
+        
+        # Add page break
+        doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
 
     def _format_linguistic_analysis(self, doc: Document, data: Dict[str, Any]) -> None:
         """Format the linguistic analysis section according to requirements."""
@@ -1431,44 +1548,118 @@ class ReportFormatter:
             row[1].text = analysis.get("domain_exact_match", "")
             row[2].text = analysis.get("acquisition_cost", "")
 
-    def _format_seo_analysis(self, doc: Document, data: Dict[str, Any]) -> None:
-        """Format the SEO analysis section."""
+    async def _format_seo_online_discoverability(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Format the SEO online discoverability section."""
         # Extract SEO analysis data
-        analyses = data.get("seo_analyses", [])
+        analyses = data.get("seo_online_discoverability", {})
         if not analyses:
-            doc.add_paragraph("No SEO analysis data available.")
+            doc.add_paragraph("No SEO online discoverability data available.", style='Quote')
             return
             
         # Add introduction
         doc.add_paragraph(
             f"SEO and online discoverability analysis was performed for {len(analyses)} brand names "
-            "to evaluate search engine performance potential."
+            "to evaluate search engine performance potential and online presence opportunities."
         )
         
-        # Create a table
-        table = doc.add_table(rows=1, cols=3)
-        table.style = 'Table Grid'
-        
-        # Add headers
-        header_cells = table.rows[0].cells
-        header_cells[0].text = "Brand Name"
-        header_cells[1].text = "SEO Viability Score"
-        header_cells[2].text = "Search Volume"
-        
-        # Add data rows
-        for analysis in analyses:
-            row = table.add_row().cells
-            row[0].text = analysis.get("brand_name", "")
-            row[1].text = analysis.get("seo_viability_score", "")
-            row[2].text = analysis.get("search_volume", "")
+        # Process each brand
+        for brand_name, analysis in analyses.items():
+            doc.add_heading(brand_name, level=2)
             
-        # Add SEO recommendations
-        doc.add_heading("SEO Recommendations", level=2)
-        for analysis in analyses:
-            if analysis.get("seo_recommendations"):
-                p = doc.add_paragraph(style='List Bullet')
-                p.add_run(f"{analysis.get('brand_name', '')}: ").bold = True
-                p.add_run(analysis.get("seo_recommendations", ""))
+            # Create a summary table with key metrics
+            summary_table = doc.add_table(rows=1, cols=4)
+            summary_table.style = 'Table Grid'
+            
+            # Add headers
+            headers = summary_table.rows[0].cells
+            headers[0].text = "SEO Viability Score"
+            headers[1].text = "Search Volume"
+            headers[2].text = "Keyword Competition"
+            headers[3].text = "Branded Keyword Potential"
+            
+            # Add summary row
+            summary_row = summary_table.add_row().cells
+            summary_row[0].text = str(analysis.get("seo_viability_score", "N/A"))
+            summary_row[1].text = str(analysis.get("search_volume", "N/A"))
+            summary_row[2].text = str(analysis.get("keyword_competition", "N/A"))
+            summary_row[3].text = str(analysis.get("branded_keyword_potential", "N/A"))
+            
+            # Generate enhanced SEO content using LLM
+            try:
+                seo_content = await self._generate_seo_content(brand_name, analysis)
+                
+                # Add LLM-generated content
+                if seo_content:
+                    # Add viability assessment
+                    doc.add_heading("SEO Viability Assessment", level=3)
+                    doc.add_paragraph(seo_content.get("seo_viability_assessment", "No assessment available."))
+                    
+                    # Add search landscape analysis
+                    doc.add_heading("Search Landscape Analysis", level=3)
+                    doc.add_paragraph(seo_content.get("search_landscape_analysis", "No analysis available."))
+                    
+                    # Add content strategy recommendations
+                    doc.add_heading("Content Strategy Recommendations", level=3)
+                    doc.add_paragraph(seo_content.get("content_strategy_recommendations", "No recommendations available."))
+                    
+                    # Add technical SEO considerations
+                    doc.add_heading("Technical SEO Considerations", level=3)
+                    doc.add_paragraph(seo_content.get("technical_seo_considerations", "No considerations available."))
+                    
+                    # Add action plan
+                    doc.add_heading("Action Plan", level=3)
+                    action_plan = seo_content.get("action_plan", [])
+                    if action_plan:
+                        for action in action_plan:
+                            doc.add_paragraph(action, style='List Bullet')
+                    else:
+                        doc.add_paragraph("No action plan available.", style='Quote')
+            except Exception as e:
+                logger.error(f"Error generating enhanced SEO content for {brand_name}: {str(e)}")
+                doc.add_paragraph(f"Error generating enhanced SEO content: {str(e)}", style='Intense Quote')
+                
+                # Fall back to original data
+                doc.add_heading("Detailed Analysis", level=3)
+                
+                # Create a table for detailed metrics
+                detail_table = doc.add_table(rows=6, cols=2)
+                detail_table.style = 'Table Grid'
+                
+                # Add rows with data
+                rows = detail_table.rows
+                rows[0].cells[0].text = "Keyword Alignment"
+                rows[0].cells[1].text = str(analysis.get("keyword_alignment", "N/A"))
+                
+                rows[1].cells[0].text = "Non-Branded Keyword Potential"
+                rows[1].cells[1].text = str(analysis.get("non_branded_keyword_potential", "N/A"))
+                
+                rows[2].cells[0].text = "Exact Match Search Results"
+                rows[2].cells[1].text = str(analysis.get("exact_match_search_results", "N/A"))
+                
+                rows[3].cells[0].text = "Competitor Domain Strength"
+                rows[3].cells[1].text = str(analysis.get("competitor_domain_strength", "N/A"))
+                
+                rows[4].cells[0].text = "Name Length Searchability"
+                rows[4].cells[1].text = str(analysis.get("name_length_searchability", "N/A"))
+                
+                rows[5].cells[0].text = "Content Marketing Opportunities"
+                rows[5].cells[1].text = str(analysis.get("content_marketing_opportunities", "N/A"))
+            
+            # Add recommendations
+            doc.add_heading("SEO Recommendations", level=3)
+            recommendations = analysis.get("seo_recommendations", [])
+            if isinstance(recommendations, list) and recommendations:
+                for rec in recommendations:
+                    doc.add_paragraph(rec, style='List Bullet')
+            elif isinstance(recommendations, str) and recommendations:
+                doc.add_paragraph(recommendations)
+            else:
+                doc.add_paragraph("No specific SEO recommendations available.", style='Quote')
+            
+            # Add section divider
+            doc.add_paragraph("", style='Normal')
+            doc.add_paragraph("* * *", style='Normal').alignment = WD_ALIGN_PARAGRAPH.CENTER
+            doc.add_paragraph("", style='Normal')
 
     def _format_competitor_analysis(self, doc: Document, data: Dict[str, Any]) -> None:
         """Format the competitor analysis section."""
@@ -1745,52 +1936,996 @@ class ReportFormatter:
             else:
                 doc.add_paragraph(f"{key.replace('_', ' ').title()}: {type(value).__name__} (cannot display)", style='Quote')
 
-    def _format_section(self, doc: Document, section_name: str, section_data: Dict[str, Any]) -> None:
-        """Format a specific section based on its type."""
-        # Make sure section_data is a dictionary
-        if not isinstance(section_data, dict):
-            raise TypeError(f"Section data for '{section_name}' must be a dictionary, got {type(section_data).__name__}")
+    async def _format_section(self, doc: Document, section_name: str, sections_data: dict) -> tuple:
+        """Format a section of the report.
+        
+        Args:
+            doc: The document to add the section to.
+            section_name: The name of the section to format.
+            sections_data: The data for all sections.
             
+        Returns:
+            tuple: (success_flag, error_message)
+        """
+        logger.info(f"Formatting section: {section_name}")
+        
+        # Add section header with consistent formatting
+        section_title = section_name.replace("_", " ").title()
+        doc.add_heading(section_title, level=1)
+        
         try:
-            # Use specific formatting methods based on section_name
-            if section_name == "brand_context":
-                self._format_brand_context(doc, section_data)
-            elif section_name == "name_generation":
-                self._format_name_generation(doc, section_data)
-            elif section_name == "linguistic_analysis":
-                self._format_linguistic_analysis(doc, section_data)
-            elif section_name == "semantic_analysis":
-                self._format_semantic_analysis(doc, section_data)
-            elif section_name == "cultural_sensitivity":
-                self._format_cultural_sensitivity(doc, section_data)
-            elif section_name == "translation_analysis":
-                self._format_translation_analysis(doc, section_data)
-            elif section_name == "survey_simulation":
-                self._format_survey_simulation(doc, section_data)
-            elif section_name == "name_evaluation":
-                self._format_name_evaluation(doc, section_data)
-            elif section_name == "domain_analysis":
-                self._format_domain_analysis(doc, section_data)
-            elif section_name == "seo_analysis":
-                self._format_seo_analysis(doc, section_data)
-            elif section_name == "competitor_analysis":
-                self._format_competitor_analysis(doc, section_data)
-            elif section_name == "market_research":
-                self._format_market_research(doc, section_data)
-            else:
-                # Generic formatting if no specific method exists
-                logger.warning(f"No specific formatter found for section: {section_name}, using generic formatter")
-                self._format_generic_section(doc, section_name, section_data)
-        except Exception as e:
-            # If a specific formatting method fails, try the generic formatter as fallback
-            logger.error(f"Error in specific formatter for {section_name}, falling back to generic: {str(e)}")
-            doc.add_paragraph(f"⚠️ Error in specialized formatter: {str(e)}", style='Intense Quote')
+            section_data = sections_data.get(section_name, {})
             
-            try:
-                self._format_generic_section(doc, section_name, section_data)
-            except Exception as e2:
-                # If even the generic formatter fails, we have a serious problem with the data
-                raise ValueError(f"Failed to format section '{section_name}' with both specialized and generic formatters. Original error: {str(e)}. Generic formatter error: {str(e2)}")
+            # Handle empty or missing section data
+            if not section_data:
+                logger.warning(f"No data found for section {section_name}")
+                doc.add_paragraph(f"No data available for {section_title}.")
+                return False, f"Missing data for {section_name}"
+            
+            # Special handling for different section types
+            if section_name == "executive_summary":
+                # Get formatted executive summary from LLM
+                try:
+                    response = await self.llm.ainvoke([
+                        SystemMessage(content="You are an expert brand consultant creating an executive summary for a brand naming report."),
+                        HumanMessage(content=str(self.prompts["executive_summary"]))
+                    ])
+                    content = json.loads(response.content)
+                    
+                    # Add the executive summary content to the document
+                    for subsection in content.get("subsections", []):
+                        doc.add_heading(subsection["title"], level=2)
+                        doc.add_paragraph(subsection["content"])
+                    
+                    # Add any additional insights
+                    if "additional_insights" in content:
+                        doc.add_heading("Additional Insights", level=2)
+                        doc.add_paragraph(content["additional_insights"])
+                        
+                except Exception as e:
+                    logger.error(f"Error formatting executive summary: {str(e)}")
+                    doc.add_paragraph("Error generating executive summary. Please check the data and try again.")
+                    return False, f"Error formatting executive summary: {str(e)}"
+
+            elif section_name == "brand_context":
+                # Format brand context information
+                if "description" in section_data:
+                    doc.add_paragraph(section_data["description"])
+                
+                if "target_audience" in section_data:
+                    doc.add_heading("Target Audience", level=2)
+                    doc.add_paragraph(section_data["target_audience"])
+                
+                if "brand_values" in section_data:
+                    doc.add_heading("Brand Values", level=2)
+                    values_list = doc.add_paragraph(style='List Bullet')
+                    for value in section_data["brand_values"]:
+                        values_list.add_run(f"{value}\n")
+                
+                if "industry" in section_data:
+                    doc.add_heading("Industry", level=2)
+                    doc.add_paragraph(section_data["industry"])
+                
+                if "brand_promise" in section_data:
+                    doc.add_heading("Brand Promise", level=2)
+                    doc.add_paragraph(section_data["brand_promise"])
+
+            elif section_name == "name_generation":
+                # Format name generation process
+                doc.add_heading("Name Generation Methodology", level=2)
+                if "methodology" in section_data:
+                    doc.add_paragraph(section_data["methodology"])
+                else:
+                    doc.add_paragraph("Names were generated using a combination of creative techniques, linguistic analysis, and AI algorithms to ensure alignment with brand values and goals.")
+                
+                doc.add_heading("Generated Names", level=2)
+                if "names" in section_data and section_data["names"]:
+                    table = doc.add_table(rows=1, cols=3)
+                    table.style = 'Table Grid'
+                    
+                    # Add header row
+                    header_cells = table.rows[0].cells
+                    header_cells[0].text = "Name"
+                    header_cells[1].text = "Category"
+                    header_cells[2].text = "Description"
+                    
+                    # Add name rows
+                    for name_data in section_data["names"]:
+                        row_cells = table.add_row().cells
+                        row_cells[0].text = name_data.get("name", "")
+                        row_cells[1].text = name_data.get("category", "")
+                        row_cells[2].text = name_data.get("description", "")
+                else:
+                    doc.add_paragraph("No generated names data available.")
+
+            elif section_name == "linguistic_analysis":
+                # Format linguistic analysis using LLM
+                try:
+                    response = await self.llm.ainvoke([
+                        SystemMessage(content="You are an expert linguist analyzing brand names."),
+                        HumanMessage(content=str(self.prompts["linguistic_analysis"]))
+                    ])
+                    content = json.loads(response.content)
+                    
+                    # Add the linguistic analysis content
+                    if "overview" in content:
+                        doc.add_paragraph(content["overview"])
+                    
+                    if "analysis_by_name" in content and content["analysis_by_name"]:
+                        for name_analysis in content["analysis_by_name"]:
+                            doc.add_heading(name_analysis["name"], level=2)
+                            
+                            # Pronunciation
+                            if "pronunciation" in name_analysis:
+                                doc.add_heading("Pronunciation", level=3)
+                                doc.add_paragraph(name_analysis["pronunciation"])
+                            
+                            # Etymology
+                            if "etymology" in name_analysis:
+                                doc.add_heading("Etymology", level=3)
+                                doc.add_paragraph(name_analysis["etymology"])
+                            
+                            # Sound symbolism
+                            if "sound_symbolism" in name_analysis:
+                                doc.add_heading("Sound Symbolism", level=3)
+                                doc.add_paragraph(name_analysis["sound_symbolism"])
+                            
+                            # Other details
+                            if "additional_notes" in name_analysis:
+                                doc.add_heading("Additional Notes", level=3)
+                                doc.add_paragraph(name_analysis["additional_notes"])
+                
+                except Exception as e:
+                    logger.error(f"Error formatting linguistic analysis: {str(e)}")
+                    doc.add_paragraph("Error generating linguistic analysis. Using available data instead.")
+                    
+                    # Fallback to raw data display
+                    if section_data.get("names"):
+                        for name_data in section_data["names"]:
+                            doc.add_heading(name_data.get("name", "Unknown Name"), level=2)
+                            for key, value in name_data.items():
+                                if key != "name" and value:
+                                    doc.add_paragraph(f"{key.replace('_', ' ').title()}: {value}")
+
+            elif section_name == "semantic_analysis":
+                # Format semantic analysis
+                doc.add_heading("Semantic Analysis Overview", level=2)
+                if "overview" in section_data:
+                    doc.add_paragraph(section_data["overview"])
+                else:
+                    doc.add_paragraph("This section analyzes the meaning and connotations of each name option.")
+                
+                if "names" in section_data and section_data["names"]:
+                    for name_data in section_data["names"]:
+                        name = name_data.get("name", "Unknown Name")
+                        doc.add_heading(name, level=2)
+                        
+                        if "meaning" in name_data:
+                            doc.add_heading("Meaning", level=3)
+                            doc.add_paragraph(name_data["meaning"])
+                        
+                        if "connotations" in name_data:
+                            doc.add_heading("Connotations", level=3)
+                            doc.add_paragraph(name_data["connotations"])
+                        
+                        if "brand_alignment" in name_data:
+                            doc.add_heading("Brand Alignment", level=3)
+                            doc.add_paragraph(name_data["brand_alignment"])
+
+            elif section_name == "cultural_sensitivity":
+                # Format cultural sensitivity using LLM
+                try:
+                    response = await self.llm.ainvoke([
+                        SystemMessage(content="You are an expert in cultural sensitivity analysis for brand names."),
+                        HumanMessage(content=str(self.prompts["cultural_sensitivity"]))
+                    ])
+                    content = json.loads(response.content)
+                    
+                    # Add the cultural sensitivity content
+                    if "overview" in content:
+                        doc.add_paragraph(content["overview"])
+                    
+                    if "analysis_by_name" in content and content["analysis_by_name"]:
+                        for name_analysis in content["analysis_by_name"]:
+                            doc.add_heading(name_analysis["name"], level=2)
+                            
+                            if "cultural_appropriateness" in name_analysis:
+                                doc.add_heading("Cultural Appropriateness", level=3)
+                                doc.add_paragraph(name_analysis["cultural_appropriateness"])
+                            
+                            if "regional_considerations" in name_analysis:
+                                doc.add_heading("Regional Considerations", level=3)
+                                doc.add_paragraph(name_analysis["regional_considerations"])
+                            
+                            if "recommendations" in name_analysis:
+                                doc.add_heading("Recommendations", level=3)
+                                doc.add_paragraph(name_analysis["recommendations"])
+                
+                except Exception as e:
+                    logger.error(f"Error formatting cultural sensitivity analysis: {str(e)}")
+                    doc.add_paragraph("Error generating cultural sensitivity analysis. Using available data instead.")
+                    
+                    # Fallback to raw data display
+                    if section_data.get("names"):
+                        for name_data in section_data["names"]:
+                            doc.add_heading(name_data.get("name", "Unknown Name"), level=2)
+                            if "cultural_sensitivity" in name_data:
+                                doc.add_paragraph(name_data["cultural_sensitivity"])
+
+            elif section_name == "translation_analysis":
+                # Format translation analysis
+                doc.add_heading("Translation Analysis Overview", level=2)
+                if "overview" in section_data:
+                    doc.add_paragraph(section_data["overview"])
+                else:
+                    doc.add_paragraph("This section examines how each name option translates and is perceived in different languages.")
+                
+                if "names" in section_data and section_data["names"]:
+                    for name_data in section_data["names"]:
+                        name = name_data.get("name", "Unknown Name")
+                        doc.add_heading(name, level=2)
+                        
+                        if "translations" in name_data and name_data["translations"]:
+                            table = doc.add_table(rows=1, cols=3)
+                            table.style = 'Table Grid'
+                            
+                            # Add header row
+                            header_cells = table.rows[0].cells
+                            header_cells[0].text = "Language"
+                            header_cells[1].text = "Translation"
+                            header_cells[2].text = "Notes"
+                            
+                            # Add translation rows
+                            for trans in name_data["translations"]:
+                                row_cells = table.add_row().cells
+                                row_cells[0].text = trans.get("language", "")
+                                row_cells[1].text = trans.get("translation", "")
+                                row_cells[2].text = trans.get("notes", "")
+                        else:
+                            doc.add_paragraph("No translation data available for this name.")
+
+            elif section_name == "name_evaluation":
+                # Format name evaluation
+                doc.add_heading("Name Evaluation Overview", level=2)
+                if "overview" in section_data:
+                    doc.add_paragraph(section_data["overview"])
+                else:
+                    doc.add_paragraph("This section provides a comprehensive evaluation of each name option based on key branding criteria.")
+                
+                if "names" in section_data and section_data["names"]:
+                    # Create summary evaluation table
+                    doc.add_heading("Evaluation Summary", level=2)
+                    table = doc.add_table(rows=1, cols=5)
+                    table.style = 'Table Grid'
+                    
+                    # Add header row
+                    header_cells = table.rows[0].cells
+                    header_cells[0].text = "Name"
+                    header_cells[1].text = "Overall Score"
+                    header_cells[2].text = "Strengths"
+                    header_cells[3].text = "Weaknesses"
+                    header_cells[4].text = "Recommendation"
+                    
+                    # Add name rows
+                    for name_data in section_data["names"]:
+                        row_cells = table.add_row().cells
+                        row_cells[0].text = name_data.get("name", "")
+                        row_cells[1].text = str(name_data.get("overall_score", "N/A"))
+                        row_cells[2].text = name_data.get("strengths", "")
+                        row_cells[3].text = name_data.get("weaknesses", "")
+                        row_cells[4].text = name_data.get("recommendation", "")
+                    
+                    # Add detailed evaluation for each name
+                    doc.add_heading("Detailed Evaluation", level=2)
+                    for name_data in section_data["names"]:
+                        name = name_data.get("name", "Unknown Name")
+                        doc.add_heading(name, level=3)
+                        
+                        # Create criteria table
+                        if "criteria_scores" in name_data and name_data["criteria_scores"]:
+                            criteria_table = doc.add_table(rows=1, cols=2)
+                            criteria_table.style = 'Table Grid'
+                            
+                            # Add header row
+                            header_cells = criteria_table.rows[0].cells
+                            header_cells[0].text = "Criterion"
+                            header_cells[1].text = "Score"
+                            
+                            # Add criteria rows
+                            for criterion, score in name_data["criteria_scores"].items():
+                                row_cells = criteria_table.add_row().cells
+                                row_cells[0].text = criterion.replace("_", " ").title()
+                                row_cells[1].text = str(score)
+                        
+                        # Add comments
+                        if "comments" in name_data:
+                            doc.add_heading("Comments", level=4)
+                            doc.add_paragraph(name_data["comments"])
+
+            elif section_name == "domain_analysis":
+                # Format domain analysis using LLM
+                try:
+                    brand_names = []
+                    for name_data in section_data.get("names", []):
+                        if "name" in name_data:
+                            brand_names.append(name_data["name"])
+                    
+                    response = await self.llm.ainvoke([
+                        SystemMessage(content="You are an expert in domain analysis for brand names."),
+                        HumanMessage(content=str(self.prompts["domain_analysis"].format(
+                            run_id=self.current_run_id,
+                            brand_names=brand_names,
+                            domain_data=section_data
+                        )))
+                    ])
+                    content = json.loads(response.content)
+                    
+                    # Add the domain analysis content
+                    if "overview" in content:
+                        doc.add_paragraph(content["overview"])
+                    
+                    if "analysis_by_name" in content and content["analysis_by_name"]:
+                        for name_analysis in content["analysis_by_name"]:
+                            doc.add_heading(name_analysis["name"], level=2)
+                            
+                            if "domain_availability" in name_analysis:
+                                doc.add_heading("Domain Availability", level=3)
+                                doc.add_paragraph(name_analysis["domain_availability"])
+                            
+                            if "alternative_tlds" in name_analysis:
+                                doc.add_heading("Alternative TLDs", level=3)
+                                doc.add_paragraph(name_analysis["alternative_tlds"])
+                            
+                            if "domain_history" in name_analysis:
+                                doc.add_heading("Domain History", level=3)
+                                doc.add_paragraph(name_analysis["domain_history"])
+                            
+                            if "seo_potential" in name_analysis:
+                                doc.add_heading("SEO Potential", level=3)
+                                doc.add_paragraph(name_analysis["seo_potential"])
+                            
+                            if "social_media_availability" in name_analysis:
+                                doc.add_heading("Social Media Availability", level=3)
+                                doc.add_paragraph(name_analysis["social_media_availability"])
+                            
+                            if "technical_considerations" in name_analysis:
+                                doc.add_heading("Technical Considerations", level=3)
+                                doc.add_paragraph(name_analysis["technical_considerations"])
+                            
+                            if "future_proofing" in name_analysis:
+                                doc.add_heading("Future-proofing Strategy", level=3)
+                                doc.add_paragraph(name_analysis["future_proofing"])
+                    
+                    if "comparative_analysis" in content:
+                        doc.add_heading("Comparative Analysis", level=2)
+                        doc.add_paragraph(content["comparative_analysis"])
+                    
+                    if "recommendations" in content:
+                        doc.add_heading("Domain Recommendations", level=2)
+                        doc.add_paragraph(content["recommendations"])
+                
+                except Exception as e:
+                    logger.error(f"Error formatting domain analysis: {str(e)}")
+                    doc.add_paragraph("Error generating domain analysis. Using available data instead.")
+                    
+                    # Fallback to raw data display
+                    if "names" in section_data and section_data["names"]:
+                        for name_data in section_data["names"]:
+                            doc.add_heading(name_data.get("name", "Unknown Name"), level=2)
+                            if "domains" in name_data and name_data["domains"]:
+                                table = doc.add_table(rows=1, cols=3)
+                                table.style = 'Table Grid'
+                                
+                                # Add header row
+                                header_cells = table.rows[0].cells
+                                header_cells[0].text = "Domain"
+                                header_cells[1].text = "Availability"
+                                header_cells[2].text = "Notes"
+                                
+                                # Add domain rows
+                                for domain in name_data["domains"]:
+                                    row_cells = table.add_row().cells
+                                    row_cells[0].text = domain.get("name", "")
+                                    row_cells[1].text = domain.get("available", "Unknown")
+                                    row_cells[2].text = domain.get("notes", "")
+                            else:
+                                doc.add_paragraph("No domain data available for this name.")
+
+            elif section_name == "seo_analysis":
+                # Format SEO analysis using LLM
+                try:
+                    response = await self.llm.ainvoke([
+                        SystemMessage(content="You are an SEO expert analyzing brand name options."),
+                        HumanMessage(content=str(self.prompts["seo_analysis"]))
+                    ])
+                    content = json.loads(response.content)
+                    
+                    # Add the SEO analysis content
+                    if "overview" in content:
+                        doc.add_paragraph(content["overview"])
+                    
+                    if "analysis_by_name" in content and content["analysis_by_name"]:
+                        for name_analysis in content["analysis_by_name"]:
+                            doc.add_heading(name_analysis["name"], level=2)
+                            
+                            if "search_volume" in name_analysis:
+                                doc.add_heading("Search Volume", level=3)
+                                doc.add_paragraph(name_analysis["search_volume"])
+                            
+                            if "keyword_competition" in name_analysis:
+                                doc.add_heading("Keyword Competition", level=3)
+                                doc.add_paragraph(name_analysis["keyword_competition"])
+                            
+                            if "online_discoverability" in name_analysis:
+                                doc.add_heading("Online Discoverability", level=3)
+                                doc.add_paragraph(name_analysis["online_discoverability"])
+                            
+                            if "recommendations" in name_analysis:
+                                doc.add_heading("SEO Recommendations", level=3)
+                                doc.add_paragraph(name_analysis["recommendations"])
+                
+                except Exception as e:
+                    logger.error(f"Error formatting SEO analysis: {str(e)}")
+                    doc.add_paragraph("Error generating SEO analysis. Using available data instead.")
+                    
+                    # Fallback to raw data display
+                    if section_data.get("names"):
+                        for name_data in section_data["names"]:
+                            doc.add_heading(name_data.get("name", "Unknown Name"), level=2)
+                            if "seo_analysis" in name_data:
+                                doc.add_paragraph(name_data["seo_analysis"])
+
+            elif section_name == "competitor_analysis":
+                # Format competitor analysis
+                doc.add_heading("Competitor Analysis Overview", level=2)
+                if "overview" in section_data:
+                    doc.add_paragraph(section_data["overview"])
+                else:
+                    doc.add_paragraph("This section examines how the proposed names compare to competitors in the market.")
+                
+                if "competitors" in section_data and section_data["competitors"]:
+                    # Create competitor table
+                    table = doc.add_table(rows=1, cols=3)
+                    table.style = 'Table Grid'
+                    
+                    # Add header row
+                    header_cells = table.rows[0].cells
+                    header_cells[0].text = "Competitor"
+                    header_cells[1].text = "Brand Name"
+                    header_cells[2].text = "Analysis"
+                    
+                    # Add competitor rows
+                    for comp in section_data["competitors"]:
+                        row_cells = table.add_row().cells
+                        row_cells[0].text = comp.get("company", "")
+                        row_cells[1].text = comp.get("brand_name", "")
+                        row_cells[2].text = comp.get("analysis", "")
+                
+                if "name_comparisons" in section_data and section_data["name_comparisons"]:
+                    doc.add_heading("Name Comparisons", level=2)
+                    for comparison in section_data["name_comparisons"]:
+                        name = comparison.get("name", "Unknown Name")
+                        doc.add_heading(name, level=3)
+                        doc.add_paragraph(comparison.get("competitive_advantage", "No competitive advantage information available."))
+
+            elif section_name == "market_research":
+                # Format market research
+                doc.add_heading("Market Research Overview", level=2)
+                if "overview" in section_data:
+                    doc.add_paragraph(section_data["overview"])
+                else:
+                    doc.add_paragraph("This section presents market research related to the brand naming process.")
+                
+                # Industry trends
+                if "industry_trends" in section_data:
+                    doc.add_heading("Industry Trends", level=2)
+                    doc.add_paragraph(section_data["industry_trends"])
+                
+                # Target audience insights
+                if "target_audience_insights" in section_data:
+                    doc.add_heading("Target Audience Insights", level=2)
+                    doc.add_paragraph(section_data["target_audience_insights"])
+                
+                # Naming trends
+                if "naming_trends" in section_data:
+                    doc.add_heading("Naming Trends", level=2)
+                    doc.add_paragraph(section_data["naming_trends"])
+                
+                # Research methodology
+                if "methodology" in section_data:
+                    doc.add_heading("Research Methodology", level=2)
+                    doc.add_paragraph(section_data["methodology"])
+                
+                # Key findings
+                if "key_findings" in section_data:
+                    doc.add_heading("Key Findings", level=2)
+                    findings_list = doc.add_paragraph(style='List Bullet')
+                    for finding in section_data["key_findings"]:
+                        findings_list.add_run(f"{finding}\n")
+
+            elif section_name == "survey_simulation":
+                # Format survey simulation using LLM
+                try:
+                    brand_names = []
+                    for name_data in section_data.get("names", []):
+                        if "name" in name_data:
+                            brand_names.append(name_data["name"])
+                    
+                    response = await self.llm.ainvoke([
+                        SystemMessage(content="You are an expert in brand market research and survey analysis."),
+                        HumanMessage(content=str(self.prompts["survey_simulation"].format(
+                            run_id=self.current_run_id,
+                            brand_names=brand_names,
+                            survey_data=section_data
+                        )))
+                    ])
+                    content = json.loads(response.content)
+                    
+                    # Add methodology information
+                    if "methodology" in content:
+                        doc.add_heading("Methodology", level=2)
+                        doc.add_paragraph(content["methodology"])
+                    
+                    # Add demographics information
+                    if "demographics" in content:
+                        doc.add_heading("Simulated Demographics", level=2)
+                        doc.add_paragraph(content["demographics"])
+                    
+                    # Add overview insights
+                    if "overview" in content:
+                        doc.add_heading("Survey Overview", level=2)
+                        doc.add_paragraph(content["overview"])
+                    
+                    # Add per-name analysis
+                    if "analysis_by_name" in content and content["analysis_by_name"]:
+                        doc.add_heading("Brand Name Feedback", level=2)
+                        for name_analysis in content["analysis_by_name"]:
+                            doc.add_heading(name_analysis["name"], level=3)
+                            
+                            if "brand_promise_alignment" in name_analysis:
+                                doc.add_heading("Brand Promise Perception", level=4)
+                                doc.add_paragraph(name_analysis["brand_promise_alignment"])
+                            
+                            if "personality_fit" in name_analysis:
+                                doc.add_heading("Personality Fit", level=4)
+                                doc.add_paragraph(name_analysis["personality_fit"])
+                            
+                            if "emotional_impact" in name_analysis:
+                                doc.add_heading("Emotional Associations", level=4)
+                                doc.add_paragraph(name_analysis["emotional_impact"])
+                            
+                            if "competitive_positioning" in name_analysis:
+                                doc.add_heading("Competitive Differentiation", level=4)
+                                doc.add_paragraph(name_analysis["competitive_positioning"])
+                            
+                            if "market_receptivity" in name_analysis:
+                                doc.add_heading("Market Adoption Potential", level=4)
+                                doc.add_paragraph(name_analysis["market_receptivity"])
+                            
+                            if "participant_feedback" in name_analysis:
+                                doc.add_heading("Qualitative Feedback", level=4)
+                                doc.add_paragraph(name_analysis["participant_feedback"])
+                            
+                            if "recommendations" in name_analysis:
+                                doc.add_heading("Recommendations", level=4)
+                                doc.add_paragraph(name_analysis["recommendations"])
+                    
+                    # Add comparative analysis
+                    if "comparative_analysis" in content:
+                        doc.add_heading("Comparative Analysis", level=2)
+                        doc.add_paragraph(content["comparative_analysis"])
+                    
+                    # Add strategic implications
+                    if "strategic_implications" in content:
+                        doc.add_heading("Strategic Implications", level=2)
+                        doc.add_paragraph(content["strategic_implications"])
+                
+                except Exception as e:
+                    logger.error(f"Error formatting survey simulation: {str(e)}")
+                    doc.add_paragraph("Error generating survey simulation analysis. Using available data instead.")
+                    
+                    # Fallback to raw data display
+                    doc.add_heading("Survey Methodology", level=2)
+                    if "methodology" in section_data:
+                        doc.add_paragraph(section_data["methodology"])
+                    else:
+                        doc.add_paragraph("No methodology data available.")
+                    
+                    # Display survey results if available
+                    if "results" in section_data:
+                        doc.add_heading("Survey Results", level=2)
+                        for name, result in section_data["results"].items():
+                            doc.add_heading(name, level=3)
+                            for metric, value in result.items():
+                                doc.add_paragraph(f"{metric.replace('_', ' ').title()}: {value}")
+                    
+                    # Display insights if available
+                    if "insights" in section_data:
+                        doc.add_heading("Survey Insights", level=2)
+                        doc.add_paragraph(section_data["insights"])
+
+            elif section_name == "recommendations":
+                # Format recommendations using LLM
+                try:
+                    response = await self.llm.ainvoke([
+                        SystemMessage(content="You are an expert brand consultant providing strategic recommendations based on a comprehensive brand naming analysis."),
+                        HumanMessage(content=str(self.prompts["recommendations"]))
+                    ])
+                    content = json.loads(response.content)
+                    
+                    # Add the recommendations content
+                    if "summary" in content:
+                        doc.add_paragraph(content["summary"])
+                    
+                    if "top_names" in content and content["top_names"]:
+                        doc.add_heading("Top Recommended Names", level=2)
+                        for idx, name_rec in enumerate(content["top_names"], 1):
+                            doc.add_heading(f"{idx}. {name_rec['name']}", level=3)
+                            doc.add_paragraph(name_rec["rationale"])
+                    
+                    if "implementation_steps" in content:
+                        doc.add_heading("Implementation Steps", level=2)
+                        steps_list = doc.add_paragraph(style='List Number')
+                        for step in content["implementation_steps"]:
+                            steps_list.add_run(f"{step}\n")
+                    
+                    if "additional_recommendations" in content:
+                        doc.add_heading("Additional Recommendations", level=2)
+                        doc.add_paragraph(content["additional_recommendations"])
+                
+                except Exception as e:
+                    logger.error(f"Error formatting recommendations: {str(e)}")
+                    doc.add_paragraph("Error generating recommendations. Using available data instead.")
+                    
+                    # Fallback to simple recommendations
+                    if "top_names" in section_data:
+                        doc.add_heading("Top Recommended Names", level=2)
+                        for idx, name in enumerate(section_data["top_names"], 1):
+                            doc.add_paragraph(f"{idx}. {name}")
+                    
+                    if "rationale" in section_data:
+                        doc.add_heading("Recommendation Rationale", level=2)
+                        doc.add_paragraph(section_data["rationale"])
+                    
+                    if "next_steps" in section_data:
+                        doc.add_heading("Next Steps", level=2)
+                        steps_list = doc.add_paragraph(style='List Number')
+                        for step in section_data["next_steps"]:
+                            steps_list.add_run(f"{step}\n")
+            
+            else:
+                # Generic section formatting for any other sections
+                for key, value in section_data.items():
+                    if isinstance(value, str) and value:
+                        doc.add_heading(key.replace("_", " ").title(), level=2)
+                        doc.add_paragraph(value)
+                    elif isinstance(value, list) and value:
+                        doc.add_heading(key.replace("_", " ").title(), level=2)
+                        bullet_list = doc.add_paragraph(style='List Bullet')
+                        for item in value:
+                            if isinstance(item, str):
+                                bullet_list.add_run(f"{item}\n")
+                            elif isinstance(item, dict):
+                                # For list of dictionaries, create a more complex structure
+                                for subkey, subvalue in item.items():
+                                    if isinstance(subvalue, str):
+                                        doc.add_paragraph(f"{subkey.replace('_', ' ').title()}: {subvalue}")
+            
+            # Add page break after each section
+            doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+            return True, None
+            
+        except Exception as e:
+            error_msg = f"Error formatting section {section_name}: {str(e)}"
+            logger.error(error_msg)
+            doc.add_paragraph(f"Error formatting section. Please check the data and try again.")
+            doc.add_paragraph(f"Technical details: {str(e)}")
+            doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+            return False, error_msg
+
+    async def _generate_brand_context_content(self, brand_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate structured brand context content using the LLM."""
+        try:
+            # Prepare the prompt
+            prompt = self.prompts["brand_context"].format(
+                run_id=self.current_run_id,
+                brand_context=brand_context
+            )
+            
+            # Get response from LLM
+            messages = [
+                SystemMessage(content="You are an expert brand strategist providing context for a brand naming report."),
+                HumanMessage(content=prompt)
+            ]
+            
+            response = await self.llm.ainvoke(messages)
+            
+            # Extract JSON from response
+            content = response.content
+            json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+            
+            if json_match:
+                json_str = json_match.group(1)
+                return json.loads(json_str)
+            else:
+                # Try to find any JSON object in the response
+                json_match = re.search(r'({.*})', content, re.DOTALL)
+                if json_match:
+                    return json.loads(json_match.group(1))
+                else:
+                    logger.warning("Could not extract JSON from LLM response for brand context")
+                    return {
+                        "brand_promise_section": "Error extracting structured content from LLM response.",
+                        "brand_personality_section": "",
+                        "brand_tone_section": "",
+                        "brand_values_section": "",
+                        "brand_purpose_section": "",
+                        "brand_mission_section": "",
+                        "target_audience_section": "",
+                        "customer_needs_section": "",
+                        "market_positioning_section": "",
+                        "competitive_landscape_section": "",
+                        "industry_focus_section": "",
+                        "industry_trends_section": "",
+                        "brand_identity_summary": ""
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Error generating brand context content: {str(e)}")
+            return {
+                "brand_promise_section": f"Error generating brand context content: {str(e)}",
+                "brand_personality_section": "",
+                "brand_tone_section": "",
+                "brand_values_section": "",
+                "brand_purpose_section": "",
+                "brand_mission_section": "",
+                "target_audience_section": "",
+                "customer_needs_section": "",
+                "market_positioning_section": "",
+                "competitive_landscape_section": "",
+                "industry_focus_section": "",
+                "industry_trends_section": "",
+                "brand_identity_summary": ""
+            }
+
+    async def _format_brand_context(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Format the brand context section using LLM."""
+        if not data:
+            doc.add_paragraph("No brand context data available.", style='Quote')
+            return
+            
+        # Generate enhanced content using LLM
+        try:
+            enhanced_content = await self._generate_brand_context_content(data)
+            
+            # Add each section from the enhanced content
+            for section_title, section_key in [
+                ("Brand Promise", "brand_promise_section"),
+                ("Brand Personality", "brand_personality_section"),
+                ("Brand Tone of Voice", "brand_tone_section"),
+                ("Brand Values", "brand_values_section"),
+                ("Brand Purpose", "brand_purpose_section"),
+                ("Brand Mission", "brand_mission_section"),
+                ("Target Audience", "target_audience_section"),
+                ("Customer Needs", "customer_needs_section"),
+                ("Market Positioning", "market_positioning_section"),
+                ("Competitive Landscape", "competitive_landscape_section"),
+                ("Industry Focus", "industry_focus_section"),
+                ("Industry Trends", "industry_trends_section")
+            ]:
+                if section_key in enhanced_content and enhanced_content[section_key]:
+                    doc.add_heading(section_title, level=2)
+                    doc.add_paragraph(enhanced_content[section_key])
+                
+            # Add brand identity summary at the end
+            if "brand_identity_summary" in enhanced_content and enhanced_content["brand_identity_summary"]:
+                doc.add_heading("Brand Identity Summary", level=2)
+                doc.add_paragraph(enhanced_content["brand_identity_summary"])
+                
+        except Exception as e:
+            logger.error(f"Error formatting brand context with LLM: {str(e)}")
+            doc.add_paragraph(f"⚠️ Error enhancing brand context with LLM: {str(e)}", style='Intense Quote')
+            
+            # Fall back to basic formatting
+            self._format_brand_context_basic(doc, data)
+    
+    def _format_brand_context_basic(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Basic formatting for brand context when LLM enhancement fails."""
+        # Extract brand context data (might be nested)
+        if "brand_context" in data and isinstance(data["brand_context"], dict):
+            context = data["brand_context"]
+        else:
+            context = data
+        
+        # Define fields to display
+        fields = [
+            ("Brand Promise", "brand_promise"),
+            ("Brand Personality", "brand_personality"),
+            ("Brand Tone of Voice", "brand_tone_of_voice"),
+            ("Brand Values", "brand_values"),
+            ("Brand Purpose", "brand_purpose"),
+            ("Brand Mission", "brand_mission"),
+            ("Target Audience", "target_audience"),
+            ("Customer Needs", "customer_needs"),
+            ("Market Positioning", "market_positioning"),
+            ("Competitive Landscape", "competitive_landscape"),
+            ("Industry Focus", "industry_focus"),
+            ("Industry Trends", "industry_trends"),
+            ("Brand Identity Brief", "brand_identity_brief")
+        ]
+        
+        # Add each field
+        for display_name, field_name in fields:
+            if field_name in context and context[field_name]:
+                doc.add_heading(display_name, level=2)
+                doc.add_paragraph(context[field_name])
+
+    async def _generate_name_generation_content(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate enhanced name generation content using the LLM."""
+        try:
+            # Prepare the prompt
+            prompt = self.prompts["brand_name_generation"].format(
+                run_id=self.current_run_id,
+                brand_name_generation=data
+            )
+            
+            # Get response from LLM
+            messages = [
+                SystemMessage(content="You are an expert brand naming specialist presenting brand name options."),
+                HumanMessage(content=prompt)
+            ]
+            
+            response = await self.llm.ainvoke(messages)
+            
+            # Extract JSON from response
+            content = response.content
+            json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+            
+            if json_match:
+                json_str = json_match.group(1)
+                return json.loads(json_str)
+            else:
+                # Try to find any JSON object in the response
+                json_match = re.search(r'({.*})', content, re.DOTALL)
+                if json_match:
+                    return json.loads(json_match.group(1))
+                else:
+                    logger.warning("Could not extract JSON from LLM response for name generation")
+                    return {
+                        "introduction": "Error extracting structured content from LLM response.",
+                        "categories": [],
+                        "summary": ""
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Error generating name generation content: {str(e)}")
+            return {
+                "introduction": f"Error generating name generation content: {str(e)}",
+                "categories": [],
+                "summary": ""
+            }
+
+    async def _format_name_generation(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Format the name generation section using LLM."""
+        if not data:
+            doc.add_paragraph("No name generation data available.", style='Quote')
+            return
+            
+        # Generate enhanced content using LLM
+        try:
+            enhanced_content = await self._generate_name_generation_content(data)
+            
+            # Add introduction
+            if "introduction" in enhanced_content and enhanced_content["introduction"]:
+                doc.add_paragraph(enhanced_content["introduction"])
+            
+            # Add categories
+            if "categories" in enhanced_content and enhanced_content["categories"]:
+                for category in enhanced_content["categories"]:
+                    # Add category heading
+                    if "category_name" in category and category["category_name"]:
+                        doc.add_heading(category["category_name"], level=2)
+                    
+                    # Add category description
+                    if "category_description" in category and category["category_description"]:
+                        doc.add_paragraph(category["category_description"])
+                    
+                    # Add names in this category
+                    if "names" in category and category["names"]:
+                        for name_data in category["names"]:
+                            if "name" in name_data and name_data["name"]:
+                                # Create a heading for the name
+                                doc.add_heading(name_data["name"], level=3)
+                                
+                                # Create a table for the name details
+                                table = doc.add_table(rows=8, cols=2)
+                                table.style = 'Table Grid'
+                                
+                                # Define fields to display in the table
+                                fields = [
+                                    ("Personality Alignment", "personality_alignment"),
+                                    ("Promise Alignment", "promise_alignment"),
+                                    ("Methodology", "methodology"),
+                                    ("Memorability", "memorability"),
+                                    ("Pronounceability", "pronounceability"),
+                                    ("Visual Potential", "visual_potential"),
+                                    ("Audience Relevance", "audience_relevance"),
+                                    ("Market Differentiation", "market_differentiation")
+                                ]
+                                
+                                # Add fields to table
+                                for i, (display_name, field_name) in enumerate(fields):
+                                    if i < len(table.rows):
+                                        row = table.rows[i].cells
+                                        row[0].text = display_name
+                                        row[0].paragraphs[0].runs[0].bold = True
+                                        row[1].text = name_data.get(field_name, "")
+                                
+                                # Add some space after each name
+                                doc.add_paragraph()
+            
+            # Add summary
+            if "summary" in enhanced_content and enhanced_content["summary"]:
+                doc.add_heading("Summary", level=2)
+                doc.add_paragraph(enhanced_content["summary"])
+                
+        except Exception as e:
+            logger.error(f"Error formatting name generation with LLM: {str(e)}")
+            doc.add_paragraph(f"⚠️ Error enhancing name generation with LLM: {str(e)}", style='Intense Quote')
+            
+            # Fall back to basic formatting
+            self._format_name_generation_basic(doc, data)
+    
+    def _format_name_generation_basic(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Basic formatting for name generation when LLM enhancement fails."""
+        # Extract name generation data
+        if "brand_name_generation" in data and isinstance(data["brand_name_generation"], dict):
+            categories = data["brand_name_generation"]
+        else:
+            categories = data
+        
+        # Add introduction
+        doc.add_paragraph(
+            f"This section presents the generated brand names organized by naming category. "
+            f"Each name is evaluated on multiple criteria including brand alignment, memorability, "
+            f"pronounceability, and market differentiation."
+        )
+        
+        # Process each category
+        if isinstance(categories, dict):
+            for category_name, names in categories.items():
+                if isinstance(names, list) and names:
+                    # Add category heading
+                    doc.add_heading(category_name, level=2)
+                    
+                    # Process each name in this category
+                    for name_data in names:
+                        if isinstance(name_data, dict) and "brand_name" in name_data:
+                            # Create a heading for the name
+                            doc.add_heading(name_data["brand_name"], level=3)
+                            
+                            # Create a table for the name details
+                            table = doc.add_table(rows=5, cols=2)
+                            table.style = 'Table Grid'
+                            
+                            # Define fields to display in the table
+                            fields = [
+                                ("Brand Personality Alignment", "brand_personality_alignment"),
+                                ("Brand Promise Alignment", "brand_promise_alignment"),
+                                ("Methodology", "name_generation_methodology"),
+                                ("Memorability", "memorability_score_details"),
+                                ("Pronounceability", "pronounceability_score_details")
+                            ]
+                            
+                            # Add fields to table
+                            for i, (display_name, field_name) in enumerate(fields):
+                                if i < len(table.rows):
+                                    row = table.rows[i].cells
+                                    row[0].text = display_name
+                                    row[1].text = name_data.get(field_name, "")
+                            
+                            # Add some space after each name
+                            doc.add_paragraph()
 
 
 async def main(run_id: str = None):

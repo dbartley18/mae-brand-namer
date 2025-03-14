@@ -1,0 +1,117 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.*.sw[po]
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+*.log.*
+
+# Testing and Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# LangSmith
+.langchain.db
+.langchain/
+langchain.db
+
+# Documentation
+docs/_build/
+docs/generated/
+
+# OS
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+*.temp
+
+# Project specific
+# Generated reports
+reports/*
+!reports/.gitkeep
+
+# Cache directories
+.cache/
+.ruff_cache/
+
+# Local development
+*.env.local
+*.venv
+*.env.development.local
+*.env.test.local
+*.env.production.local
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Project configuration files (sensitive)
+tasks.yaml
+agents.yaml
+*.csv
+
+# Generated test data and reports
+debug_outputs/
+data_retrieval_test_*.json
+db_diagnostics_*.json
+diagnostic_output_*/
+simple_report_*/
+Simulation Brand Name Report (B2B Global Consultancy).docx
+docs/notepad.md

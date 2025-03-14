@@ -1,0 +1,56 @@
+_type: prompt
+input_variables: ["run_id", "market_research"]
+template: |
+  Your task is to create a well-structured market research section for a brand naming report based on the provided data.
+
+  Run ID: {{run_id}}
+  Market Research Data: {{market_research}}
+
+  The data is organized by brand name, with market research analysis for each name.
+
+  Please format the market research information into a coherent and professional section that:
+
+  1. Introduces the market research methodology and its importance for brand naming validation
+  2. Provides industry context including market size, growth rate, key competitors, and trends
+  3. For each brand name, analyzes:
+     - Market opportunity specific to the name
+     - Target audience fit
+     - Competitive analysis in the market context
+     - Market viability assessment
+     - Potential market risks
+     - Market-specific recommendations
+  4. Addresses key market factors like:
+     - Customer pain points
+     - Market entry barriers
+     - Emerging market trends
+
+  Format your response as a well-structured section with clear name-based subsections, professional language, and a logical flow.
+  Start with an industry overview before presenting the specific market analysis for each brand name.
+
+  Response Format:
+  ```json
+  {
+    "industry_overview": {
+      "industry_description": "Overview of the industry context",
+      "market_size_analysis": "Analysis of market size and implications",
+      "growth_trends": "Analysis of market growth rate and trajectory",
+      "competitive_landscape": "Overview of key competitors in the space",
+      "market_entry_considerations": "Analysis of market entry barriers",
+      "customer_landscape": "Analysis of customer pain points and needs",
+      "emerging_trends": "Analysis of emerging trends in the market"
+    },
+    "brand_analyses": [
+      {
+        "brand_name": "Name of the brand",
+        "market_opportunity": "Analysis of specific market opportunity for this name",
+        "audience_alignment": "How well the name aligns with target audience",
+        "competitive_positioning": "How the name positions in the competitive landscape",
+        "viability_assessment": "Overall market viability assessment",
+        "risk_factors": "Market-specific risk factors for this name",
+        "market_recommendations": "Market-specific recommendations"
+      }
+    ],
+    "comparative_market_analysis": "Comparative analysis of names in market context",
+    "summary": "Summary of key market insights and implications for brand naming"
+  }
+  ``` 

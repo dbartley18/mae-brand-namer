@@ -61,6 +61,7 @@
     "market_research_expert": "./src/mae_brand_namer/agents/market_research_expert.py:MarketResearchExpert",
     "brand_name_evaluator": "./src/mae_brand_namer/agents/brand_name_evaluator.py:BrandNameEvaluator",
     "report_compiler": "./src/mae_brand_namer/agents/report_compiler.py:ReportCompiler",
+    "report_formatter": "./src/mae_brand_namer/agents/report_formatter.py:ReportFormatter",
     "process_supervisor": "./src/mae_brand_namer/agents/process_supervisor.py:ProcessSupervisor",
     
     "language_expert_factory": "./src/mae_brand_namer/agents/language_expert_factory.py:get_language_expert",

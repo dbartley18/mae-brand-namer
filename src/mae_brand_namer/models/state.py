@@ -446,6 +446,7 @@ class BrandNameGenerationState(Serializable, BaseModel):
     # Report compilation fields
     compiled_report: Optional[Dict[str, Any]] = Field(default=None, description="Compiled report with organized data and report URL")
     report_url: Optional[str] = Field(default=None, description="URL to the generated report document")
+    formatted_report_path: Optional[str] = Field(default=None, description="Local path to the formatted report document")
     version: Optional[Union[str, int]] = Field(default=None, description="Version of the generated report")
     created_at: Optional[str] = Field(default=None, description="Timestamp when the report was created")
     last_updated: Optional[str] = Field(default=None, description="Timestamp when the report was last updated")

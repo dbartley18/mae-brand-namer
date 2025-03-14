@@ -1,0 +1,45 @@
+_type: prompt
+input_variables: ["run_id", "brand_context"]
+template: |
+  Your task is to create a well-structured brand context section for a brand naming report based on the provided data.
+
+  Run ID: {{run_id}}
+  Brand Context Data: {{brand_context}}
+
+  Please format the brand context information into a coherent and professional section that covers:
+
+  1. Brand Promise: The core promise the brand makes to customers
+  2. Brand Personality: The human characteristics and traits of the brand
+  3. Brand Tone of Voice: How the brand communicates with its audience
+  4. Brand Values: The foundational principles guiding the brand
+  5. Brand Purpose: Why the brand exists beyond profit
+  6. Brand Mission: What the brand aims to accomplish
+  7. Target Audience: Detailed information about the ideal customers
+  8. Customer Needs: The key needs and pain points the brand addresses
+  9. Market Positioning: How the brand positions itself in the market
+  10. Competitive Landscape: Overview of key competitors
+  11. Industry Focus: The specific industry or industries targeted
+  12. Industry Trends: Current and emerging trends in the industry
+  13. Brand Identity Brief: Summary of brand identity parameters
+
+  Format your response as a well-structured section with clear headings, professional language, and a logical flow.
+  This section will serve as the foundation for understanding the brand's parameters in the naming process.
+
+  Response Format:
+  ```json
+  {
+    "brand_promise_section": "Formatted content about the brand promise",
+    "brand_personality_section": "Formatted content about the brand personality",
+    "brand_tone_section": "Formatted content about the brand tone of voice",
+    "brand_values_section": "Formatted content about the brand values",
+    "brand_purpose_section": "Formatted content about the brand purpose",
+    "brand_mission_section": "Formatted content about the brand mission",
+    "target_audience_section": "Formatted content about the target audience",
+    "customer_needs_section": "Formatted content about customer needs",
+    "market_positioning_section": "Formatted content about market positioning",
+    "competitive_landscape_section": "Formatted content about the competitive landscape",
+    "industry_focus_section": "Formatted content about industry focus",
+    "industry_trends_section": "Formatted content about industry trends",
+    "brand_identity_summary": "Concise summary of the overall brand identity"
+  }
+  ``` 

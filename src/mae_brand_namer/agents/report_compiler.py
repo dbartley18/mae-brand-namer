@@ -166,7 +166,8 @@ class ReportCompiler:
             "market_research",
             "competitor_analysis",
             "domain_analysis",
-            "survey_simulation"
+            "survey_simulation",
+            "seo_online_discoverability"
         ]
 
     async def _fetch_section_data(self, run_id: str, section_name: str) -> Dict[str, Any]:
@@ -438,6 +439,29 @@ class ReportCompiler:
                     by_brand[brand_name] = item
                 
                 return {"survey_simulation": by_brand}
+                
+            elif section_name == "seo_online_discoverability":
+                # Fetch SEO online discoverability data
+                data = await self.supabase.execute_with_retry(
+                    "select",
+                    "seo_online_discoverability",
+                    {
+                        "run_id": run_id,
+                        "select": "brand_name,keyword_alignment,search_volume,keyword_competition,branded_keyword_potential,non_branded_keyword_potential,exact_match_search_results,competitor_domain_strength,name_length_searchability,unusual_spelling_impact,content_marketing_opportunities,social_media_availability,social_media_discoverability,negative_keyword_associations,negative_search_results,seo_viability_score,seo_recommendations"
+                    }
+                )
+                
+                if not data:
+                    logger.warning(f"No SEO online discoverability data found for run_id {run_id}")
+                    return {}
+                
+                # Organize by brand name
+                by_brand = {}
+                for item in data:
+                    brand_name = item.pop("brand_name")
+                    by_brand[brand_name] = item
+                
+                return {"seo_online_discoverability": by_brand}
             
             else:
                 raise ValueError(f"Unknown section: {section_name}")

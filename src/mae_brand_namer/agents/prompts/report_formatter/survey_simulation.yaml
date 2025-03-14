@@ -1,0 +1,71 @@
+_type: prompt
+input_variables: ["run_id", "brand_names", "survey_data"]
+template: |
+  Your task is to create a detailed survey simulation section for a brand naming report.
+
+  Run ID: {{run_id}}
+  Brand Names: {{brand_names}}
+  Survey Data: {{survey_data}}
+
+  # IMPORTANT: This survey_data contains extremely rich information about each persona who responded to the survey. Make sure to include as much of this data as possible in your analysis.
+
+  Please analyze the simulated survey data to provide comprehensive insights on how each brand name would be received by the target audience. Your analysis should include:
+
+  1. **Methodology Overview**: Explain the methodology used for the survey simulation
+  
+  2. **Detailed Persona Profiles**: For each simulated persona, include:
+     - Professional background (industry, job title, seniority, years of experience)
+     - Company context (company name, size, revenue if available)
+     - Decision-making authority and style
+     - Key pain points and challenges
+     - Goals and priorities
+     - Information sources and content consumption habits
+     - Current brand relationships
+     - Buying process and preferences
+  
+  3. **Brand Promise Perception**: For each name, include the exact brand_promise_perception_score and detailed analysis of how well each name communicates the brand promise
+  
+  4. **Personality Fit Analysis**: Include the exact personality_fit_score and analyze alignment with desired brand personality traits
+  
+  5. **Emotional Associations**: Include verbatim emotional_association responses where available
+  
+  6. **Competitive Positioning**: Include the exact competitive_differentiation_score and evaluate how distinctly each name positions the brand against competitors
+  
+  7. **Market Adoption Potential**: Include the exact simulated_market_adoption_score and assess the likelihood of market acceptance for each name
+  
+  8. **Verbatim Qualitative Feedback**: Include extensive direct quotes from the raw_qualitative_feedback including:
+     - Relevance
+     - Memorability
+     - Differentiation
+     - First Impression
+     - Potential Concerns
+     - Target Audience Appeal
+  
+  9. **Final Recommendations**: Include the exact final_survey_recommendation from each persona
+
+  For each brand name, provide a comprehensive analysis of the simulated survey results that will help decision-makers understand how target audiences might respond to each option. Do not summarize or paraphrase the qualitative feedback when direct quotes are available - use the actual language from the personas.
+
+  Response Format:
+  ```json
+  {
+    "methodology": "Detailed explanation of the survey simulation methodology",
+    "demographics": "Comprehensive overview of simulated participant demographics with specific details about each persona",
+    "overview": "General insights from the survey simulation",
+    "analysis_by_name": [
+      {
+        "name": "Brand name",
+        "brand_promise_alignment": "Analysis including exact brand_promise_perception_score and how well the name communicates brand promise",
+        "personality_fit": "Analysis including exact personality_fit_score and assessment of alignment with brand personality",
+        "emotional_impact": "Verbatim emotional_association responses and analysis",
+        "competitive_positioning": "Analysis including exact competitive_differentiation_score and differentiation from competitors",
+        "market_receptivity": "Analysis including exact simulated_market_adoption_score and market adoption potential",
+        "participant_feedback": "Extensive verbatim qualitative feedback from personas, organized by feedback category",
+        "final_recommendations": "Direct quotes of final_survey_recommendation from each persona"
+      }
+    ],
+    "comparative_analysis": "Detailed comparison of survey performance across all names with exact scores",
+    "strategic_implications": "Overall strategic recommendations based on survey insights"
+  }
+  ```
+
+  Remember: The goal is to present as much of the rich, raw data as possible while making it actionable and insightful. Include specific scores, direct quotes, and detailed persona information throughout your analysis. 
