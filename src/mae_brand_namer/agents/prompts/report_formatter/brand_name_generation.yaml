@@ -1,26 +1,54 @@
 _type: prompt
-input_variables: ["run_id", "brand_name_generation"]
+input_variables: ["run_id", "brand_name_generation", "format_instructions"]
 template: |
   Your task is to create a well-structured brand name generation section for a brand naming report based on the provided data.
 
   Run ID: {{run_id}}
   Brand Name Generation Data: {{brand_name_generation}}
+  Format Instructions: {{format_instructions}}
 
-  The data is organized by naming category, with multiple brand names in each category.
+  DATA STRUCTURE:
+  The data follows this structure based on the NameGenerationSection model:
+  {
+    "introduction": "Overview text", // String
+    "categories": [ // List of NameCategory objects
+      {
+        "category_name": "Category name (e.g., Symbolic Names)", // String
+        "category_description": "Description of the naming approach", // String
+        "names": [ // List of BrandName objects
+          {
+            "brand_name": "Name", // String
+            "naming_category": "Category", // String
+            "brand_personality_alignment": "Alignment details", // String
+            "brand_promise_alignment": "Alignment details", // String
+            "name_generation_methodology": "Methodology details", // String
+            "memorability_score_details": "Score details", // String
+            "pronounceability_score_details": "Score details", // String
+            "visual_branding_potential_details": "Details", // String
+            "target_audience_relevance_details": "Details", // String
+            "market_differentiation_details": "Details", // String
+            "rationale": "Rationale for the name" // Optional string
+          }
+        ]
+      }
+    ],
+    "summary": "Summary text", // Optional string
+    "methodology_and_approach": "Methodology description", // Optional string
+    "generated_names_overview": { // Optional object
+      "total_count": 42 // Number of names generated
+    },
+    "evaluation_metrics": { // Optional object
+      "metrics_summary": "Description of metrics used"
+    }
+  }
 
   Please format the brand name generation information into a coherent and professional section that:
 
-  1. Introduces the brand name generation process
-  2. Organizes names by category (e.g., Descriptive, Evocative, Invented, etc.)
-  3. For each name, provides key information on:
-     - Brand personality alignment
-     - Brand promise alignment
-     - Name generation methodology
-     - Memorability score details
-     - Pronounceability score details
-     - Visual branding potential
-     - Target audience relevance
-     - Market differentiation
+  1. Introduces the brand name generation process (use introduction field)
+  2. Explains the methodology and approach (use methodology_and_approach field)
+  3. Provides an overview of generated names (use generated_names_overview field)
+  4. Organizes names by category (iterate through categories array)
+  5. For each name, provides key information on all available fields
 
   Format your response as a well-structured section with clear category headings, professional language, and a logical flow.
   Start with a brief overview of the naming approach and methodology before presenting the names by category.
@@ -29,25 +57,29 @@ template: |
   ```json
   {
     "introduction": "Overview of the brand name generation process and methodology",
+    "methodology_and_approach": "Detailed description of the methodology used",
+    "generated_names_overview": "Summary of the quantity and variety of names generated",
     "categories": [
       {
         "category_name": "Name of the category (e.g., Descriptive)",
         "category_description": "Brief description of this naming approach",
         "names": [
           {
-            "name": "Brand name",
-            "personality_alignment": "Formatted content about brand personality alignment",
-            "promise_alignment": "Formatted content about brand promise alignment",
-            "methodology": "Formatted content about name generation methodology",
-            "memorability": "Formatted content about memorability score and details",
-            "pronounceability": "Formatted content about pronounceability score and details",
-            "visual_potential": "Formatted content about visual branding potential",
-            "audience_relevance": "Formatted content about target audience relevance",
-            "market_differentiation": "Formatted content about market differentiation"
+            "brand_name": "Brand name",
+            "brand_personality_alignment": "Formatted content about brand personality alignment",
+            "brand_promise_alignment": "Formatted content about brand promise alignment",
+            "name_generation_methodology": "Formatted content about name generation methodology",
+            "memorability_score_details": "Formatted content about memorability score and details",
+            "pronounceability_score_details": "Formatted content about pronounceability score and details",
+            "visual_branding_potential_details": "Formatted content about visual branding potential",
+            "target_audience_relevance_details": "Formatted content about target audience relevance",
+            "market_differentiation_details": "Formatted content about market differentiation",
+            "rationale": "Rationale for the name (if available)"
           }
         ]
       }
     ],
-    "summary": "Summary of the overall brand name generation outcomes"
+    "summary": "Summary of the overall brand name generation outcomes",
+    "evaluation_metrics": "Overview of the evaluation metrics used"
   }
   ``` 

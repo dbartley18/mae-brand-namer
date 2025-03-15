@@ -1,12 +1,34 @@
 _type: prompt
-input_variables: ["run_id", "cultural_sensitivity_analysis"]
+input_variables: ["run_id", "cultural_sensitivity_analysis", "format_instructions"]
 template: |
   Your task is to create a well-structured cultural sensitivity analysis section for a brand naming report based on the provided data.
 
   Run ID: {{run_id}}
   Cultural Sensitivity Analysis Data: {{cultural_sensitivity_analysis}}
+  Format Instructions: {{format_instructions}}
 
-  The data is organized by brand name, with cultural sensitivity analysis for each name.
+  DATA STRUCTURE:
+  The data follows this structure based on the CulturalSensitivityAnalysis model:
+  {
+    "cultural_sensitivity_analysis": {
+      "BrandName1": {  // Dictionary mapping brand names to BrandAnalysis objects
+        "notes": "General notes on cultural sensitivity", // String
+        "symbolic_meanings": "Symbolic meanings description", // String
+        "historical_meaning": "Historical context and meanings", // String
+        "overall_risk_rating": "High/Medium/Low with explanation", // String
+        "regional_variations": "Regional perception differences", // String
+        "cultural_connotations": "Cultural associations and meanings", // String
+        "current_event_relevance": "Relevance to current events", // String
+        "religious_sensitivities": "Religious associations or concerns", // String
+        "social_political_taboos": "Social or political sensitivities", // String
+        "age_related_connotations": "How different age groups perceive it", // String
+        "alignment_with_cultural_values": "Alignment with cultural values" // String
+      },
+      "BrandName2": {
+        // Same structure as above
+      }
+    }
+  }
 
   Please format the cultural sensitivity analysis information into a coherent and professional section that:
 
@@ -36,15 +58,15 @@ template: |
         "brand_name": "Name of the brand",
         "cultural_connotations": "Analysis of cultural connotations across different regions",
         "symbolic_meanings": "Analysis of symbolic interpretations in different cultures",
-        "cultural_values_alignment": "How the name aligns with different cultural value systems",
-        "religious_considerations": "Analysis of potential religious sensitivities",
-        "social_political_considerations": "Analysis of social and political taboos or sensitivities",
-        "age_related_factors": "Analysis of how different age groups might perceive the name",
-        "regional_analysis": "Analysis of regional variations in interpretation",
-        "historical_context": "Analysis of historical meanings or associations",
-        "current_relevance": "Analysis of current event relevance or associations",
-        "risk_assessment": "Overall cultural risk rating and justification",
-        "additional_insights": "Additional cultural sensitivity notes and observations"
+        "alignment_with_cultural_values": "How the name aligns with different cultural value systems",
+        "religious_sensitivities": "Analysis of potential religious sensitivities",
+        "social_political_taboos": "Analysis of social and political taboos or sensitivities",
+        "age_related_connotations": "Analysis of how different age groups might perceive the name",
+        "regional_variations": "Analysis of regional variations in interpretation",
+        "historical_meaning": "Analysis of historical meanings or associations",
+        "current_event_relevance": "Analysis of current event relevance or associations",
+        "overall_risk_rating": "Overall cultural risk rating and justification",
+        "notes": "Additional cultural sensitivity notes and observations"
       }
     ],
     "risk_mitigation_strategies": "Strategies for mitigating identified cultural risks",

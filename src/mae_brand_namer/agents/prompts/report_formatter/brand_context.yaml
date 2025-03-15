@@ -1,26 +1,45 @@
 _type: prompt
-input_variables: ["run_id", "brand_context"]
+input_variables: ["run_id", "brand_context", "format_instructions"]
 template: |
   Your task is to create a well-structured brand context section for a brand naming report based on the provided data.
 
   Run ID: {{run_id}}
   Brand Context Data: {{brand_context}}
+  Format Instructions: {{format_instructions}}
+
+  DATA STRUCTURE:
+  The data follows this structure based on the BrandContext model:
+  {
+    "brand_values": ["Value1", "Value2", "Value3"], // List of brand values
+    "brand_mission": "Mission statement", // String
+    "brand_promise": "Promise statement", // String
+    "brand_purpose": "Purpose statement", // String
+    "customer_needs": ["Need1", "Need2", "Need3"], // List of customer needs
+    "industry_focus": "Industry focus description", // String
+    "industry_trends": ["Trend1", "Trend2", "Trend3"], // List of industry trends
+    "target_audience": "Target audience description", // String
+    "brand_personality": ["Trait1", "Trait2", "Trait3"], // List of personality traits
+    "market_positioning": "Market positioning description", // String
+    "brand_tone_of_voice": "Tone of voice description", // String
+    "brand_identity_brief": "Brand identity brief", // String
+    "competitive_landscape": "Competitive landscape description" // String
+  }
 
   Please format the brand context information into a coherent and professional section that covers:
 
-  1. Brand Promise: The core promise the brand makes to customers
-  2. Brand Personality: The human characteristics and traits of the brand
-  3. Brand Tone of Voice: How the brand communicates with its audience
-  4. Brand Values: The foundational principles guiding the brand
-  5. Brand Purpose: Why the brand exists beyond profit
-  6. Brand Mission: What the brand aims to accomplish
-  7. Target Audience: Detailed information about the ideal customers
-  8. Customer Needs: The key needs and pain points the brand addresses
-  9. Market Positioning: How the brand positions itself in the market
-  10. Competitive Landscape: Overview of key competitors
-  11. Industry Focus: The specific industry or industries targeted
-  12. Industry Trends: Current and emerging trends in the industry
-  13. Brand Identity Brief: Summary of brand identity parameters
+  1. Brand Promise: The core promise the brand makes to customers (use exact text from brand_promise)
+  2. Brand Personality: The human characteristics and traits of the brand (present each item in brand_personality)
+  3. Brand Tone of Voice: How the brand communicates with its audience (use exact text from brand_tone_of_voice)
+  4. Brand Values: The foundational principles guiding the brand (present each item in brand_values)
+  5. Brand Purpose: Why the brand exists beyond profit (use exact text from brand_purpose)
+  6. Brand Mission: What the brand aims to accomplish (use exact text from brand_mission)
+  7. Target Audience: Detailed information about the ideal customers (use exact text from target_audience)
+  8. Customer Needs: The key needs and pain points the brand addresses (present each item in customer_needs)
+  9. Market Positioning: How the brand positions itself in the market (use exact text from market_positioning)
+  10. Competitive Landscape: Overview of key competitors (use exact text from competitive_landscape)
+  11. Industry Focus: The specific industry or industries targeted (use exact text from industry_focus)
+  12. Industry Trends: Current and emerging trends in the industry (present each item in industry_trends)
+  13. Brand Identity Brief: Summary of brand identity parameters (use exact text from brand_identity_brief)
 
   Format your response as a well-structured section with clear headings, professional language, and a logical flow.
   This section will serve as the foundation for understanding the brand's parameters in the naming process.
@@ -28,18 +47,18 @@ template: |
   Response Format:
   ```json
   {
-    "brand_promise_section": "Formatted content about the brand promise",
-    "brand_personality_section": "Formatted content about the brand personality",
-    "brand_tone_section": "Formatted content about the brand tone of voice",
-    "brand_values_section": "Formatted content about the brand values",
-    "brand_purpose_section": "Formatted content about the brand purpose",
-    "brand_mission_section": "Formatted content about the brand mission",
-    "target_audience_section": "Formatted content about the target audience",
-    "customer_needs_section": "Formatted content about customer needs",
-    "market_positioning_section": "Formatted content about market positioning",
-    "competitive_landscape_section": "Formatted content about the competitive landscape",
-    "industry_focus_section": "Formatted content about industry focus",
-    "industry_trends_section": "Formatted content about industry trends",
-    "brand_identity_summary": "Concise summary of the overall brand identity"
+    "brand_promise": "Exact content from brand_promise field",
+    "brand_personality": "Formatted content presenting all items in the brand_personality list",
+    "brand_tone_of_voice": "Exact content from brand_tone_of_voice field",
+    "brand_values": "Formatted content presenting all items in the brand_values list",
+    "brand_purpose": "Exact content from brand_purpose field",
+    "brand_mission": "Exact content from brand_mission field",
+    "target_audience": "Exact content from target_audience field",
+    "customer_needs": "Formatted content presenting all items in the customer_needs list",
+    "market_positioning": "Exact content from market_positioning field",
+    "competitive_landscape": "Exact content from competitive_landscape field",
+    "industry_focus": "Exact content from industry_focus field",
+    "industry_trends": "Formatted content presenting all items in the industry_trends list",
+    "brand_identity_brief": "Exact content from brand_identity_brief field"
   }
   ``` 

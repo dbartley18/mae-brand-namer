@@ -1,31 +1,56 @@
 _type: prompt
-input_variables: ["run_id", "linguistic_analysis"]
+input_variables: ["run_id", "linguistic_analysis", "format_instructions"]
 template: |
   Your task is to create a well-structured linguistic analysis section for a brand naming report based on the provided data.
 
   Run ID: {{run_id}}
   Linguistic Analysis Data: {{linguistic_analysis}}
+  Format Instructions: {{format_instructions}}
 
-  The data is organized by brand name, with linguistic analysis for each name.
+  DATA STRUCTURE:
+  The data follows this structure based on the LinguisticAnalysis model:
+  {
+    "linguistic_analysis": {
+      "BrandName1": {  // Dictionary mapping brand names to LinguisticAnalysis objects
+        "notes": "Notes on the linguistic aspects of the brand name", // String
+        "word_class": "Word class of the brand name", // String
+        "sound_symbolism": "Sound symbolism associated with the brand name", // String
+        "rhythm_and_meter": "Rhythm and meter of the brand name", // String
+        "pronunciation_ease": "Ease of pronunciation for the brand name", // String
+        "euphony_vs_cacophony": "Euphony versus cacophony of the brand name", // String
+        "inflectional_properties": "Inflectional properties of the brand name", // String
+        "neologism_appropriateness": "Appropriateness of the brand name as a neologism", // String
+        "overall_readability_score": "Overall readability score of the brand name", // String
+        "morphological_transparency": "Morphological transparency of the brand name", // String
+        "naturalness_in_collocations": "Naturalness of the brand name in collocations", // String
+        "ease_of_marketing_integration": "Ease of marketing integration for the brand name", // String
+        "phoneme_frequency_distribution": "Phoneme frequency distribution in the brand name", // String
+        "semantic_distance_from_competitors": "Semantic distance from competitors for the brand name" // String
+      },
+      "BrandName2": {
+        // Same structure as above
+      }
+    }
+  }
 
   Please format the linguistic analysis information into a coherent and professional section that:
 
   1. Introduces the linguistic analysis methodology and importance
   2. For each brand name, provides detailed analysis of:
-     - Pronunciation ease
-     - Euphony vs. cacophony
-     - Rhythm and meter
-     - Phoneme frequency distribution
-     - Sound symbolism
-     - Word class
-     - Morphological transparency
-     - Inflectional properties
-     - Ease of marketing integration
-     - Naturalness in collocations
-     - Semantic distance from competitors
-     - Neologism appropriateness
-     - Overall readability score
-     - Additional linguistic notes
+     - Pronunciation ease (use pronunciation_ease field)
+     - Euphony vs. cacophony (use euphony_vs_cacophony field)
+     - Rhythm and meter (use rhythm_and_meter field)
+     - Phoneme frequency distribution (use phoneme_frequency_distribution field)
+     - Sound symbolism (use sound_symbolism field)
+     - Word class (use word_class field)
+     - Morphological transparency (use morphological_transparency field)
+     - Inflectional properties (use inflectional_properties field)
+     - Ease of marketing integration (use ease_of_marketing_integration field)
+     - Naturalness in collocations (use naturalness_in_collocations field)
+     - Semantic distance from competitors (use semantic_distance_from_competitors field)
+     - Neologism appropriateness (use neologism_appropriateness field)
+     - Overall readability score (use overall_readability_score field)
+     - Additional linguistic notes (use notes field)
 
   Format your response as a well-structured section with clear name-based subsections, professional language, and a logical flow.
   Start with a brief overview of linguistic analysis and its importance in brand naming before presenting the analysis for each name.
@@ -37,22 +62,25 @@ template: |
     "brand_analyses": [
       {
         "brand_name": "Name of the brand",
-        "pronunciation_analysis": "Analysis of pronunciation ease and challenges",
-        "sound_quality": "Analysis of euphony vs. cacophony",
-        "rhythmic_analysis": "Analysis of rhythm and meter",
-        "phoneme_distribution": "Analysis of phoneme frequency distribution",
-        "sound_symbolism": "Analysis of sound-meaning associations",
-        "grammatical_analysis": "Analysis of word class and linguistic structure",
-        "morphological_analysis": "Analysis of morphological transparency and structure",
-        "marketing_application": "Analysis of ease of marketing integration",
-        "linguistic_naturalness": "Analysis of naturalness in collocations and language context",
-        "competitive_distinction": "Analysis of semantic distance from competitors",
-        "neologism_assessment": "Analysis of appropriateness as a neologism (if applicable)",
-        "readability_score": "Assessment of overall readability",
-        "additional_insights": "Additional linguistic notes and observations"
+        "pronunciation_ease": "Analysis based on pronunciation_ease field",
+        "euphony_vs_cacophony": "Analysis based on euphony_vs_cacophony field",
+        "rhythm_and_meter": "Analysis based on rhythm_and_meter field",
+        "phoneme_frequency_distribution": "Analysis based on phoneme_frequency_distribution field",
+        "sound_symbolism": "Analysis based on sound_symbolism field",
+        "word_class": "Analysis based on word_class field",
+        "morphological_transparency": "Analysis based on morphological_transparency field",
+        "inflectional_properties": "Analysis based on inflectional_properties field",
+        "ease_of_marketing_integration": "Analysis based on ease_of_marketing_integration field",
+        "naturalness_in_collocations": "Analysis based on naturalness_in_collocations field",
+        "semantic_distance_from_competitors": "Analysis based on semantic_distance_from_competitors field",
+        "neologism_appropriateness": "Analysis based on neologism_appropriateness field",
+        "overall_readability_score": "Analysis based on overall_readability_score field",
+        "notes": "Additional analysis based on notes field"
       }
     ],
     "comparative_insights": "Comparative linguistic analysis across all brand names",
     "summary": "Summary of key linguistic insights"
   }
-  ``` 
+  ```
+
+  Your analysis should incorporate the specific linguistic data from the provided model for each brand name. Ensure you maintain the precise technical details while making the content accessible to readers without specialized linguistic knowledge. 

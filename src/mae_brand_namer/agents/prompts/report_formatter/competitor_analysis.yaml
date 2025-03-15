@@ -1,12 +1,35 @@
 _type: prompt
-input_variables: ["run_id", "competitor_analysis"]
+input_variables: ["run_id", "competitor_analysis", "format_instructions"]
 template: |
   Your task is to create a well-structured competitor analysis section for a brand naming report based on the provided data.
 
   Run ID: {{run_id}}
   Competitor Analysis Data: {{competitor_analysis}}
+  Format Instructions: {{format_instructions}}
 
-  The data is organized by brand name, then by competitor name, with analysis for each brand name's relationship to various competitors.
+  DATA STRUCTURE:
+  The data follows this structure based on the CompetitorAnalysis model:
+  {
+    "competitor_analysis": {
+      "BrandName1": {  // Dictionary mapping brand names to competitors
+        "Competitor1": {  // Dictionary mapping competitor names to CompetitorDetails
+          "risk_of_confusion": 7,  // Integer (1-10)
+          "competitor_strengths": "Detailed description of strengths", // String
+          "competitor_weaknesses": "Detailed description of weaknesses", // String
+          "competitor_positioning": "Description of market positioning", // String
+          "trademark_conflict_risk": "Assessment of trademark risk", // String
+          "target_audience_perception": "How target audience perceives this competitor", // String
+          "competitor_differentiation_opportunity": "Opportunities for differentiation" // String
+        },
+        "Competitor2": {
+          // Same structure as above
+        }
+      },
+      "BrandName2": {
+        // Same structure as above
+      }
+    }
+  }
 
   Please format the competitor analysis information into a coherent and professional section that:
 
@@ -35,12 +58,13 @@ template: |
         "competitor_analyses": [
           {
             "competitor_name": "Name of the competitor",
-            "positioning_comparison": "How competitor is positioned relative to proposed brand",
-            "strength_weakness_analysis": "Analysis of competitor's strengths and weaknesses",
-            "differentiation_opportunities": "Specific differentiation opportunities against this competitor",
-            "confusion_risk": "Assessment of risk of confusion with this competitor",
-            "audience_perception": "How target audience perceives this name vs. competitor",
-            "trademark_risk": "Assessment of trademark conflict risk with this competitor"
+            "competitor_positioning": "How competitor is positioned relative to proposed brand",
+            "competitor_strengths": "Analysis of competitor's strengths",
+            "competitor_weaknesses": "Analysis of competitor's weaknesses",
+            "competitor_differentiation_opportunity": "Specific differentiation opportunities against this competitor",
+            "risk_of_confusion": "Assessment of risk of confusion with this competitor (include numeric value)",
+            "target_audience_perception": "How target audience perceives this name vs. competitor",
+            "trademark_conflict_risk": "Assessment of trademark conflict risk with this competitor"
           }
         ],
         "overall_competitive_position": "Summary of overall competitive positioning",

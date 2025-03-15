@@ -1,29 +1,50 @@
 _type: prompt
-input_variables: ["run_id", "semantic_analysis"]
+input_variables: ["run_id", "semantic_analysis", "format_instructions"]
 template: |
   Your task is to create a well-structured semantic analysis section for a brand naming report based on the provided data.
 
   Run ID: {{run_id}}
   Semantic Analysis Data: {{semantic_analysis}}
+  Format Instructions: {{format_instructions}}
 
-  The data is organized by brand name, with semantic analysis for each name.
+  DATA STRUCTURE:
+  The data follows this structure based on the SemanticAnalysis model:
+  {
+    "semantic_analysis": {
+      "BrandName1": {
+        "etymology": "Etymology of the brand name",
+        "sound_symbolism": "Sound symbolism associated with the brand name",
+        "brand_personality": "Personality traits associated with the brand name",
+        "emotional_valence": "Emotional valence of the brand name",
+        "denotative_meaning": "Denotative meaning of the brand name",
+        "figurative_language": "Figurative language associated with the brand name",
+        "phoneme_combinations": "Phoneme combinations in the brand name",
+        "sensory_associations": "Sensory associations with the brand name",
+        "word_length_syllables": 3, // Number of syllables in the brand name
+        "alliteration_assonance": true, // Whether the brand name uses alliteration or assonance
+        "compounding_derivation": "Compounding or derivation of the brand name",
+        "semantic_trademark_risk": "Trademark risk associated with the brand name"
+      },
+      "BrandName2": { ... }
+    }
+  }
 
   Please format the semantic analysis information into a coherent and professional section that:
 
   1. Introduces the semantic analysis methodology and importance
-  2. For each brand name, provides detailed analysis of:
-     - Denotative meaning
-     - Etymology
-     - Emotional valence
-     - Brand personality association
-     - Sensory associations
-     - Figurative language elements
-     - Phoneme combinations
-     - Sound symbolism
-     - Alliteration and assonance
-     - Word length and syllable structure
-     - Compounding and derivation aspects
-     - Semantic trademark risk assessment
+  2. For each brand name, provides detailed analysis of all fields in the model:
+     - Etymology (etymology)
+     - Sound symbolism (sound_symbolism)
+     - Brand personality (brand_personality)
+     - Emotional valence (emotional_valence)
+     - Denotative meaning (denotative_meaning)
+     - Figurative language (figurative_language)
+     - Phoneme combinations (phoneme_combinations)
+     - Sensory associations (sensory_associations)
+     - Word length and syllables (word_length_syllables)
+     - Alliteration and assonance (alliteration_assonance)
+     - Compounding and derivation (compounding_derivation)
+     - Semantic trademark risk (semantic_trademark_risk)
 
   Format your response as a well-structured section with clear name-based subsections, professional language, and a logical flow.
   Start with a brief overview of semantic analysis and its importance in brand naming before presenting the analysis for each name.
@@ -35,17 +56,18 @@ template: |
     "brand_analyses": [
       {
         "brand_name": "Name of the brand",
-        "denotative_meaning": "Analysis of literal meaning",
         "etymology": "Analysis of word origins",
-        "emotional_valence": "Analysis of emotional associations",
-        "brand_personality": "How semantics align with brand personality",
-        "sensory_associations": "Analysis of sensory elements evoked",
-        "figurative_language": "Analysis of metaphor, metonymy, and other figurative elements",
-        "phonetic_elements": "Analysis of phoneme combinations and sound patterns",
         "sound_symbolism": "Analysis of sound-meaning connections",
-        "rhythmic_elements": "Analysis of alliteration, assonance, and phonetic patterns",
-        "structural_analysis": "Analysis of word length, syllables, and morphology",
-        "trademark_considerations": "Semantic factors affecting trademark viability"
+        "brand_personality": "How semantics align with brand personality",
+        "emotional_valence": "Analysis of emotional associations",
+        "denotative_meaning": "Analysis of literal meaning",
+        "figurative_language": "Analysis of metaphor, metonymy, and other figurative elements",
+        "phoneme_combinations": "Analysis of phoneme combinations and sound patterns",
+        "sensory_associations": "Analysis of sensory elements evoked",
+        "word_length_syllables": "Analysis of syllable count and implications",
+        "alliteration_assonance": "Analysis of alliteration, assonance, and phonetic patterns",
+        "compounding_derivation": "Analysis of word formation and morphology",
+        "semantic_trademark_risk": "Semantic factors affecting trademark viability"
       }
     ],
     "comparative_insights": "Comparative analysis across all brand names",

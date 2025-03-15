@@ -1,22 +1,38 @@
 _type: prompt
-input_variables: ["run_id", "brand_name_evaluation"]
+input_variables: ["run_id", "brand_name_evaluation", "format_instructions"]
 template: |
   Your task is to create a well-structured brand name evaluation section for a brand naming report based on the provided data.
 
   Run ID: {{run_id}}
   Brand Name Evaluation Data: {{brand_name_evaluation}}
+  Format Instructions: {{format_instructions}}
 
-  The data is organized by brand name, with evaluation scores and comments for each name.
+  DATA STRUCTURE:
+  The data is organized as a dictionary where keys are brand names and values are evaluation details:
+  {
+    "brand_name_evaluation": {
+      "BrandName1": {
+        "overall_score": 85,
+        "shortlist_status": true,
+        "evaluation_comments": "Detailed comments..."
+      },
+      "BrandName2": {
+        "overall_score": 70,
+        "shortlist_status": false,
+        "evaluation_comments": "Detailed comments..."
+      }
+    }
+  }
 
   Please format the brand name evaluation information into a coherent and professional section that:
 
   1. Introduces the evaluation methodology and scoring criteria
   2. Presents a ranked list of names based on overall score (descending order)
   3. For each name, provides:
-     - Overall evaluation score
-     - Shortlist status (whether the name is shortlisted)
-     - Detailed evaluation comments
-     - Strengths and weaknesses
+     - Overall evaluation score (use the exact numeric value from "overall_score")
+     - Shortlist status (based on the "shortlist_status" boolean value)
+     - Detailed evaluation comments (use "evaluation_comments" content)
+     - Extract strengths and weaknesses from the evaluation comments
   4. Highlights the top-performing names and explains why they scored well
   5. Provides a comparative analysis of shortlisted vs. non-shortlisted names
 
@@ -31,12 +47,12 @@ template: |
     "brand_evaluations": [
       {
         "brand_name": "Name of the brand",
-        "overall_score": "Overall score (can include numeric and descriptive elements)",
-        "shortlist_status": "Whether the name is shortlisted or not",
-        "evaluation_details": "Detailed evaluation comments",
-        "key_strengths": "Highlighted strengths of the name",
-        "potential_weaknesses": "Noted weaknesses or concerns",
-        "recommendation": "Specific recommendation regarding this name"
+        "overall_score": 85,
+        "shortlist_status": true,
+        "evaluation_details": "Detailed evaluation comments extracted from evaluation_comments",
+        "key_strengths": "Highlighted strengths extracted from evaluation_comments",
+        "potential_weaknesses": "Noted weaknesses or concerns extracted from evaluation_comments",
+        "recommendation": "Specific recommendation based on the evaluation data"
       }
     ],
     "comparative_analysis": "Comparative analysis of names across different criteria",

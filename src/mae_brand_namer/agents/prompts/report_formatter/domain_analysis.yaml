@@ -1,72 +1,94 @@
 _type: prompt
-input_variables: ["run_id", "brand_names", "domain_data"]
+input_variables: ["run_id", "domain_analysis", "format_instructions"]
 template: |
   Your task is to create a comprehensive domain analysis section for a brand naming report.
 
   Run ID: {{run_id}}
-  Brand Names: {{brand_names}}
-  Domain Data: {{domain_data}}
+  Domain Analysis Data: {{domain_analysis}}
+  Format Instructions: {{format_instructions}}
 
-  # IMPORTANT: Include as much specific data as possible from the provided domain_data in your analysis.
+  DATA STRUCTURE:
+  The data follows this structure based on the DomainAnalysis model:
+  {
+    "domain_analysis": {
+      "BrandName1": {  // Dictionary mapping brand names to DomainDetails objects
+        "notes": "General notes on domain availability and strategy", // String
+        "acquisition_cost": "Cost information for domain acquisition", // String
+        "alternative_tlds": ["com", "net", "org", "io"], // List of strings
+        "domain_exact_match": true, // Boolean
+        "hyphens_numbers_present": false, // Boolean
+        "brand_name_clarity_in_url": "Assessment of brand name clarity in URL", // String
+        "domain_length_readability": "Assessment of domain length and readability", // String
+        "social_media_availability": ["twitter", "instagram", "facebook"], // List of strings
+        "scalability_future_proofing": "Assessment of scalability and future-proofing", // String
+        "misspellings_variations_available": true // Boolean
+      },
+      "BrandName2": {
+        // Same structure as above
+      }
+    }
+  }
+
+  # IMPORTANT: Include as much specific data as possible from the provided domain_analysis in your analysis.
 
   Please analyze the domain availability and digital presence potential for each brand name. Your analysis should include:
 
   1. **Domain Availability Assessment**: 
-     - Evaluate availability of primary domains (.com, .net, .org) for each name
-     - Check for exact matches and close variations
-     - Analyze the potential impact of unavailable domains on brand strength
+     - Evaluate exact match domain availability (use domain_exact_match field)
+     - Assess presence of hyphens or numbers (use hyphens_numbers_present field)
+     - Include acquisition cost information (use acquisition_cost field)
 
   2. **Alternative TLDs Exploration**: 
-     - Recommend industry-specific or innovative TLDs that might be suitable
-     - Assess the viability of country-specific domains if relevant for international markets
-     - Consider non-traditional TLDs (e.g., .io, .co, .ai) that might enhance brand positioning
+     - List and evaluate alternative TLDs (use alternative_tlds field)
+     - Recommend the most suitable TLDs for the brand
 
-  3. **Domain History Investigation**: 
-     - Research the history of any previously registered domains with the same or similar names
-     - Evaluate any potential reputation issues or SEO advantages/disadvantages
-     - Assess whether acquiring previously used domains is feasible or recommended
+  3. **Brand Name Presentation Online**: 
+     - Assess clarity of the brand name in the URL (use brand_name_clarity_in_url field)
+     - Evaluate domain length and readability (use domain_length_readability field)
 
-  4. **SEO Potential Analysis**: 
-     - Evaluate keyword value and search volume potential
-     - Assess how each domain might perform in search results
-     - Consider domain length, memorability, and typability for SEO impact
-
-  5. **Social Media Availability**: 
-     - Check username availability across major platforms (Twitter/X, Instagram, Facebook, LinkedIn, TikTok, etc.)
-     - Assess the impact of unavailable usernames on brand consistency
+  4. **Social Media Presence**: 
+     - Detail social media handle availability (use social_media_availability field)
      - Recommend strategies for maintaining brand consistency across platforms
 
-  6. **Technical Considerations**: 
-     - Identify potential technical issues with certain domain names
-     - Assess email deliverability considerations
-     - Evaluate potential for typosquatting or cybersquatting risks
+  5. **Future-proofing Strategy**: 
+     - Outline scalability and future-proofing considerations (use scalability_future_proofing field)
+     - Assess availability of misspellings and variations (use misspellings_variations_available field)
 
-  7. **Future-proofing Strategy**: 
-     - Recommend comprehensive domain portfolio strategies
-     - Suggest preemptive registrations to protect the brand
-     - Outline a long-term domain management approach
+  6. **Additional Insights**:
+     - Include any additional notes or insights (use notes field)
 
   For each brand name, provide a thorough domain analysis with actionable recommendations that decision-makers can use to assess the digital viability of each name option.
 
   Response Format:
   ```json
   {
-    "overview": "Comprehensive assessment of domain landscape for the proposed names, including key findings and patterns observed across all names",
-    "analysis_by_name": [
+    "introduction": "Overview of the importance of domain analysis in brand naming",
+    "methodology": "Brief explanation of domain analysis methodology used",
+    "domain_analyses": [
       {
-        "name": "Brand name",
-        "domain_availability": "Detailed analysis of primary domain availability including exact matches and close variations",
-        "alternative_tlds": "Specific recommendations for alternative TLDs with reasoning for each suggestion",
-        "domain_history": "Detailed findings about any historical usage of the domain name",
-        "seo_potential": "Comprehensive assessment of SEO advantages/disadvantages with specific keywords analysis",
-        "social_media_availability": "Platform-by-platform assessment of username availability",
-        "technical_considerations": "Analysis of technical advantages or challenges with specific recommendations",
-        "future_proofing": "Detailed strategy recommendations for domain acquisition and protection"
+        "brand_name": "Name of the brand",
+        "domain_availability": {
+          "domain_exact_match": "Status of exact match domain availability with explanatory details",
+          "hyphens_numbers_present": "Assessment of presence/absence of hyphens or numbers",
+          "acquisition_cost": "Details about acquisition cost and implications"
+        },
+        "alternative_tlds": "Analysis of alternative TLDs with specific recommendations",
+        "brand_name_presentation": {
+          "brand_name_clarity_in_url": "Assessment of how clearly the brand name appears in URL",
+          "domain_length_readability": "Analysis of domain length and readability considerations"
+        },
+        "social_media_availability": "Detailed analysis of social media handle availability",
+        "future_considerations": {
+          "scalability_future_proofing": "Analysis of domain scalability for future brand growth",
+          "misspellings_variations_available": "Strategy for protecting against typosquatting via variations"
+        },
+        "notes": "Any additional domain-related insights specific to this brand name",
+        "recommendations": "Specific recommendations for domain acquisition and strategy"
       }
     ],
-    "comparative_analysis": "In-depth comparison of domain viability across all names with specific rankings",
-    "recommendations": "Prioritized domain acquisition and protection recommendations with implementation timeline"
+    "comparative_analysis": "Analysis comparing domain viability across all brand names",
+    "summary": "Summary of key findings and overall domain strategy recommendations"
   }
   ```
 
-  Your analysis should be extremely detailed, data-driven, and provide actionable insights for domain acquisition and digital presence strategy. Whenever possible, include specific findings from your analysis of the domain data rather than general statements. 
+  Your analysis should be extremely detailed, data-driven, and provide actionable insights for domain acquisition and digital presence strategy. Incorporate all available data from the DomainDetails model for each brand name, ensuring specific findings rather than general statements. 

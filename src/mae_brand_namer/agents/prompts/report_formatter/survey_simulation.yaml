@@ -1,11 +1,78 @@
 _type: prompt
-input_variables: ["run_id", "brand_names", "survey_data"]
+input_variables: ["run_id", "survey_simulation", "format_instructions"]
 template: |
   Your task is to create a detailed survey simulation section for a brand naming report.
 
   Run ID: {{run_id}}
-  Brand Names: {{brand_names}}
-  Survey Data: {{survey_data}}
+  Survey Data: {{survey_simulation}}
+  Format Instructions: {{format_instructions}}
+
+  DATA STRUCTURE:
+  The data follows this structure based on the SurveySimulation model:
+  {
+    "survey_simulation": {
+      "BrandName1": {
+        "industry": "Industry of the respondent",
+        "job_title": "Job title of the respondent",
+        "seniority": "Seniority level of the respondent",
+        "department": "Department of the respondent",
+        "reports_to": "Reporting structure of the respondent",
+        "pain_points": "Pain points faced by the respondent",
+        "company_name": "Name of the company",
+        "company_revenue": 1000000, // Integer value
+        "education_level": "Education level of the respondent",
+        "online_behavior": "Online behavior of the respondent",
+        "budget_authority": "Budget authority of the respondent",
+        "event_attendance": "Events attended by the respondent",
+        "strategic_ranking": 8, // Integer value
+        "business_chemistry": "Business chemistry of the respondent",
+        "social_media_usage": "Social media usage of the respondent",
+        "information_sources": "Information sources used by the respondent",
+        "purchasing_behavior": "Purchasing behavior of the respondent",
+        "years_of_experience": 15, // Integer value
+        "barriers_to_adoption": "Barriers to adoption faced by the respondent",
+        "generation_age_range": "Generation age range of the respondent",
+        "goals_and_challenges": "Goals and challenges of the respondent",
+        "decision_making_style": "Decision-making style of the respondent",
+        "emotional_association": "Emotional association with the brand name",
+        "personality_fit_score": 9, // Integer value
+        "values_and_priorities": "Values and priorities of the respondent",
+        "buying_group_structure": "Buying group structure of the respondent",
+        "company_size_employees": "Company size in terms of employees",
+        "interaction_with_brand": "Interaction with the brand",
+        "frustrations_annoyances": "Frustrations and annoyances of the respondent",
+        "influence_within_company": "Influence within the company",
+        "raw_qualitative_feedback": {
+          "relevance": "Relevance of the brand name",
+          "memorability": "Memorability of the brand name",
+          "pronunciation": "Ease of pronunciation of the brand name",
+          "visual_imagery": "Visual imagery evoked by the brand name",
+          "differentiation": "Differentiation from competitors",
+          "emotional_impact": "Emotional impact of the brand name",
+          "first_impression": "First impression of the brand name"
+        },
+        "content_consumption_habits": "Content consumption habits of the respondent",
+        "current_brand_relationships": {
+          "sap": "Relationship with SAP",
+          "oracle": "Relationship with Oracle",
+          "microsoft": "Relationship with Microsoft",
+          "salesforce": "Relationship with Salesforce",
+          "aws": "Relationship with AWS",
+          "gcp": "Relationship with GCP"
+        },
+        "final_survey_recommendation": "Final survey recommendation",
+        "qualitative_feedback_summary": "Qualitative feedback summary",
+        "competitor_benchmarking_score": 8, // Integer value
+        "brand_promise_perception_score": 7, // Integer value
+        "simulated_market_adoption_score": 8, // Integer value
+        "success_metrics_product_service": "Success metrics for product/service",
+        "vendor_relationship_preferences": "Vendor relationship preferences",
+        "competitive_differentiation_score": 9, // Integer value
+        "channel_preferences_brand_interaction": "Channel preferences for brand interaction"
+      },
+      "BrandName2": { ... }
+    }
+  }
 
   # IMPORTANT: This survey_data contains extremely rich information about each persona who responded to the survey. Make sure to include as much of this data as possible in your analysis.
 
@@ -14,14 +81,14 @@ template: |
   1. **Methodology Overview**: Explain the methodology used for the survey simulation
   
   2. **Detailed Persona Profiles**: For each simulated persona, include:
-     - Professional background (industry, job title, seniority, years of experience)
-     - Company context (company name, size, revenue if available)
-     - Decision-making authority and style
-     - Key pain points and challenges
-     - Goals and priorities
-     - Information sources and content consumption habits
-     - Current brand relationships
-     - Buying process and preferences
+     - Professional background (industry, job_title, seniority, years_of_experience)
+     - Company context (company_name, company_size_employees, company_revenue)
+     - Decision-making authority and style (decision_making_style, budget_authority, influence_within_company)
+     - Key pain points and challenges (pain_points, barriers_to_adoption, goals_and_challenges)
+     - Goals and priorities (values_and_priorities, success_metrics_product_service)
+     - Information sources and content consumption habits (information_sources, content_consumption_habits)
+     - Current brand relationships (current_brand_relationships)
+     - Buying process and preferences (purchasing_behavior, buying_group_structure, vendor_relationship_preferences)
   
   3. **Brand Promise Perception**: For each name, include the exact brand_promise_perception_score and detailed analysis of how well each name communicates the brand promise
   
@@ -36,10 +103,11 @@ template: |
   8. **Verbatim Qualitative Feedback**: Include extensive direct quotes from the raw_qualitative_feedback including:
      - Relevance
      - Memorability
+     - Pronunciation
+     - Visual Imagery
      - Differentiation
+     - Emotional Impact
      - First Impression
-     - Potential Concerns
-     - Target Audience Appeal
   
   9. **Final Recommendations**: Include the exact final_survey_recommendation from each persona
 
@@ -51,16 +119,36 @@ template: |
     "methodology": "Detailed explanation of the survey simulation methodology",
     "demographics": "Comprehensive overview of simulated participant demographics with specific details about each persona",
     "overview": "General insights from the survey simulation",
-    "analysis_by_name": [
+    "brand_analyses": [
       {
-        "name": "Brand name",
-        "brand_promise_alignment": "Analysis including exact brand_promise_perception_score and how well the name communicates brand promise",
-        "personality_fit": "Analysis including exact personality_fit_score and assessment of alignment with brand personality",
-        "emotional_impact": "Verbatim emotional_association responses and analysis",
-        "competitive_positioning": "Analysis including exact competitive_differentiation_score and differentiation from competitors",
-        "market_receptivity": "Analysis including exact simulated_market_adoption_score and market adoption potential",
-        "participant_feedback": "Extensive verbatim qualitative feedback from personas, organized by feedback category",
-        "final_recommendations": "Direct quotes of final_survey_recommendation from each persona"
+        "brand_name": "Brand name",
+        "persona_profiles": [
+          {
+            "professional_info": "Professional background including industry, job_title, seniority, years_of_experience",
+            "company_context": "Company details including company_name, company_size_employees, company_revenue",
+            "decision_making": "Decision-making authority and style information",
+            "pain_points_challenges": "Key pain points and challenges faced by the persona",
+            "goals_priorities": "Values, priorities, and success metrics",
+            "information_consumption": "Information sources and content consumption habits",
+            "current_relationships": "Current brand relationships with technology vendors",
+            "buying_behavior": "Purchasing behavior and vendor relationship preferences"
+          }
+        ],
+        "brand_promise_alignment": "Analysis including exact brand_promise_perception_score",
+        "personality_fit": "Analysis including exact personality_fit_score",
+        "emotional_impact": "Verbatim emotional_association responses",
+        "competitive_positioning": "Analysis including exact competitive_differentiation_score",
+        "market_receptivity": "Analysis including exact simulated_market_adoption_score",
+        "raw_qualitative_feedback": {
+          "relevance": "Verbatim relevance feedback",
+          "memorability": "Verbatim memorability feedback",
+          "pronunciation": "Verbatim pronunciation feedback",
+          "visual_imagery": "Verbatim visual imagery feedback",
+          "differentiation": "Verbatim differentiation feedback",
+          "emotional_impact": "Verbatim emotional impact feedback",
+          "first_impression": "Verbatim first impression feedback"
+        },
+        "final_recommendations": "Direct quotes from final_survey_recommendation"
       }
     ],
     "comparative_analysis": "Detailed comparison of survey performance across all names with exact scores",

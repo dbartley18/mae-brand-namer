@@ -1,29 +1,96 @@
 _type: prompt
-input_variables: ["run_id", "brand_name", "seo_data"]
+input_variables: ["run_id", "seo_online_discoverability", "format_instructions"]
 template: |
-  Your task is to create a comprehensive SEO analysis for a brand name based on the provided data.
+  Your task is to create a well-structured SEO and online discoverability analysis section for a brand naming report based on the provided data.
 
-  Brand Name: {{brand_name}}
-  SEO Data: {{seo_data}}
+  Run ID: {{run_id}}
+  SEO Data: {{seo_online_discoverability}}
+  Format Instructions: {{format_instructions}}
 
-  Please provide a detailed analysis of the SEO potential for this brand name, including:
+  DATA STRUCTURE:
+  The data follows this structure based on the SEOOnlineDiscoverability model:
+  {
+    "seo_online_discoverability": {
+      "BrandName1": {
+        "search_volume": 1200, // Integer value of search volume
+        "keyword_alignment": "Strong alignment with industry keywords",
+        "keyword_competition": "Medium competition level",
+        "seo_recommendations": {
+          "recommendations": [
+            "Recommendation 1",
+            "Recommendation 2",
+            "Recommendation 3"
+          ]
+        },
+        "seo_viability_score": 7.8, // Float value from 0-10
+        "negative_search_results": false, // Boolean value
+        "unusual_spelling_impact": true, // Boolean value
+        "branded_keyword_potential": "High potential for branded search",
+        "name_length_searchability": "Good searchability due to optimal length",
+        "social_media_availability": true, // Boolean value
+        "competitor_domain_strength": "Moderate competitor domain strength",
+        "exact_match_search_results": "Low number of exact match results",
+        "social_media_discoverability": "High discoverability on social platforms",
+        "negative_keyword_associations": "No significant negative associations",
+        "non_branded_keyword_potential": "Moderate potential for non-branded search",
+        "content_marketing_opportunities": "Multiple content marketing opportunities"
+      },
+      "BrandName2": { ... }
+    }
+  }
 
-  1. Overall SEO viability assessment
-  2. Analysis of search volume and competition
-  3. Branded vs. non-branded keyword potential
-  4. Recommendations for improving online discoverability
-  5. Content marketing opportunities specific to this brand name
+  Please format the SEO and online discoverability information into a coherent and professional section that:
 
-  Format your response as a well-structured analysis with clear sections and actionable insights.
-  Focus on practical recommendations that would help the brand maximize its online visibility.
+  1. Introduces the importance of SEO and online discoverability in brand naming
+  2. For each brand name, provides detailed analysis of all fields in the model:
+     - Search volume (search_volume)
+     - Keyword alignment (keyword_alignment)
+     - Keyword competition (keyword_competition)
+     - SEO recommendations (seo_recommendations.recommendations)
+     - SEO viability score (seo_viability_score)
+     - Negative search results (negative_search_results)
+     - Unusual spelling impact (unusual_spelling_impact)
+     - Branded keyword potential (branded_keyword_potential)
+     - Name length searchability (name_length_searchability)
+     - Social media availability (social_media_availability)
+     - Competitor domain strength (competitor_domain_strength)
+     - Exact match search results (exact_match_search_results)
+     - Social media discoverability (social_media_discoverability)
+     - Negative keyword associations (negative_keyword_associations)
+     - Non-branded keyword potential (non_branded_keyword_potential)
+     - Content marketing opportunities (content_marketing_opportunities)
+  3. Includes a comparative analysis of SEO potential across all brand names
+  4. Provides a summary of key SEO insights and implications for brand naming decisions
+
+  Format your response as a well-structured section with clear name-based subsections, professional language, and a logical flow.
+  Start with a brief overview of SEO analysis and its importance in brand naming before presenting the analysis for each name.
 
   Response Format:
   ```json
   {
-    "seo_viability_assessment": "Detailed assessment of the brand name's SEO potential",
-    "search_landscape_analysis": "Analysis of search volume, competition, and keyword potential",
-    "content_strategy_recommendations": "Specific content marketing recommendations",
-    "technical_seo_considerations": "Technical aspects to consider for optimal SEO performance",
-    "action_plan": ["Prioritized list of actions to improve online discoverability"]
+    "introduction": "Overview of SEO analysis and its importance in brand naming",
+    "brand_analyses": [
+      {
+        "brand_name": "Name of the brand",
+        "search_volume": "Analysis of search volume data",
+        "keyword_alignment": "Analysis of alignment with industry keywords",
+        "keyword_competition": "Analysis of keyword competition levels",
+        "seo_recommendations": ["List of specific SEO recommendations"],
+        "seo_viability_score": "Analysis of overall SEO viability score",
+        "negative_search_results": "Analysis of negative search result presence",
+        "unusual_spelling_impact": "Analysis of impact from unusual spelling",
+        "branded_keyword_potential": "Analysis of branded keyword potential",
+        "name_length_searchability": "Analysis of searchability based on name length",
+        "social_media_availability": "Analysis of social media handle availability",
+        "competitor_domain_strength": "Analysis of competitor domain strength",
+        "exact_match_search_results": "Analysis of exact match search results",
+        "social_media_discoverability": "Analysis of social media discoverability",
+        "negative_keyword_associations": "Analysis of negative keyword associations",
+        "non_branded_keyword_potential": "Analysis of non-branded keyword potential",
+        "content_marketing_opportunities": "Analysis of content marketing opportunities"
+      }
+    ],
+    "comparative_analysis": "Comparative analysis of SEO potential across all brand names",
+    "summary": "Summary of key SEO insights and implications for brand naming decisions"
   }
   ``` 
