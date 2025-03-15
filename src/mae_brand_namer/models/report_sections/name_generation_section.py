@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any
 import json
 import logging
 from .name_category import NameCategory
+from .brand_name import BrandName
 
 # Get logger
 logger = logging.getLogger(__name__)

@@ -10,15 +10,19 @@ import re
 import json
 import logging
 import asyncio
+import time
+import traceback
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 
 import docx
 from docx import Document
-from docx.shared import Pt, Inches, RGBColor
+from docx.shared import Pt, Cm, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.style import WD_STYLE_TYPE
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from langchain.prompts import PromptTemplate, load_prompt
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import SystemMessage, HumanMessage
@@ -40,6 +44,8 @@ from ..models.report_sections import (
 )
 from ..utils.supabase_utils import SupabaseManager
 from ..utils.logging import get_logger
+from ..config.settings import settings
+
 
 logger = get_logger(__name__)
 
@@ -3489,6 +3495,11 @@ class ReportFormatter:
         file_size_kb = os.path.getsize(file_path) // 1024
         
         try:
+            # Check if Supabase client is initialized
+            if not self.supabase:
+                logger.error("Supabase client is not initialized. Cannot upload report.")
+                return None
+                
             # Read the file content
             with open(file_path, 'rb') as f:
                 file_content = f.read()
@@ -3501,12 +3512,20 @@ class ReportFormatter:
                 file_options={"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
             )
             
+            if not result:
+                logger.error("Upload completed but no result returned from Supabase")
+                return None
+                
             # Get the public URL
             public_url = await self.supabase.storage_get_public_url(
                 bucket=self.STORAGE_BUCKET,
                 path=storage_path
             )
             
+            if not public_url:
+                logger.error("Failed to get public URL for uploaded file")
+                return None
+                
             logger.info(f"Report uploaded successfully to: {public_url}")
             
             # Store metadata in report_metadata table
@@ -3519,11 +3538,15 @@ class ReportFormatter:
             
             return public_url
             
+        except FileNotFoundError:
+            logger.error(f"File not found: {file_path}")
+            return None
         except Exception as e:
             logger.error(f"Error uploading report to storage: {str(e)}")
             logger.error(f"Error details: {traceback.format_exc()}")
-            raise
-            
+            # Return None instead of raising to allow the process to continue
+            return None
+
     async def store_report_metadata(self, run_id: str, report_url: str, file_size_kb: float, format: str) -> None:
         """
         Store metadata about the generated report in the report_metadata table.
@@ -4735,12 +4758,13 @@ class ReportFormatter:
             logger.error(f"Error details: {traceback.format_exc()}")
             # Don't raise the exception - this is not critical for report generation
 
-    async def generate_report(self, run_id: str) -> str:
+    async def generate_report(self, run_id: str, upload_to_storage: bool = True) -> str:
         """
         Generate a formatted report for the given run ID.
         
         Args:
             run_id: The run ID to generate a report for
+            upload_to_storage: Whether to upload the report to Supabase storage (default: True)
             
         Returns:
             str: The path to the generated report
@@ -4807,29 +4831,39 @@ class ReportFormatter:
         doc.save(str(file_path))
         logger.info(f"Report saved to: {file_path}")
         
-        # Upload to storage if available
+        # Upload to storage if available and requested
         report_url = None
-        if self.supabase:
+        if upload_to_storage and self.supabase:
             try:
+                logger.info("Attempting to upload report to Supabase storage")
                 report_url = await self.upload_report_to_storage(str(file_path), run_id)
                 
-                # Store metadata
                 if report_url:
+                    logger.info(f"Report successfully uploaded to: {report_url}")
+                    # File size in KB
                     file_size_kb = file_path.stat().st_size / 1024
+                    # Store metadata
                     await self.store_report_metadata(run_id, report_url, file_size_kb, self.FORMAT_DOCX)
+                else:
+                    logger.error("Failed to upload report to Supabase storage - report_url is None")
             except Exception as e:
-                logger.error(f"Error uploading report: {str(e)}")
+                logger.error(f"Unexpected error during upload process: {str(e)}")
+                logger.error(traceback.format_exc())
+        elif not upload_to_storage:
+            logger.info("Skipping upload to storage as requested (upload_to_storage=False)")
+        else:
+            logger.warning("Supabase client not available - skipping upload to storage")
         
         return str(file_path)
 
-async def main(run_id: str = None):
+async def main(run_id: str = None, upload_to_storage: bool = True):
     """Main function to run the formatter."""
     if not run_id:
         # Use a default run ID for testing
         run_id = "mae_20250312_141302_d45cccde"  # Replace with an actual run ID
         
     formatter = ReportFormatter()
-    output_path = await formatter.generate_report(run_id)
+    output_path = await formatter.generate_report(run_id, upload_to_storage=upload_to_storage)
     print(f"Report generated at: {output_path}")
 
 
@@ -4839,6 +4873,9 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Generate a formatted report from raw data")
     parser.add_argument("run_id", help="The run ID to generate a report for")
+    parser.add_argument("--no-upload", dest="upload_to_storage", action="store_false", 
+                        help="Skip uploading the report to Supabase storage")
+    parser.set_defaults(upload_to_storage=True)
     args = parser.parse_args()
     
-    asyncio.run(main(args.run_id)) 
+    asyncio.run(main(args.run_id, args.upload_to_storage)) 
