@@ -327,9 +327,7 @@ class SupabaseManager:
                 result = await self.client.storage.from_(bucket).upload(
                     path=path,
                     file=file,
-                    file_options={"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
-                    # Enable file overwriting instead of getting 409 conflict errors
-                    upsert=True
+                    file_options={"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
                 )
                 return result
             except Exception as e:

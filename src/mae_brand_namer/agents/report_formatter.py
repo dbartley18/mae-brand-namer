@@ -1165,48 +1165,95 @@ class ReportFormatter:
     async def _format_name_generation(self, doc: Document, data: Dict[str, Any]) -> None:
         """Format the name generation section."""
         try:
-            # Add introduction
-            doc.add_paragraph(
-                "This section presents the generated brand name options categorized by naming approach. "
-                "Each name includes its rationale and relevant characteristics."
-            )
+            from ..models.report_sections import NameGenerationSection
             
-            # Process name generations
-            if "name_generations" in data and isinstance(data["name_generations"], list):
-                # Group names by category
-                categories = {}
-                for name in data["name_generations"]:
-                    if "brand_name" in name:
-                        category = name.get("naming_category", "General")
-                        if category not in categories:
-                            categories[category] = []
-                        categories[category].append(name)
+            # Add section title
+            doc.add_heading("Brand Name Generation", level=1)
+            
+            # Parse the data using the Pydantic model
+            try:
+                # Use the from_raw_json method which is designed to handle various JSON structures
+                name_generation_data = NameGenerationSection.from_raw_json(data)
+                logger.info("Successfully created name generation data using Pydantic model")
+            except Exception as e:
+                logger.error(f"Failed to parse name generation data: {str(e)}")
+                doc.add_paragraph("Error parsing name generation data. The data format doesn't match the expected structure.")
+                return
+            
+            # Add introduction
+            if name_generation_data.introduction:
+                doc.add_paragraph(name_generation_data.introduction)
+            
+            # Add methodology and approach
+            if name_generation_data.methodology_and_approach:
+                doc.add_heading("Methodology and Approach", level=2)
+                doc.add_paragraph(name_generation_data.methodology_and_approach)
+            
+            # Add generated names overview
+            if name_generation_data.generated_names_overview:
+                doc.add_heading("Generated Names Overview", level=2)
+                total_count = name_generation_data.generated_names_overview.get("total_count", 0)
+                doc.add_paragraph(f"A total of {total_count} names were generated across various naming categories.")
                 
-                # Add each category and its names
-                for category, names in categories.items():
-                    doc.add_heading(category, level=2)
+                # Add any other overview information
+                for key, value in name_generation_data.generated_names_overview.items():
+                    if key != "total_count" and value:
+                        p = doc.add_paragraph()
+                        p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
+                        p.add_run(str(value))
+            
+            # Add evaluation metrics
+            if name_generation_data.evaluation_metrics:
+                doc.add_heading("Initial Evaluation Metrics", level=2)
+                for key, value in name_generation_data.evaluation_metrics.items():
+                    p = doc.add_paragraph()
+                    p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
+                    p.add_run(str(value))
+            
+            # Process each category and its names
+            for category in name_generation_data.categories:
+                # Add category heading and description
+                doc.add_heading(category.category_name, level=2)
+                if category.category_description:
+                    doc.add_paragraph(category.category_description)
+                
+                # Process each name in this category
+                for name in category.names:
+                    # Add name as heading
+                    doc.add_heading(name.brand_name, level=3)
                     
-                    for name in names:
-                        # Add name as subheading
-                        doc.add_heading(name["brand_name"], level=3)
-                        
-                        # Add rationale if available
-                        if "rationale" in name:
-                            doc.add_paragraph(name["rationale"])
-                        
-                        # Add additional info in a structured format
-                        for key, value in name.items():
-                            if key not in ["brand_name", "rationale", "naming_category"] and value:
-                                p = doc.add_paragraph()
-                                p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
-                                p.add_run(str(value))
-            else:
-                # Fallback for unstructured data
-                for key, value in data.items():
-                    if isinstance(value, str) and value:
-                        doc.add_heading(key.replace("_", " ").title(), level=2)
-                        doc.add_paragraph(value)
-                        
+                    # Add all properties in a structured format based on the required sections
+                    sections = [
+                        ("Brand Personality Alignment", getattr(name, "brand_personality_alignment", "")),
+                        ("Brand Promise Alignment", getattr(name, "brand_promise_alignment", "")),
+                        ("Methodology", getattr(name, "name_generation_methodology", "")),
+                        ("Memorability", getattr(name, "memorability_score_details", "")),
+                        ("Pronounceability", getattr(name, "pronounceability_score_details", "")),
+                        ("Visual Branding Potential", getattr(name, "visual_branding_potential_details", "")),
+                        ("Target Audience Relevance", getattr(name, "target_audience_relevance_details", "")),
+                        ("Market Differentiation", getattr(name, "market_differentiation_details", ""))
+                    ]
+                    
+                    for section_name, section_content in sections:
+                        if section_content:
+                            p = doc.add_paragraph()
+                            p.add_run(f"{section_name}: ").bold = True
+                            p.add_run(str(section_content))
+                            
+                    # Add rationale if available
+                    if hasattr(name, "rationale") and name.rationale:
+                        p = doc.add_paragraph()
+                        p.add_run("Rationale: ").bold = True
+                        p.add_run(name.rationale)
+                    
+                    # Add spacing between names
+                    doc.add_paragraph()
+            
+            # Add summary if available
+            if name_generation_data.summary:
+                doc.add_heading("Summary", level=2)
+                doc.add_paragraph(name_generation_data.summary)
+                
         except Exception as e:
             logger.error(f"Error formatting name generation: {str(e)}")
             doc.add_paragraph(f"Error formatting name generation section: {str(e)}", style='Intense Quote')
@@ -1812,6 +1859,8 @@ class ReportFormatter:
         logger.info("Adding table of contents")
         
         try:
+            from ..models.report_sections import TableOfContentsSection
+            
             # Create format data for the template
             format_data = {
                 "run_id": self.current_run_id,
@@ -1834,7 +1883,7 @@ class ReportFormatter:
             # Get system content
             system_content = self._get_system_content("You are a professional report formatter creating a table of contents.")
             
-            # Optional: Get any additional TOC information from LLM
+            # Get TOC information from LLM
             try:
                 toc_content = await self._safe_llm_invoke([
                     SystemMessage(content=system_content),
@@ -1844,18 +1893,77 @@ class ReportFormatter:
                 # Add a heading for the TOC
                 doc.add_heading("Table of Contents", level=1)
                 
-                # Add a paragraph before the TOC (optional)
+                # Try to parse the response using the Pydantic model
+                parsed_toc = None
+                
                 if hasattr(toc_content, 'content') and toc_content.content:
                     try:
-                        # Try to parse as JSON if formatted that way
-                        content = json.loads(toc_content.content)
-                        if "introduction" in content:
-                            doc.add_paragraph(content["introduction"])
-                    except json.JSONDecodeError:
-                        # Just use the raw content
-                        doc.add_paragraph(toc_content.content)
+                        # Try to parse as JSON
+                        content_str = toc_content.content
+                        
+                        # Extract JSON from code blocks if present
+                        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content_str)
+                        if json_match:
+                            content_str = json_match.group(1)
+                        
+                        # Parse the JSON content
+                        json_content = json.loads(content_str)
+                        parsed_toc = TableOfContentsSection.model_validate(json_content)
+                        logger.info("Successfully parsed table of contents with Pydantic model")
+                    
+                    except Exception as e:
+                        logger.debug(f"Failed to parse TOC response as TableOfContentsSection: {str(e)}")
                 
-                # Add the actual table of contents field
+                # If we successfully parsed the TOC data, use it for formatting
+                if parsed_toc is not None:
+                    # Add introduction if available
+                    if parsed_toc.introduction:
+                        doc.add_paragraph(parsed_toc.introduction)
+                    
+                    # Format and add each section
+                    for section in parsed_toc.sections:
+                        # Add section title and description
+                        p = doc.add_paragraph()
+                        p.add_run(section.title).bold = True
+                        p.add_run(": " + section.description)
+                        p.add_run().add_break()  # Add line break after each section
+                
+                else:
+                    # Fallback to previous approach if Pydantic parsing failed
+                    logger.warning("Could not parse TOC with Pydantic model, using fallback formatting")
+                    
+                    if hasattr(toc_content, 'content') and toc_content.content:
+                        try:
+                            # Try to parse as JSON if formatted that way
+                            content = json.loads(toc_content.content)
+                            
+                            # Check if we have the sections array as expected
+                            if "sections" in content and isinstance(content["sections"], list):
+                                # Format and add each section description
+                                for section in content["sections"]:
+                                    if "title" in section and "description" in section:
+                                        # Add the section title and description as formatted text
+                                        p = doc.add_paragraph()
+                                        p.add_run(section["title"]).bold = True
+                                        p.add_run(": " + section["description"])
+                                        p.add_run().add_break()  # Add a line break between sections
+                            elif "introduction" in content:
+                                # Fallback for older format
+                                doc.add_paragraph(content["introduction"])
+                            else:
+                                # No recognized structure, add the raw JSON
+                                doc.add_paragraph("Section information could not be properly formatted.")
+                                logger.warning("LLM response doesn't contain expected 'sections' array structure.")
+                        except json.JSONDecodeError:
+                            # Not valid JSON, use the raw content
+                            doc.add_paragraph(toc_content.content)
+                            logger.warning("LLM response isn't valid JSON: " + str(toc_content.content[:100]) + "...")
+                
+                # Add a page break after section descriptions
+                doc.add_page_break()
+                
+                # Add the actual table of contents field (Word will populate this)
+                doc.add_heading("Document Outline", level=1)
                 paragraph = doc.add_paragraph()
                 run = paragraph.add_run()
                 fld_char = OxmlElement('w:fldChar')
@@ -1878,10 +1986,8 @@ class ReportFormatter:
                 
             except Exception as e:
                 logger.error(f"Error getting TOC descriptions from LLM: {str(e)}")
-                
-                # Fallback: Add a basic TOC without LLM content
+                # Fallback: Add just the basic TOC field without descriptions
                 doc.add_heading("Table of Contents", level=1)
-                
                 paragraph = doc.add_paragraph()
                 run = paragraph.add_run()
                 fld_char = OxmlElement('w:fldChar')
@@ -1904,7 +2010,28 @@ class ReportFormatter:
                 
         except Exception as e:
             logger.error(f"Error adding table of contents: {str(e)}")
-            doc.add_paragraph("Error generating table of contents", style='Intense Quote')
+            doc.add_heading("Table of Contents", level=1)
+            doc.add_paragraph("An error occurred while generating the table of contents.")
+            
+            # Still add the TOC field so document navigation works
+            paragraph = doc.add_paragraph()
+            run = paragraph.add_run()
+            fld_char = OxmlElement('w:fldChar')
+            fld_char.set(qn('w:fldCharType'), 'begin')
+            
+            instr_text = OxmlElement('w:instrText')
+            instr_text.set(qn('xml:space'), 'preserve')
+            instr_text.text = 'TOC \\o "1-3" \\h \\z \\u'
+            
+            fld_char_end = OxmlElement('w:fldChar')
+            fld_char_end.set(qn('w:fldCharType'), 'end')
+            
+            r_element = run._r
+            r_element.append(fld_char)
+            r_element.append(instr_text)
+            r_element.append(fld_char_end)
+            
+            doc.add_page_break()
     
     async def _add_executive_summary(self, doc: Document, data: Dict[str, Any]) -> None:
         """Add an executive summary to the document."""
