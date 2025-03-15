@@ -45,6 +45,27 @@ from ..models.report_sections import (
 from ..utils.supabase_utils import SupabaseManager
 from ..utils.logging import get_logger
 from ..config.settings import settings
+from .prompts.report_formatter import (
+    get_title_page_prompt,
+    get_toc_prompt,
+    get_executive_summary_prompt,
+    get_recommendations_prompt,
+    get_seo_analysis_prompt,
+    get_brand_context_prompt,
+    get_brand_name_generation_prompt,
+    get_semantic_analysis_prompt,
+    get_linguistic_analysis_prompt,
+    get_cultural_sensitivity_prompt,
+    get_translation_analysis_prompt,
+    get_market_research_prompt,
+    get_competitor_analysis_prompt,
+    get_name_evaluation_prompt,
+    get_domain_analysis_prompt,
+    get_survey_simulation_prompt,
+    get_system_prompt,
+    get_shortlisted_names_summary_prompt,
+    get_format_section_prompt
+)
 
 
 logger = get_logger(__name__)
@@ -436,29 +457,92 @@ class ReportFormatter:
     def _format_template(self, template_name: str, format_data: Dict[str, Any], section_name: str = None) -> str:
         """Format a prompt template with provided data."""
         try:
-            # Try to load template from prompts directory
-            if section_name is None:
-                prompt_path = os.path.join(self.prompts_dir, f"{template_name}.yaml")
-            else:
+            # Get template name based on section name if provided
+            if section_name is not None:
                 section_file = self.REVERSE_SECTION_MAPPING.get(section_name, section_name.lower())
-                prompt_path = os.path.join(self.prompts_dir, f"{section_file}.yaml")
-                if not os.path.exists(prompt_path):
-                    logger.warning(f"No template found at {prompt_path}, trying generic template")
-                    prompt_path = os.path.join(self.prompts_dir, "section_template.yaml")
+                actual_template_name = section_file
+                logger.debug(f"Using section file: {section_file} for section: {section_name}")
+            else:
+                actual_template_name = template_name
+                logger.debug(f"Using direct template name: {template_name}")
+                
+            # Get format instructions if section_name is provided and not already present
+            if section_name and 'format_instructions' not in format_data:
+                format_data['format_instructions'] = self._get_format_instructions(section_name)
+                logger.debug(f"Added format_instructions for {section_name}")
             
-            # Load the prompt template
-            prompt_template = _safe_load_prompt(prompt_path)
+            # Try using the utility functions from __init__.py based on template name
+            try:
+                # Map template names to utility functions
+                template_map = {
+                    "title_page": get_title_page_prompt,
+                    "table_of_contents": get_toc_prompt,
+                    "executive_summary": get_executive_summary_prompt,
+                    "recommendations": get_recommendations_prompt,
+                    "seo_analysis": get_seo_analysis_prompt,
+                    "brand_context": get_brand_context_prompt,
+                    "brand_name_generation": get_brand_name_generation_prompt,
+                    "semantic_analysis": get_semantic_analysis_prompt,
+                    "linguistic_analysis": get_linguistic_analysis_prompt,
+                    "cultural_sensitivity": get_cultural_sensitivity_prompt,
+                    "translation_analysis": get_translation_analysis_prompt,
+                    "market_research": get_market_research_prompt,
+                    "competitor_analysis": get_competitor_analysis_prompt,
+                    "name_evaluation": get_name_evaluation_prompt,
+                    "domain_analysis": get_domain_analysis_prompt,
+                    "survey_simulation": get_survey_simulation_prompt,
+                    "system": get_system_prompt,
+                    "shortlisted_names_summary": get_shortlisted_names_summary_prompt,
+                    "format_section": get_format_section_prompt
+                }
+                
+                if actual_template_name in template_map:
+                    logger.debug(f"Using utility function for {actual_template_name}")
+                    prompt_data = template_map[actual_template_name](**format_data)
+                    if "template" in prompt_data:
+                        logger.debug(f"Got template from utility function: {prompt_data.get('template', '')[:50]}...")
+                        return prompt_data.get("template", "")
+                    else:
+                        logger.warning(f"Utility function for {actual_template_name} didn't return a template key")
+            except Exception as e:
+                logger.warning(f"Error using utility function for {actual_template_name}: {str(e)}")
+                # Continue to fallback method
             
-            # Get format instructions if section_name is provided
-            if section_name:
-                # Add format_instructions to the format_data if not already present
-                if 'format_instructions' not in format_data:
-                    format_data['format_instructions'] = self._get_format_instructions(section_name)
+            # Fallback to using the pre-loaded prompt templates
+            logger.debug(f"Falling back to cached prompts for {actual_template_name}")
             
-            # Format the template with data
-            return prompt_template.format(**format_data)
+            # Use the pre-loaded prompt template from self.prompts
+            if actual_template_name in self.prompts:
+                prompt_template = self.prompts[actual_template_name]
+                logger.debug(f"Found template for {actual_template_name} in self.prompts")
+                
+                # Format the template with data
+                logger.debug(f"Formatting template with variables: {list(format_data.keys())}")
+                formatted_template = prompt_template.format(**format_data)
+                # Log a preview of the formatted template (first 100 chars)
+                logger.debug(f"Formatted template preview: {formatted_template[:100]}...")
+                return formatted_template
+            else:
+                logger.warning(f"No template found for {actual_template_name}, trying generic template")
+                # Debug info about available templates
+                logger.debug(f"Available templates: {list(self.prompts.keys())}")
+                
+                if "format_section" in self.prompts:
+                    prompt_template = self.prompts["format_section"]
+                    logger.debug("Using format_section fallback template")
+                    
+                    # Format the template with data
+                    formatted_template = prompt_template.format(**format_data)
+                    logger.debug(f"Formatted template preview: {formatted_template[:100]}...")
+                    return formatted_template
+                else:
+                    # Last resort fallback
+                    logger.error(f"No template found for {actual_template_name} and no format_section fallback")
+                    raise ValueError(f"No template found for {actual_template_name} and no format_section fallback")
+            
         except Exception as e:
             logger.error(f"Error formatting template {template_name}: {str(e)}")
+            logger.error(f"Error details: {traceback.format_exc()}")
             # Return a simple fallback template
             if section_name:
                 return f"Please format the {section_name} section data into a professional report section."
