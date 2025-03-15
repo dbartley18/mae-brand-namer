@@ -12,14 +12,14 @@ import logging
 import asyncio
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
+from pathlib import Path
 
 import docx
 from docx import Document
-from docx.shared import Pt, Inches
+from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.style import WD_STYLE_TYPE
-from docx.shared import RGBColor
-from langchain.prompts import PromptTemplate
+from langchain.prompts import PromptTemplate, load_prompt
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import SystemMessage, HumanMessage
 from pydantic import ValidationError
@@ -38,6 +38,8 @@ from ..models.report_sections import (
     MarketResearch,
     SurveySimulation
 )
+from ..utils.supabase_utils import SupabaseManager
+from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -276,133 +278,154 @@ class ReportFormatter:
             self.llm = None
             
     def _get_format_instructions(self, section_name: str) -> str:
-        """
-        Generate format instructions for LLM prompts based on the section name.
-        These instructions help guide the LLM in processing the JSON data according to
-        the Pydantic model structure.
-        
-        Args:
-            section_name: The name of the section being formatted
-            
-        Returns:
-            str: Formatted instructions for the LLM
-        """
-        base_instructions = (
-            "Follow these guidelines when formatting the JSON data:\n"
-            "1. Extract the exact data from the provided JSON structure\n"
-            "2. Maintain the hierarchical relationship between different data elements\n"
-            "3. Format each field to be readable and professional in the report\n"
-            "4. Ensure all elements from the original data are included\n"
-            "5. Organize the content to follow the report structure outlined in the documentation\n"
-            "6. Highlight key insights and patterns across the data\n"
-            "7. Use the exact values provided in the JSON for numeric fields and boolean status flags\n"
+        """Get formatting instructions for a specific section."""
+        # Common instructions for all sections
+        common_instructions = (
+            "Structure your response as valid JSON with clear hierarchical organization. "
+            "Use professional language appropriate for a business document. "
+            "Avoid ALL marketing language, superlatives, and unnecessary adjectives."
         )
         
-        # Add section-specific instructions
-        if section_name == "brand_context":
-            return base_instructions + (
-                "\n8. For brand_context, use the exact text from string fields like brand_promise, brand_purpose, etc.\n"
-                "9. For list fields like brand_values, brand_personality, and customer_needs, present each item clearly\n"
-                "10. Maintain the organization of all 13 brand context components in a logical structure"
+        # Specific instructions by section
+        if section_name.lower() == "title page":
+            return (
+                "Create a professional title page that reflects the branding project's focus. "
+                "The title should be concise but descriptive of the specific project. "
+                "The subtitle should provide additional context about the purpose of this report."
             )
-        elif section_name == "brand_name_generation":
-            return base_instructions + (
-                "\n8. For brand_name_generation, organize content by naming categories and individual brand names\n"
-                "9. Present each brand name with its full assessment data (brand_personality_ alignment, brand_promise_alignment, etc.)\n"
-                "10. Include the introduction, methodology, and evaluation metrics as separate sections\n"
-                "11. Ensure that each name's rationale is clearly presented when available"
+        elif section_name.lower() == "table of contents":
+            return (
+                "Create a clear and descriptive table of contents that outlines the major sections of the report. "
+                "Each section should have a brief (1-2 sentence) description that explains what information "
+                "the reader will find in that section. The descriptions should be factual and focused on "
+                "explaining the content and purpose of each section. "
+                "Follow the TableOfContentsSection model structure with a sections array and optional introduction."
             )
-        elif section_name == "brand_name_evaluation":
-            return base_instructions + (
-                "\n8. For brand_name_evaluation, extract overall_score as a numeric value, shortlist_status as a boolean,\n"
-                "   and analysis details from evaluation_comments\n"
-                "9. Rank the brand names by overall_score in descending order\n"
-                "10. Clearly indicate which names are shortlisted based on the shortlist_status field"
+        elif section_name.lower() == "executive summary":
+            return (
+                "Provide a concise summary of the key findings and insights from the brand naming analysis. "
+                "The summary should be factual and focused on conveying the most important information "
+                "to the reader. Avoid any marketing language or superlatives. "
+                "Use the exact values provided in the JSON for numeric fields and boolean status flags."
             )
-        elif section_name == "translation_analysis":
-            return base_instructions + (
-                "\n8. For translation_analysis, organize the data hierarchically by brand name, then by language\n"
-                "9. Include all fields from the LanguageAnalysis model for each language: direct_translation, semantic_shift, adaptation_needed, etc.\n"
-                "10. Present boolean fields (adaptation_needed) with clear Yes/No statements and accompanying explanations\n"
-                "11. Highlight proposed adaptations and their rationale when adaptation_needed is true\n"
-                "12. Compare phonetic_retention, brand_essence_preserved, and cultural_acceptability across different languages\n"
-                "13. Include analysis of global_consistency_vs_localization for each brand name across markets\n"
-                "14. Provide clear recommendations for internationalization strategy based on translation findings"
+        elif section_name.lower() == "recommendations":
+            return (
+                "Provide strategic recommendations based on the findings from the brand naming analysis. "
+                "The recommendations should be actionable and focused on providing clear and concise advice "
+                "to the reader. Avoid any marketing language or superlatives. "
+                "Use the exact values provided in the JSON for numeric fields and boolean status flags."
             )
-        elif section_name == "cultural_sensitivity_analysis":
-            return base_instructions + (
-                "\n8. For cultural_sensitivity_analysis, organize data by brand name with detailed analysis for each name\n"
-                "9. Present the overall_risk_rating prominently for each brand name with clear reasoning\n"
-                "10. Include all cultural dimensions: symbolic, historical, religious, social-political, and age-related\n"
-                "11. Highlight regional variations in cultural perception across different markets\n"
-                "12. Provide clear recommendations for mitigating any identified cultural sensitivity risks"
+        elif section_name.lower() == "seo analysis":
+            return (
+                "Provide insights into the SEO potential of the brand name options. "
+                "The analysis should include search volume, keyword potential, and social media considerations "
+                "that influence a brand's online visibility and findability. "
+                "Use the exact values provided in the JSON for numeric fields and boolean status flags."
             )
-        elif section_name == "linguistic_analysis":
-            return base_instructions + (
-                "\n8. For linguistic_analysis, organize data by brand name with comprehensive linguistic details for each name\n"
-                "9. Present technical linguistic aspects (pronunciation, rhythm, morphology) in accessible language\n"
-                "10. Include all fields: word_class, sound_symbolism, pronunciation_ease, euphony_vs_cacophony, etc.\n"
-                "11. Compare phonetic and morphological characteristics across different brand names\n"
-                "12. Highlight how linguistic features might impact marketing effectiveness and memorability"
+        elif section_name.lower() == "brand context":
+            return (
+                "Provide a detailed description of the brand's context, including its brand promise, brand purpose, "
+                "brand values, and any other relevant information. Use the exact text from string fields like "
+                "brand_promise, brand_purpose, etc. Avoid any marketing language or superlatives. "
+                "Maintain the organization of all 13 brand context components in a logical structure."
             )
-        elif section_name == "domain_analysis":
-            return base_instructions + (
-                "\n8. For domain_analysis, organize data by brand name with detailed domain availability information\n"
-                "9. Present both boolean fields (domain_exact_match, hyphens_numbers_present, misspellings_variations_available) with explanations\n"
-                "10. Include acquisition cost information and assessments of brand name clarity and domain readability\n"
-                "11. List available alternative TLDs and social media handles for each brand name\n"
-                "12. Provide future-proofing considerations and specific domain strategy recommendations"
+        elif section_name.lower() == "brand name generation":
+            return (
+                "Organize content by naming categories and individual brand names. "
+                "Present each brand name with its full assessment data (brand_personality_ alignment, brand_promise_alignment, etc.). "
+                "Include the introduction, methodology, and evaluation metrics as separate sections. "
+                "Ensure that each name's rationale is clearly presented when available."
             )
-        elif section_name == "competitor_analysis":
-            return base_instructions + (
-                "\n8. For competitor_analysis, organize data hierarchically by brand name and then by competitor name\n"
-                "9. Present the risk_of_confusion as a numeric value (1-10) with clear interpretation\n"
-                "10. Highlight key differentiation opportunities and risks for each competitor relationship\n"
-                "11. Ensure competitor strengths, weaknesses, and positioning are presented in detail\n"
-                "12. Include analysis of trademark conflict risk and target audience perception for each competitor"
+        elif section_name.lower() == "semantic analysis":
+            return (
+                "Organize data hierarchically by brand name with detailed semantic analysis for each. "
+                "Include all fields from the SemanticAnalysis model: etymology, sound_symbolism, brand_personality, etc. "
+                "Present technical linguistic concepts (etymology, phoneme_combinations) in accessible language. "
+                "Preserve boolean values (alliteration_assonance) and numeric values (word_length_syllables) with clear explanations. "
+                "Highlight semantic trademark risks and their implications for each brand name. "
+                "Include comparative analysis of semantic characteristics across all brand names. "
+                "Provide a summary of key semantic insights that impact brand perception and memorability."
             )
-        elif section_name == "survey_simulation":
-            return base_instructions + (
-                "\n8. For survey_simulation, organize data hierarchically by brand name with detailed persona information for each\n"
-                "9. Include all fields from the SurveySimulationDetails model: industry, job_title, seniority, etc.\n" 
-                "10. Present numeric scores (brand_promise_perception_score, personality_fit_score, competitive_differentiation_score, simulated_market_adoption_score) with context and interpretation\n"
-                "11. Include verbatim quotes from raw_qualitative_feedback including all seven feedback categories\n"
-                "12. Present the content from the nested models (RawQualitativeFeedback and CurrentBrandRelationships) clearly labeled\n"
-                "13. Provide comparative analysis across brand names highlighting differences in perception and market potential\n"
-                "14. Include specific final_survey_recommendation and qualitative_feedback_summary for each brand name"
+        elif section_name.lower() == "linguistic analysis":
+            return (
+                "Organize data by brand name with comprehensive linguistic details for each. "
+                "Present technical linguistic aspects (pronunciation, rhythm, morphology) in accessible language. "
+                "Include all fields: word_class, sound_symbolism, pronunciation_ease, euphony_vs_cacophony, etc. "
+                "Compare phonetic and morphological characteristics across different brand names. "
+                "Highlight how linguistic features might impact marketing effectiveness and memorability."
             )
-        elif section_name == "market_research":
-            return base_instructions + (
-                "\n8. For market_research, organize data hierarchically by brand name with detailed market analysis for each\n"
-                "9. Extract and summarize industry-level insights (industry_name, market_size, growth trends) across all brands\n"
-                "10. For each brand name, include all fields from the MarketResearchDetails model: market_size, industry_name, emerging_trends, etc.\n"
-                "11. Present list fields (key_competitors, customer_pain_points) as clearly formatted bullet points\n"
-                "12. Include comparative analysis across all brands highlighting market positioning differences\n"
-                "13. Provide a summary of key market insights and implications for brand naming strategy"
+        elif section_name.lower() == "cultural sensitivity analysis":
+            return (
+                "Organize data by brand name with detailed analysis for each name. "
+                "Present the overall_risk_rating prominently for each brand name with clear reasoning. "
+                "Include all cultural dimensions: symbolic, historical, religious, social-political, and age-related. "
+                "Highlight regional variations in cultural perception across different markets. "
+                "Provide clear recommendations for mitigating any identified cultural sensitivity risks."
             )
-        elif section_name == "semantic_analysis":
-            return base_instructions + (
-                "\n8. For semantic_analysis, organize data hierarchically by brand name with detailed semantic analysis for each\n"
-                "9. Include all fields from the SemanticAnalysis model: etymology, sound_symbolism, brand_personality, etc.\n"
-                "10. Present technical linguistic concepts (etymology, phoneme_combinations) in accessible language\n"
-                "11. Preserve boolean values (alliteration_assonance) and numeric values (word_length_syllables) with clear explanations\n"
-                "12. Highlight semantic trademark risks and their implications for each brand name\n"
-                "13. Include comparative analysis of semantic characteristics across all brand names\n"
-                "14. Provide a summary of key semantic insights that impact brand perception and memorability"
+        elif section_name.lower() == "translation analysis":
+            return (
+                "Organize the data hierarchically by brand name, then by language. "
+                "Include all fields from the LanguageAnalysis model for each language: direct_translation, semantic_shift, adaptation_needed, etc. "
+                "Present boolean fields (adaptation_needed) with clear Yes/No statements and accompanying explanations. "
+                "Highlight proposed adaptations and their rationale when adaptation_needed is true. "
+                "Compare phonetic_retention, brand_essence_preserved, and cultural_acceptability across different languages. "
+                "Include analysis of global_consistency_vs_localization for each brand name across markets. "
+                "Provide clear recommendations for internationalization strategy based on translation findings."
             )
-        elif section_name == "seo_analysis":
-            return base_instructions + (
-                "\n8. For seo_analysis, organize data hierarchically by brand name with detailed SEO analysis for each\n"
-                "9. Include all fields from the SEOOnlineDiscoverabilityDetails model: search_volume, keyword_alignment, etc.\n"
-                "10. Present numeric data (search_volume, seo_viability_score) with context and implications\n"
-                "11. Format boolean values (negative_search_results, unusual_spelling_impact, social_media_availability) as clear statements\n"
-                "12. Present seo_recommendations as a prioritized, bulleted list of actionable recommendations\n"
-                "13. Include a comparative analysis showing relative SEO strengths and weaknesses across brand names\n"
-                "14. Provide a summary of key SEO insights and their implications for brand naming strategy"
+        elif section_name.lower() == "brand name evaluation":
+            return (
+                "Extract overall_score as a numeric value, shortlist_status as a boolean, "
+                "and analysis details from evaluation_comments. Rank the brand names by overall_score in descending order. "
+                "Clearly indicate which names are shortlisted based on the shortlist_status field."
+            )
+        elif section_name.lower() == "domain analysis":
+            return (
+                "Organize data by brand name with detailed domain availability information. "
+                "Present both boolean fields (domain_exact_match, hyphens_numbers_present, misspellings_variations_available) with explanations. "
+                "Include acquisition cost information and assessments of brand name clarity and domain readability. "
+                "List available alternative TLDs and social media handles for each brand name. "
+                "Provide future-proofing considerations and specific domain strategy recommendations."
+            )
+        elif section_name.lower() == "seo online discoverability":
+            return (
+                "Organize data hierarchically by brand name with detailed SEO analysis for each. "
+                "Include all fields from the SEOOnlineDiscoverabilityDetails model: search_volume, keyword_alignment, etc. "
+                "Present numeric data (search_volume, seo_viability_score) with context and implications. "
+                "Format boolean values (negative_search_results, unusual_spelling_impact, social_media_availability) as clear statements. "
+                "Present seo_recommendations as a prioritized, bulleted list of actionable recommendations. "
+                "Include a comparative analysis showing relative SEO strengths and weaknesses across brand names. "
+                "Provide a summary of key SEO insights and their implications for brand naming strategy."
+            )
+        elif section_name.lower() == "competitor analysis":
+            return (
+                "Organize data hierarchically by brand name and then by competitor name. "
+                "Present the risk_of_confusion as a numeric value (1-10) with clear interpretation. "
+                "Highlight key differentiation opportunities and risks for each competitor relationship. "
+                "Ensure competitor strengths, weaknesses, and positioning are presented in detail. "
+                "Include analysis of trademark conflict risk and target audience perception for each competitor."
+            )
+        elif section_name.lower() == "market research":
+            return (
+                "Organize data hierarchically by brand name with detailed market analysis for each. "
+                "Extract and summarize industry-level insights (industry_name, market_size, growth trends) across all brands. "
+                "For each brand name, include all fields from the MarketResearchDetails model: market_size, industry_name, emerging_trends, etc. "
+                "Present list fields (key_competitors, customer_pain_points) as clearly formatted bullet points. "
+                "Include comparative analysis across all brands highlighting market positioning differences. "
+                "Provide a summary of key market insights and implications for brand naming strategy."
+            )
+        elif section_name.lower() == "survey simulation":
+            return (
+                "Organize data hierarchically by brand name with detailed persona information for each. "
+                "Include all fields from the SurveySimulationDetails model: industry, job_title, seniority, etc. "
+                "Present numeric scores (brand_promise_perception_score, personality_fit_score, competitive_differentiation_score, simulated_market_adoption_score) with context and interpretation. "
+                "Include verbatim quotes from raw_qualitative_feedback including all seven feedback categories. "
+                "Present the content from the nested models (RawQualitativeFeedback and CurrentBrandRelationships) clearly labeled. "
+                "Provide comparative analysis across brand names highlighting differences in perception and market potential. "
+                "Include specific final_survey_recommendation and qualitative_feedback_summary for each brand name."
             )
         
         # Default instructions if no specific section match
-        return base_instructions
+        return common_instructions
 
     def _format_template(self, template_name: str, format_data: Dict[str, Any], section_name: str = None) -> str:
         """Format a prompt template with provided data."""
@@ -842,6 +865,52 @@ class ReportFormatter:
             logger.error(f"Error fetching raw data for run_id {run_id}: {str(e)}")
             logger.error(f"Error details: {traceback.format_exc()}")
             return {}
+
+    async def fetch_user_prompt(self, run_id: str) -> str:
+        """Fetch the user prompt from the workflow_state table for a specific run_id."""
+        logger.info(f"Fetching user prompt for run_id: {run_id}")
+        
+        try:
+            # Query the workflow_state table to get the state data
+            result = await self.supabase.execute_with_retry(
+                "select",
+                "workflow_state",
+                {
+                    "run_id": f"eq.{run_id}",
+                    "select": "state",
+                    "order": "created_at.desc",
+                    "limit": 1  # Get the most recent state
+                }
+            )
+            
+            if not result or len(result) == 0:
+                logger.warning(f"No state data found for run_id: {run_id}")
+                return "No user prompt available"
+            
+            # Extract the state data from the result
+            state_data = result[0]['state']
+            
+            # Parse the state data if it's a string
+            if isinstance(state_data, str):
+                try:
+                    state_data = json.loads(state_data)
+                except json.JSONDecodeError:
+                    logger.warning(f"State data for {run_id} is not valid JSON")
+                    return "No user prompt available (invalid state format)"
+            
+            # Extract the user prompt from the state data
+            if isinstance(state_data, dict) and 'user_prompt' in state_data:
+                user_prompt = state_data['user_prompt']
+                logger.info(f"Successfully fetched user prompt for run_id: {run_id}")
+                return user_prompt
+            else:
+                logger.warning(f"User prompt not found in state data for run_id: {run_id}")
+                return "No user prompt available (not in state)"
+            
+        except Exception as e:
+            logger.error(f"Error fetching user prompt for run_id {run_id}: {str(e)}")
+            logger.error(f"Error details: {traceback.format_exc()}")
+            return "No user prompt available (error)"
 
     def _setup_document_styles(self, doc: Document) -> None:
         """Set up document styles."""
@@ -2874,7 +2943,8 @@ class ReportFormatter:
             # Create format data for the template
             format_data = {
                 "run_id": self.current_run_id,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "format_instructions": self._get_format_instructions("table of contents")
             }
             
             # Add TOC data with section information
@@ -3048,21 +3118,53 @@ class ReportFormatter:
         logger.info("Adding executive summary")
         
         try:
-            # Extract brand context
-            brand_context = data.get("brand_context", {})
-            brand_name = brand_context.get("brand_name", "")
-            industry = brand_context.get("industry", "")
+            # Extract necessary data
+            all_data = await self.fetch_raw_data(self.current_run_id)
+            brand_context = all_data.get("brand_context", {})
             
-            # Create format data
+            # Fetch the user prompt from the state
+            user_prompt = await self.fetch_user_prompt(self.current_run_id)
+            
+            # Count total names generated
+            total_names = 0
+            shortlisted_names = []
+            
+            # Get name generation data if available
+            if "brand_name_generation" in all_data:
+                name_gen_data = all_data["brand_name_generation"]
+                
+                # Count names across categories
+                if "name_categories" in name_gen_data and isinstance(name_gen_data["name_categories"], list):
+                    for category in name_gen_data["name_categories"]:
+                        if "names" in category and isinstance(category["names"], list):
+                            total_names += len(category["names"])
+            
+            # Get shortlisted names if available
+            if "brand_name_evaluation" in all_data:
+                eval_data = all_data["brand_name_evaluation"]
+                
+                # Extract shortlisted names
+                for name, details in eval_data.items():
+                    if isinstance(details, dict) and details.get("shortlist_status", False):
+                        shortlisted_names.append(name)
+            
+            # Prepare data for all sections to include in executive summary
+            sections_data = {}
+            for section_name in self.SECTION_ORDER:
+                if section_name in all_data and section_name not in ["exec_summary", "final_recommendations"]:
+                    sections_data[section_name] = all_data[section_name]
+            
+            # Create format data for the executive summary template
             format_data = {
                 "run_id": self.current_run_id,
-                "brand_name": brand_name,
-                "industry": industry,
+                "sections_data": json.dumps(sections_data, indent=2),
                 "brand_context": json.dumps(brand_context, indent=2),
-                "data": json.dumps(data, indent=2)
+                "total_names": total_names,
+                "shortlisted_names": shortlisted_names,
+                "user_prompt": user_prompt
             }
             
-            # Format the template using the helper method
+            # Format the template
             formatted_prompt = self._format_template("executive_summary", format_data, "Executive Summary")
             
             # Get system content
@@ -3074,30 +3176,36 @@ class ReportFormatter:
                 HumanMessage(content=formatted_prompt)
             ], section_name="Executive Summary")
             
-            # Add the executive summary to the document
-            doc.add_heading("Executive Summary", level=1)
-            doc.add_paragraph(response.content)
+            # Try to parse the response
+            summary_data = {}
+            try:
+                content_str = response.content
+                # Extract JSON if in code blocks
+                json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content_str)
+                if json_match:
+                    content_str = json_match.group(1)
+                summary_data = json.loads(content_str)
+            except Exception as e:
+                logger.error(f"Error parsing executive summary response: {str(e)}")
+                # If JSON parsing fails, use the raw content
+                summary_data = {"summary": response.content}
             
-            # Add sections if available
-            if "sections" in data and isinstance(data["sections"], list):
-                for section in data["sections"]:
-                    if "heading" in section and "content" in section:
-                        doc.add_heading(section["heading"], level=2)
-                        doc.add_paragraph(section["content"])
+            # Add the executive summary heading
+            doc.add_heading("Executive Summary", level=1)
+            
+            # Add the summary content
+            if "summary" in summary_data and summary_data["summary"]:
+                doc.add_paragraph(summary_data["summary"])
             
             # Add key points if available
-            if "key_points" in data and isinstance(data["key_points"], list):
+            if "key_points" in summary_data and isinstance(summary_data["key_points"], list):
                 doc.add_heading("Key Points", level=2)
-                for point in data["key_points"]:
+                for point in summary_data["key_points"]:
                     bullet = doc.add_paragraph(style='List Bullet')
                     bullet.add_run(point)
             
-            # Add recommendations if available
-            if "recommendations" in data and isinstance(data["recommendations"], list):
-                doc.add_heading("Recommendations", level=2)
-                for rec in data["recommendations"]:
-                    bullet = doc.add_paragraph(style='List Bullet')
-                    bullet.add_run(rec)
+            # Add page break after executive summary
+            doc.add_page_break()
             
         except Exception as e:
             logger.error(f"Error adding executive summary: {str(e)}")
@@ -3105,14 +3213,13 @@ class ReportFormatter:
             
             # Add a simple executive summary as fallback
             doc.add_heading("Executive Summary", level=1)
-            doc.add_paragraph("An error occurred while generating the executive summary.")
-            
-            # Try to add some basic information from the raw data
-            if isinstance(data, dict):
-                for key, value in data.items():
-                    if isinstance(value, str) and value:
-                        doc.add_paragraph(f"{key}: {value}")
-                        
+            doc.add_paragraph(
+                "This report presents a comprehensive brand naming analysis based on linguistic, semantic, "
+                "cultural, and market research. It provides detailed evaluations of potential brand names "
+                "and offers strategic recommendations for the final name selection."
+            )
+            doc.add_page_break()
+
     async def _add_recommendations(self, doc: Document, data: Dict[str, Any]) -> None:
         """Add strategic recommendations to the document."""
         logger.info("Adding strategic recommendations")
@@ -4481,6 +4588,239 @@ class ReportFormatter:
         except Exception as e:
             logger.error(f"Error formatting domain analysis: {str(e)}")
             doc.add_paragraph(f"Error formatting domain analysis section: {str(e)}", style='Intense Quote')
+
+    async def _add_title_page(self, doc: Document, data: Dict[str, Any]) -> None:
+        """Add a title page to the document."""
+        logger.info("Adding title page")
+        
+        try:
+            # Extract brand context for the title page
+            brand_context = data.get("brand_context", {})
+            
+            # Fetch the user prompt from the state
+            user_prompt = await self.fetch_user_prompt(self.current_run_id)
+            
+            # Format data for the prompt
+            format_data = {
+                "run_id": self.current_run_id,
+                "brand_context": json.dumps(brand_context, indent=2) if isinstance(brand_context, dict) else str(brand_context),
+                "user_prompt": user_prompt
+            }
+            
+            # Format the template
+            formatted_prompt = self._format_template("title_page", format_data, "Title Page")
+            
+            # Get system content
+            system_content = self._get_system_content("You are an expert report formatter creating a professional title page.")
+            
+            # Call LLM to generate title page content
+            response = await self._safe_llm_invoke([
+                SystemMessage(content=system_content),
+                HumanMessage(content=formatted_prompt)
+            ], section_name="Title Page")
+            
+            # Try to parse the response
+            title_data = {}
+            try:
+                content_str = response.content
+                # Extract JSON if in code blocks
+                json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content_str)
+                if json_match:
+                    content_str = json_match.group(1)
+                title_data = json.loads(content_str)
+            except Exception as e:
+                logger.error(f"Error parsing title page response: {str(e)}")
+                title_data = {
+                    "title": "Brand Naming Report",
+                    "subtitle": "Generated by Mae Brand Naming Expert"
+                }
+            
+            # Create the title page
+            # Set title with large font and center alignment
+            title_para = doc.add_paragraph()
+            title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            title_run = title_para.add_run(title_data.get("title", "Brand Naming Report"))
+            title_run.font.size = Pt(24)
+            title_run.font.bold = True
+            title_para.space_after = Pt(12)
+            
+            # Add subtitle
+            subtitle_para = doc.add_paragraph()
+            subtitle_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            subtitle_run = subtitle_para.add_run(title_data.get("subtitle", "Generated by Mae Brand Naming Expert"))
+            subtitle_run.font.size = Pt(16)
+            subtitle_run.italic = True
+            subtitle_para.space_after = Pt(36)
+            
+            # Add date
+            date_para = doc.add_paragraph()
+            date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            date_para.add_run(f"Generated on: {datetime.now().strftime('%B %d, %Y')}")
+            date_para.space_after = Pt(12)
+            
+            # Add run ID
+            run_id_para = doc.add_paragraph()
+            run_id_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run_id_para.add_run(f"Run ID: {self.current_run_id}")
+            run_id_para.space_after = Pt(24)
+            
+            # Add user prompt note
+            user_prompt_para = doc.add_paragraph()
+            user_prompt_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            user_prompt_run = user_prompt_para.add_run(
+                f"This report was generated using the Maestro AI Agent workflow and all content "
+                f"has been derived from this prompt: \"{user_prompt}\""
+            )
+            user_prompt_run.italic = True
+            user_prompt_run.font.size = Pt(10)
+            
+            # Add page break after title page
+            doc.add_page_break()
+            
+        except Exception as e:
+            logger.error(f"Error adding title page: {str(e)}")
+            # Add fallback title page
+            doc.add_paragraph("Brand Naming Report").style = 'Title'
+            doc.add_paragraph("Generated by Mae Brand Naming Expert").style = 'Subtitle'
+            doc.add_paragraph(f"Generated on: {datetime.now().strftime('%B %d, %Y')}")
+            doc.add_paragraph(f"Run ID: {self.current_run_id}")
+            doc.add_page_break()
+
+    async def store_report_metadata(self, run_id: str, report_url: str, file_size_kb: float, format: str) -> None:
+        """Store report metadata in the database."""
+        logger.info(f"Storing report metadata for run_id: {run_id}")
+        
+        try:
+            # Get the current timestamp
+            timestamp = datetime.now().isoformat()
+            
+            # Get the current version number
+            version = 1
+            try:
+                # Query for existing versions
+                query = f"""
+                SELECT MAX(version) as max_version FROM report_metadata 
+                WHERE run_id = '{run_id}'
+                """
+                result = await self.supabase.execute_with_retry(query, {})
+                if result and len(result) > 0 and result[0]['max_version'] is not None:
+                    version = int(result[0]['max_version']) + 1
+                    logger.info(f"Found existing reports, using version: {version}")
+            except Exception as e:
+                logger.warning(f"Error getting version number: {str(e)}")
+                # Continue with default version 1
+            
+            # Insert metadata into the report_metadata table
+            metadata = {
+                "run_id": run_id,
+                "report_url": report_url,
+                "created_at": timestamp,
+                "last_updated": timestamp,
+                "format": format,
+                "file_size_kb": file_size_kb,
+                "version": version,
+                "notes": f"Generated by ReportFormatter v{settings.version}"
+            }
+            
+            result = await self.supabase.execute_with_retry(
+                "insert",
+                "report_metadata",
+                metadata
+            )
+            
+            logger.info(f"Report metadata stored successfully for run_id: {run_id}, version: {version}")
+            
+        except Exception as e:
+            logger.error(f"Error storing report metadata: {str(e)}")
+            logger.error(f"Error details: {traceback.format_exc()}")
+            # Don't raise the exception - this is not critical for report generation
+
+    async def generate_report(self, run_id: str) -> str:
+        """
+        Generate a formatted report for the given run ID.
+        
+        Args:
+            run_id: The run ID to generate a report for
+            
+        Returns:
+            str: The path to the generated report
+        """
+        logger.info(f"Generating report for run ID: {run_id}")
+        
+        # Initialize run ID
+        self.current_run_id = run_id
+        
+        # Initialize LLM if not already done
+        if not self.llm:
+            self._initialize_llm()
+        
+        # Fetch raw data
+        data = await self.fetch_raw_data(run_id)
+        
+        if not data:
+            logger.error(f"No data found for run ID: {run_id}")
+            return None
+        
+        # Create document
+        doc = Document()
+        
+        # Set up document styles
+        self._setup_document_styles(doc)
+        
+        # Add title page - Required to be first!
+        await self._add_title_page(doc, data)
+        
+        # Add table of contents - Required to be second!
+        await self._add_table_of_contents(doc)
+        
+        # Add executive summary - Required to be third!
+        if "exec_summary" in data:
+            await self._add_executive_summary(doc, data["exec_summary"])
+        
+        # Process each section in order
+        for section_name in self.SECTION_ORDER:
+            # Skip already processed sections
+            if section_name in ["exec_summary", "final_recommendations"]:
+                continue
+                
+            if section_name in data:
+                section_data = data[section_name]
+                
+                # Format the section based on its name
+                if hasattr(self, f"_format_{self.REVERSE_SECTION_MAPPING.get(section_name, section_name)}"):
+                    # Call the specific formatter method
+                    formatter_method = getattr(self, f"_format_{self.REVERSE_SECTION_MAPPING.get(section_name, section_name)}")
+                    await formatter_method(doc, section_data)
+                else:
+                    # Use generic formatter as fallback
+                    await self._format_generic_section(doc, section_name, section_data)
+        
+        # Add recommendations section at the end
+        if "final_recommendations" in data:
+            await self._add_recommendations(doc, data["final_recommendations"])
+        
+        # Save document to a temporary file
+        temp_dir = Path("tmp")
+        temp_dir.mkdir(exist_ok=True)
+        file_path = temp_dir / f"report_{run_id}.docx"
+        
+        doc.save(str(file_path))
+        logger.info(f"Report saved to: {file_path}")
+        
+        # Upload to storage if available
+        report_url = None
+        if self.supabase:
+            try:
+                report_url = await self.upload_report_to_storage(str(file_path), run_id)
+                
+                # Store metadata
+                if report_url:
+                    file_size_kb = file_path.stat().st_size / 1024
+                    await self.store_report_metadata(run_id, report_url, file_size_kb, self.FORMAT_DOCX)
+            except Exception as e:
+                logger.error(f"Error uploading report: {str(e)}")
+        
+        return str(file_path)
 
 async def main(run_id: str = None):
     """Main function to run the formatter."""

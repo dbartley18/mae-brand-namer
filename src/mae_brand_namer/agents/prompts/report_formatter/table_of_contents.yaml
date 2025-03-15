@@ -1,11 +1,16 @@
 _type: prompt
-input_variables: ["toc_data"]
+input_variables: ["run_id", "timestamp", "toc_data", "format_instructions"]
 template: |
   Create a table of contents for a brand naming report.
 
+  Run ID: {run_id}
+  Generated: {timestamp}
+  
   Additional information:
   {toc_data}
 
+  {format_instructions}
+  
   The table of contents should include the following standard sections in order:
   1. Executive Summary
   2. Brand Context
@@ -19,12 +24,14 @@ template: |
   10. Domain Analysis
   11. SEO/Online Discoverability
   12. Competitor Analysis
-  13. Recommendations
+  13. Market Research
+  14. Strategic Recommendations
 
   For each section, provide a brief description of what readers will find in that section.
   
   Return your response in this JSON format:
   {
+    "introduction": "Optional introduction to the table of contents",
     "sections": [
       {
         "title": "Section Title",
