@@ -1,33 +1,15 @@
 _type: prompt
-input_variables: ["run_id", "semantic_analysis", "format_instructions"]
+input_variables: ["run_id", "semantic_analysis", "format_instructions", "brand_names", "brand_names_instruction"]
 template: |
   Your task is to create a well-structured semantic analysis section for a brand naming report based on the provided data.
 
   Run ID: {{run_id}}
-  Semantic Analysis Data: {{semantic_analysis}}
+  Brand Names: {{brand_names}}
+  
+  IMPORTANT INSTRUCTION ABOUT BRAND NAMES:
+  {{brand_names_instruction}}
+  
   Format Instructions: {{format_instructions}}
-
-  DATA STRUCTURE:
-  The data follows this structure based on the SemanticAnalysis model:
-  {
-    "semantic_analysis": {
-      "BrandName1": {
-        "etymology": "Etymology of the brand name",
-        "sound_symbolism": "Sound symbolism associated with the brand name",
-        "brand_personality": "Personality traits associated with the brand name",
-        "emotional_valence": "Emotional valence of the brand name",
-        "denotative_meaning": "Denotative meaning of the brand name",
-        "figurative_language": "Figurative language associated with the brand name",
-        "phoneme_combinations": "Phoneme combinations in the brand name",
-        "sensory_associations": "Sensory associations with the brand name",
-        "word_length_syllables": 3, // Number of syllables in the brand name
-        "alliteration_assonance": true, // Whether the brand name uses alliteration or assonance
-        "compounding_derivation": "Compounding or derivation of the brand name",
-        "semantic_trademark_risk": "Trademark risk associated with the brand name"
-      },
-      "BrandName2": { ... }
-    }
-  }
 
   Please format the semantic analysis information into a coherent and professional section that:
 
@@ -73,4 +55,8 @@ template: |
     "comparative_insights": "Comparative analysis across all brand names",
     "summary": "Summary of key semantic insights"
   }
-  ``` 
+  ```
+
+  Semantic Analysis Data:
+  {{semantic_analysis}}
+  

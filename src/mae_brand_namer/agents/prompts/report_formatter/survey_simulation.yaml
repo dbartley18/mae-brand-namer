@@ -74,7 +74,7 @@ template: |
     }
   }
 
-  # IMPORTANT: This survey_data contains extremely rich information about each persona who responded to the survey. Make sure to include as much of this data as possible in your analysis.
+  # IMPORTANT: This survey_simulation data contains extremely rich information about each persona who responded to the survey. Make sure to include as much of this data as possible in your analysis.
 
   Please analyze the simulated survey data to provide comprehensive insights on how each brand name would be received by the target audience. Your analysis should include:
 

@@ -169,3 +169,11 @@ output/formatted_prompts_mae_20250314_150319_d30ba0e7.json
 output/llm_results_mae_20250314_150319_d30ba0e7.json
 output/brand_naming_report_mae_20250314_150319_d30ba0e7_20250314_124713.docx
 output/raw_data_mae_20250314_150319_d30ba0e7.json
+tmp/~$port_mae_20250315_170409_d118ff8d.docx
+tmp/report_mae_20250315_170409_d118ff8d.docx
+docs/semantic_analysis.md
+docs/zzbrand_name_creation_expert.py
+docs/flake8_output.txt
+docs/indentation_fix.txt
+debug_report_formatter.py
+semantic_analysis_debug_mae_20250315_170409_d118ff8d.docx
