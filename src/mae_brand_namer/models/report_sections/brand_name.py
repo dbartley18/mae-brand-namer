@@ -16,8 +16,11 @@ class BrandName(BaseModel):
     target_audience_relevance_details: str = Field(..., description="How relevant the name is to the target audience")
     market_differentiation_details: str = Field(..., description="How the name differentiates from competitors")
     
-    # Optional fields
+    # Optional fields that appear in some entries
     rationale: Optional[str] = Field(None, description="Rationale for the name")
+    evaluation_metrics: Optional[dict] = Field(None, description="Additional evaluation metrics for the name")
+    trademark_status: Optional[str] = Field(None, description="Status of trademark availability")
+    cultural_considerations: Optional[str] = Field(None, description="Cultural considerations and implications")
     
     class Config:
         # Allow extra fields we don't explicitly model

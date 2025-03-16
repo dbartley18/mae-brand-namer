@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Dict
 
 class MarketResearchDetails(BaseModel):
+    brand_name: str = Field(..., description="The brand name being analyzed")
     market_size: str = Field(..., description="Size of the market")
     industry_name: str = Field(..., description="Name of the industry")
     emerging_trends: str = Field(..., description="Emerging trends in the market")
@@ -17,4 +18,4 @@ class MarketResearchDetails(BaseModel):
     market_entry_barriers: str = Field(..., description="Barriers to entering the market")
 
 class MarketResearch(BaseModel):
-    market_research: Dict[str, MarketResearchDetails] = Field(..., description="Market research details for various brands") 
+    market_research: Dict[str, MarketResearchDetails] = Field(..., description="Market research details for various brands, keyed by brand name") 

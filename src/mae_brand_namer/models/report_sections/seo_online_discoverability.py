@@ -5,6 +5,7 @@ class SEORecommendations(BaseModel):
     recommendations: List[str] = Field(..., description="List of SEO recommendations")
 
 class SEOOnlineDiscoverabilityDetails(BaseModel):
+    brand_name: str = Field(..., description="The brand name being analyzed")
     search_volume: int = Field(..., description="Search volume for the brand name")
     keyword_alignment: str = Field(..., description="Alignment of the brand name with industry keywords")
     keyword_competition: str = Field(..., description="Level of competition for the brand name keywords")
@@ -23,4 +24,4 @@ class SEOOnlineDiscoverabilityDetails(BaseModel):
     content_marketing_opportunities: str = Field(..., description="Opportunities for content marketing")
 
 class SEOOnlineDiscoverability(BaseModel):
-    seo_online_discoverability: Dict[str, SEOOnlineDiscoverabilityDetails] = Field(..., description="SEO online discoverability analysis for various brand names") 
+    seo_online_discoverability: List[SEOOnlineDiscoverabilityDetails] = Field(..., description="SEO online discoverability analysis for various brand names") 

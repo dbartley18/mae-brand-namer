@@ -104,7 +104,6 @@ template: |
   
   CORE IDENTITY FIELDS (MANDATORY - ULTRA-DETAILED):
   - company_name: Name of a real company (e.g., 'Deloitte', 'Microsoft', 'Salesforce') - REQUIRED
-  - persona_id: "{persona_id}"
   - persona_segment: A detailed, specific segment description (minimum 7-10 words)
   - emotional_association: Detailed emotional response to the brand name (minimum 5-6 specific emotions with explanation)
   - psychometric_sentiment_mapping: JSON object mapping AT LEAST 7-8 emotional dimensions to scores with explanations

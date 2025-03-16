@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Dict
 
 class DomainDetails(BaseModel):
+    brand_name: str = Field(..., description="The brand name being analyzed")
     notes: str = Field(..., description="Notes on the domain availability and strategy")
     acquisition_cost: str = Field(..., description="Cost associated with acquiring the domain")
     alternative_tlds: List[str] = Field(..., description="List of alternative top-level domains")

@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Dict
 
 class LanguageAnalysis(BaseModel):
+    brand_name: str = Field(..., description="The brand name being analyzed")
     notes: str = Field(..., description="Notes on the translation and cultural considerations")
     semantic_shift: str = Field(..., description="Description of any semantic shift in translation")
     target_language: str = Field(..., description="The target language for translation")

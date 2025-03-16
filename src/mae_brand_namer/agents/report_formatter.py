@@ -655,21 +655,37 @@ class ReportFormatter:
         if not data:
             return {}
         try:
-            brand_context_data = BrandContext.model_validate(data)
-            return brand_context_data.model_dump()
+            # Check if data has nested 'brand_context' key and extract it if so
+            brand_context_data = data.get('brand_context', data)
+            
+            # Log what we're trying to validate
+            logger.debug(f"Validating brand context: {str(brand_context_data)[:200]}...")
+            
+            # Validate against the model
+            brand_context_model = BrandContext.model_validate(brand_context_data)
+            return brand_context_model.model_dump()
         except ValidationError as e:
             logger.error(f"Validation error for brand context data: {str(e)}")
-            return {}
+            # Return the original data as fallback
+            return data.get('brand_context', data)
 
     def _transform_name_generation(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if not data:
             return {}
         try:
-            name_generation_data = NameGenerationSection.model_validate(data)
-            return name_generation_data.model_dump()
+            # Check if data has nested 'brand_name_generation' key and extract it if so
+            name_generation_data = data.get('brand_name_generation', data)
+            
+            # Log what we're trying to validate
+            logger.debug(f"Validating brand name generation: {str(name_generation_data)[:200]}...")
+            
+            # Validate against the model
+            name_generation_model = NameGenerationSection.model_validate(name_generation_data)
+            return name_generation_model.model_dump()
         except ValidationError as e:
             logger.error(f"Validation error for name generation data: {str(e)}")
-            return {}
+            # Return the original data as fallback
+            return data.get('brand_name_generation', data)
 
     def _transform_semantic_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -679,40 +695,48 @@ class ReportFormatter:
         1. Under a "semantic_analysis" key in the top-level data
         2. As a dictionary of brand names with semantic analysis details
         3. As a nested structure under semantic_analysis.semantic_analysis
-        4. As a dictionary with brand names as keys and semantic details as values
         """
         if not data:
             return {}
         try:
             # First check for semantic_analysis key
-            semantic_data = data.get("semantic_analysis", {})
+            semantic_data = data.get("semantic_analysis", data)
+            
+            # Log what we're trying to validate
+            logger.debug(f"Validating semantic analysis data: {str(semantic_data)[:200]}...")
             
             # If semantic_data exists but is nested one level deeper
             if isinstance(semantic_data, dict) and "semantic_analysis" in semantic_data:
                 semantic_data = semantic_data["semantic_analysis"]
-            
-            # If not found, check if data itself contains semantic analysis
-            if not semantic_data and isinstance(data, dict):
-                # Check for characteristic fields of semantic analysis data
-                semantic_fields = ["notes", "symbolic_meanings", "historical_meaning", "overall_risk_rating"]
-                semantic_fields_alt = ["denotative_meaning", "etymology", "brand_personality", "emotional_valence"]
                 
-                # Check if any value in the dictionary has semantic analysis fields
-                for v in data.values():
-                    if isinstance(v, dict):
-                        if any(field in v for field in semantic_fields) or any(field in v for field in semantic_fields_alt):
-                            semantic_data = data
-                            break
-            
             # Create the expected structure
             semantic_analysis = {"semantic_analysis": semantic_data}
             
             # Validate against the model
             validated_data = SemanticAnalysis.model_validate(semantic_analysis)
-            return validated_data.model_dump()
+            
+            # Transform the data for the template format
+            template_data = {
+                "brand_analyses": []
+            }
+            
+            # Convert dictionary of brand details to a list of brand analyses
+            for brand_name, details in validated_data.semantic_analysis.items():
+                # Make sure brand_name is included in the details
+                brand_analysis = details.model_dump()
+                # Ensure brand_name is present
+                if "brand_name" not in brand_analysis:
+                    brand_analysis["brand_name"] = brand_name
+                    
+                template_data["brand_analyses"].append(brand_analysis)
+                
+            logger.info(f"Successfully transformed semantic analysis data with {len(template_data['brand_analyses'])} brand analyses")
+            return template_data
+            
         except ValidationError as e:
             logger.error(f"Validation error for semantic analysis data: {str(e)}")
-            return {}
+            # Return the original data as fallback
+            return data.get('semantic_analysis', data)
 
     def _transform_linguistic_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if not data:
@@ -2466,12 +2490,18 @@ class ReportFormatter:
             # Format with LLM if available
             if self.llm:
                 try:
-                    # Format data for the prompt
+                    # Extract brand context data if it's nested under 'brand_context' key
+                    brand_context_data = data.get('brand_context', data)
+                    
+                    # Format data for the prompt - use the extracted brand context data
                     format_data = {
                         "run_id": self.current_run_id,
-                        "brand_context": json.dumps(data, indent=2) if isinstance(data, dict) else str(data),
+                        "brand_context": json.dumps(brand_context_data, indent=2) if isinstance(brand_context_data, dict) else str(brand_context_data),
                         "format_instructions": self._get_format_instructions("brand_context")
                     }
+                    
+                    # Log the data being sent to the template
+                    logger.debug(f"Brand context data for template: {format_data['brand_context'][:200]}...")
                     
                     # Create prompt
                     prompt_content = self._format_template("brand_context", format_data, "brand_context")
@@ -2583,10 +2613,14 @@ class ReportFormatter:
             # Add section title
             doc.add_heading("Brand Name Generation", level=1)
             
+            # Extract name generation data if it's nested
+            name_generation_raw_data = data.get('brand_name_generation', data)
+            logger.debug(f"Raw name generation data: {str(name_generation_raw_data)[:200]}...")
+            
             # Parse the data using the Pydantic model
             try:
                 # Use the from_raw_json method which is designed to handle various JSON structures
-                name_generation_data = NameGenerationSection.from_raw_json(data)
+                name_generation_data = NameGenerationSection.from_raw_json(name_generation_raw_data)
                 logger.info("Successfully created name generation data using Pydantic model")
                 
                 # Format with LLM if available
@@ -2598,6 +2632,9 @@ class ReportFormatter:
                             "brand_name_generation": json.dumps(name_generation_data.model_dump(), indent=2),
                             "format_instructions": self._get_format_instructions("brand_name_generation")
                         }
+                        
+                        # Log the data being sent to the template
+                        logger.debug(f"Brand name generation data for template: {format_data['brand_name_generation'][:200]}...")
                         
                         # Create prompt
                         prompt_content = self._format_template("brand_name_generation", format_data, "brand_name_generation")
@@ -3061,155 +3098,101 @@ class ReportFormatter:
         logger.info("Adding table of contents")
         
         try:
-            from ..models.report_sections import TableOfContentsSection
+            # Add the TOC heading
+            doc.add_heading("Table of Contents", level=1)
             
-            # Create format data for the template
-            format_data = {
-                "run_id": self.current_run_id,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "format_instructions": self._get_format_instructions("table of contents")
-            }
+            # Define the hardcoded TOC sections with descriptions
+            toc_sections = [
+                {
+                    "title": "1. Executive Summary",
+                    "description": "Project overview, key findings, and top recommendations."
+                },
+                {
+                    "title": "2. Brand Context",
+                    "description": "Brand identity, values, target audience, market positioning, and industry context."
+                },
+                {
+                    "title": "3. Name Generation",
+                    "description": "Methodology, generated names overview, and initial evaluation metrics."
+                },
+                {
+                    "title": "4. Linguistic Analysis",
+                    "description": "Pronunciation, euphony, rhythm, sound symbolism, and overall readability."
+                },
+                {
+                    "title": "5. Semantic Analysis",
+                    "description": "Meaning, etymology, emotional valence, and brand personality fit."
+                },
+                {
+                    "title": "6. Cultural Sensitivity",
+                    "description": "Cultural connotations, symbolic meanings, sensitivities, and risk assessment."
+                },
+                {
+                    "title": "7. Translation Analysis",
+                    "description": "Translations, semantic shifts, pronunciation, and global consistency."
+                },
+                {
+                    "title": "8. Name Evaluation",
+                    "description": "Strategic alignment, distinctiveness, memorability, and shortlisted names."
+                },
+                {
+                    "title": "9. Domain Analysis",
+                    "description": "Domain availability, alternative TLDs, social media availability, and SEO potential."
+                },
+                {
+                    "title": "10. SEO/Online Discoverability",
+                    "description": "Keyword alignment, search volume potential, and content opportunities."
+                },
+                {
+                    "title": "11. Competitor Analysis",
+                    "description": "Competitor naming styles, market positioning, and differentiation opportunities."
+                },
+                {
+                    "title": "12. Market Research",
+                    "description": "Market opportunity, target audience fit, viability, and industry insights."
+                },
+                {
+                    "title": "13. Survey Simulation",
+                    "description": "Persona demographics, brand perception, emotional associations, and feedback."
+                },
+                {
+                    "title": "14. Strategic Recommendations",
+                    "description": "Final name recommendations, implementation strategy, and next steps."
+                }
+            ]
             
-            # Add TOC data with section information
-            sections_info = []
-            for section_name in self.SECTION_ORDER:
-                display_name = self.SECTION_MAPPING.get(section_name, section_name.replace("_", " ").title())
-                sections_info.append(display_name)
+            # Add each section to the document
+            for section in toc_sections:
+                # Add section title and description
+                p = doc.add_paragraph()
+                p.add_run(section["title"]).bold = True
+                p.add_run(": " + section["description"])
+                p.add_run().add_break()  # Add line break after each section
             
-            # Format the toc_data with the sections
-            toc_data = "Sections in this report:\n- " + "\n- ".join(sections_info)
-            format_data["toc_data"] = toc_data
+            # Add a page break after section descriptions
+            doc.add_page_break()
             
-            # Format the template
-            formatted_template = self._format_template("table_of_contents", format_data, "Table of Contents")
+            # Add the actual table of contents field (Word will populate this)
+            doc.add_heading("Document Outline", level=1)
+            paragraph = doc.add_paragraph()
+            run = paragraph.add_run()
+            fld_char = OxmlElement('w:fldChar')
+            fld_char.set(qn('w:fldCharType'), 'begin')
             
-            # Get system content
-            system_content = self._get_system_content("You are a professional report formatter creating a table of contents.")
+            instr_text = OxmlElement('w:instrText')
+            instr_text.set(qn('xml:space'), 'preserve')
+            instr_text.text = 'TOC \\o "1-3" \\h \\z \\u'
             
-            # Get TOC information from LLM
-            try:
-                toc_content = await self._safe_llm_invoke([
-                    SystemMessage(content=system_content),
-                    HumanMessage(content=formatted_template)
-                ], section_name="Table of Contents")
-                
-                # Add a heading for the TOC
-                doc.add_heading("Table of Contents", level=1)
-                
-                # Try to parse the response using the Pydantic model
-                parsed_toc = None
-                
-                if hasattr(toc_content, 'content') and toc_content.content:
-                    try:
-                        # Try to parse as JSON
-                        content_str = toc_content.content
-                        
-                        # Extract JSON from code blocks if present
-                        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content_str)
-                        if json_match:
-                            content_str = json_match.group(1)
-                        
-                        # Parse the JSON content
-                        json_content = json.loads(content_str)
-                        parsed_toc = TableOfContentsSection.model_validate(json_content)
-                        logger.info("Successfully parsed table of contents with Pydantic model")
-                    
-                    except Exception as e:
-                        logger.debug(f"Failed to parse TOC response as TableOfContentsSection: {str(e)}")
-                
-                # If we successfully parsed the TOC data, use it for formatting
-                if parsed_toc is not None:
-                    # Add introduction if available
-                    if parsed_toc.introduction:
-                        doc.add_paragraph(parsed_toc.introduction)
-                    
-                    # Format and add each section
-                    for section in parsed_toc.sections:
-                        # Add section title and description
-                        p = doc.add_paragraph()
-                        p.add_run(section.title).bold = True
-                        p.add_run(": " + section.description)
-                        p.add_run().add_break()  # Add line break after each section
-                
-                else:
-                    # Fallback to previous approach if Pydantic parsing failed
-                    logger.warning("Could not parse TOC with Pydantic model, using fallback formatting")
-                    
-                    if hasattr(toc_content, 'content') and toc_content.content:
-                        try:
-                            # Try to parse as JSON if formatted that way
-                            content = json.loads(toc_content.content)
-                            
-                            # Check if we have the sections array as expected
-                            if "sections" in content and isinstance(content["sections"], list):
-                                # Format and add each section description
-                                for section in content["sections"]:
-                                    if "title" in section and "description" in section:
-                                        # Add the section title and description as formatted text
-                                        p = doc.add_paragraph()
-                                        p.add_run(section["title"]).bold = True
-                                        p.add_run(": " + section["description"])
-                                        p.add_run().add_break()  # Add a line break between sections
-                            elif "introduction" in content:
-                                # Fallback for older format
-                                doc.add_paragraph(content["introduction"])
-                            else:
-                                # No recognized structure, add the raw JSON
-                                doc.add_paragraph("Section information could not be properly formatted.")
-                                logger.warning("LLM response doesn't contain expected 'sections' array structure.")
-                        except json.JSONDecodeError:
-                            # Not valid JSON, use the raw content
-                            doc.add_paragraph(toc_content.content)
-                            logger.warning("LLM response isn't valid JSON: " + str(toc_content.content[:100]) + "...")
-                
-                # Add a page break after section descriptions
-                doc.add_page_break()
-                
-                # Add the actual table of contents field (Word will populate this)
-                doc.add_heading("Document Outline", level=1)
-                paragraph = doc.add_paragraph()
-                run = paragraph.add_run()
-                fld_char = OxmlElement('w:fldChar')
-                fld_char.set(qn('w:fldCharType'), 'begin')
-                
-                instr_text = OxmlElement('w:instrText')
-                instr_text.set(qn('xml:space'), 'preserve')
-                instr_text.text = 'TOC \\o "1-3" \\h \\z \\u'
-                
-                fld_char_end = OxmlElement('w:fldChar')
-                fld_char_end.set(qn('w:fldCharType'), 'end')
-                
-                r_element = run._r
-                r_element.append(fld_char)
-                r_element.append(instr_text)
-                r_element.append(fld_char_end)
-                
-                # Add a page break after TOC
-                doc.add_page_break()
-                
-            except Exception as e:
-                logger.error(f"Error getting TOC descriptions from LLM: {str(e)}")
-                # Fallback: Add just the basic TOC field without descriptions
-                doc.add_heading("Table of Contents", level=1)
-                paragraph = doc.add_paragraph()
-                run = paragraph.add_run()
-                fld_char = OxmlElement('w:fldChar')
-                fld_char.set(qn('w:fldCharType'), 'begin')
-                
-                instr_text = OxmlElement('w:instrText')
-                instr_text.set(qn('xml:space'), 'preserve')
-                instr_text.text = 'TOC \\o "1-3" \\h \\z \\u'
-                
-                fld_char_end = OxmlElement('w:fldChar')
-                fld_char_end.set(qn('w:fldCharType'), 'end')
-                
-                r_element = run._r
-                r_element.append(fld_char)
-                r_element.append(instr_text)
-                r_element.append(fld_char_end)
-                
-                # Add a page break after TOC
-                doc.add_page_break()
+            fld_char_end = OxmlElement('w:fldChar')
+            fld_char_end.set(qn('w:fldCharType'), 'end')
+            
+            r_element = run._r
+            r_element.append(fld_char)
+            r_element.append(instr_text)
+            r_element.append(fld_char_end)
+            
+            # Add a page break after TOC
+            doc.add_page_break()
                 
         except Exception as e:
             logger.error(f"Error adding table of contents: {str(e)}")
@@ -4069,18 +4052,23 @@ class ReportFormatter:
             # Format with LLM if available
             if self.llm:
                 try:
-                    # Extract semantic analysis data
-                    semantic_data = data.get("semantic_analysis", {})
+                    # Transform data for template
+                    transformed_data = self._transform_semantic_analysis(data)
                     
-                    # Extract brand names from the semantic analysis data
-                    brand_names = list(semantic_data.keys()) if isinstance(semantic_data, dict) else []
+                    # Extract brand names for the prompt
+                    brand_names = []
+                    if "brand_analyses" in transformed_data and isinstance(transformed_data["brand_analyses"], list):
+                        brand_names = [brand["brand_name"] for brand in transformed_data["brand_analyses"] if "brand_name" in brand]
+                    
+                    # Log the transformed data
+                    logger.debug(f"Semantic analysis data for template: {str(transformed_data)[:200]}...")
                     
                     # Format data for the prompt
                     format_data = {
                         "run_id": self.current_run_id,
-                        "semantic_analysis": json.dumps(semantic_data, indent=2) if isinstance(semantic_data, dict) else str(semantic_data),
+                        "semantic_analysis": json.dumps(transformed_data, indent=2),
                         "format_instructions": self._get_format_instructions("semantic_analysis"),
-                        "brand_names": brand_names,
+                        "brand_names": json.dumps(brand_names),
                         "brand_names_instruction": "Please analyze the semantic properties of these brand names."
                     }
                     
@@ -4760,39 +4748,16 @@ class ReportFormatter:
                 "user_prompt": user_prompt
             }
             
-            # Format the template
-            formatted_prompt = self._format_template("title_page", format_data, "Title Page")
-            
-            # Get system content
-            system_content = self._get_system_content("You are an expert report formatter creating a professional title page.")
-            
-            # Call LLM to generate title page content
-            response = await self._safe_llm_invoke([
-                SystemMessage(content=system_content),
-                HumanMessage(content=formatted_prompt)
-            ], section_name="Title Page")
-            
-            # Try to parse the response
-            title_data = {}
-            try:
-                content_str = response.content
-                # Extract JSON if in code blocks
-                json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content_str)
-                if json_match:
-                    content_str = json_match.group(1)
-                title_data = json.loads(content_str)
-            except Exception as e:
-                logger.error(f"Error parsing title page response: {str(e)}")
-                title_data = {
-                    "title": "Brand Naming Report",
-                    "subtitle": "Generated by Mae Brand Naming Expert"
-                }
+            # No need to call the LLM for standard title and subtitle
+            # Use the exact formats from notesforformatter.md
+            title = "Brand Naming Report"
+            subtitle = "Generated by Mae Brand Naming Expert"
             
             # Create the title page
             # Set title with large font and center alignment
             title_para = doc.add_paragraph()
             title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            title_run = title_para.add_run(title_data.get("title", "Brand Naming Report"))
+            title_run = title_para.add_run(title)
             title_run.font.size = Pt(24)
             title_run.font.bold = True
             title_para.space_after = Pt(12)
@@ -4800,7 +4765,7 @@ class ReportFormatter:
             # Add subtitle
             subtitle_para = doc.add_paragraph()
             subtitle_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            subtitle_run = subtitle_para.add_run(title_data.get("subtitle", "Generated by Mae Brand Naming Expert"))
+            subtitle_run = subtitle_para.add_run(subtitle)
             subtitle_run.font.size = Pt(16)
             subtitle_run.italic = True
             subtitle_para.space_after = Pt(36)

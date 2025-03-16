@@ -1,8 +1,10 @@
 from pydantic import BaseModel, Field
+from typing import Dict
 
-class LinguisticAnalysis(BaseModel):
+class LinguisticAnalysisDetails(BaseModel):
     """Model for the linguistic analysis of a brand name."""
     
+    brand_name: str = Field(..., description="The brand name being analyzed")
     notes: str = Field(..., description="Notes on the linguistic aspects of the brand name")
     word_class: str = Field(..., description="Word class of the brand name")
     sound_symbolism: str = Field(..., description="Sound symbolism associated with the brand name")
@@ -16,4 +18,8 @@ class LinguisticAnalysis(BaseModel):
     naturalness_in_collocations: str = Field(..., description="Naturalness of the brand name in collocations")
     ease_of_marketing_integration: str = Field(..., description="Ease of marketing integration for the brand name")
     phoneme_frequency_distribution: str = Field(..., description="Phoneme frequency distribution in the brand name")
-    semantic_distance_from_competitors: str = Field(..., description="Semantic distance from competitors for the brand name") 
+    semantic_distance_from_competitors: str = Field(..., description="Semantic distance from competitors for the brand name")
+
+class LinguisticAnalysis(BaseModel):
+    """Model for linguistic analysis section containing multiple brand analyses."""
+    linguistic_analysis: Dict[str, LinguisticAnalysisDetails] = Field(..., description="Linguistic analysis for various brands") 

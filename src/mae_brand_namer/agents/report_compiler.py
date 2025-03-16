@@ -438,7 +438,7 @@ class ReportCompiler:
                     "survey_simulation",
                     {
                         "run_id": run_id,
-                        "select": "brand_name,brand_promise_perception_score,personality_fit_score,emotional_association,competitive_differentiation_score,competitor_benchmarking_score,simulated_market_adoption_score,qualitative_feedback_summary,raw_qualitative_feedback,final_survey_recommendation"
+                        "select": "brand_name,brand_promise_perception_score,personality_fit_score,emotional_association,competitive_differentiation_score,competitor_benchmarking_score,simulated_market_adoption_score,qualitative_feedback_summary,raw_qualitative_feedback,final_survey_recommendation,industry,company_size_employees,company_revenue,job_title,seniority,years_of_experience,department,education_level,decision_making_style,information_sources,pain_points,attitude_towards_risk,purchasing_behavior,online_behavior,interaction_with_brand,professional_associations,influence_within_company,content_consumption_habits,vendor_relationship_preferences,reports_to,buying_group_structure,decision_maker,budget_authority,social_media_usage,frustrations_annoyances,motivations,current_brand_relationships,success_metrics_product_service,channel_preferences_brand_interaction,generation_age_range,persona_archetype_type,company_name"
                     }
                 )
                 

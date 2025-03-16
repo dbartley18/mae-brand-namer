@@ -107,6 +107,7 @@ template: |
 
   Your output must include all the following fields required by the survey_simulation database:
   - brand_name: The name being evaluated
+  - company_name: The name of the company the persona represents (REQUIRED)
   - persona_segment: String describing the target audience segment analyzed (NOT an array)
   - brand_promise_perception_score: How well the name conveys brand promise (0-10 scale)
   - personality_fit_score: Alignment with brand personality (0-10 scale)

@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Dict
 
 class BrandAnalysis(BaseModel):
+    brand_name: str = Field(..., description="The brand name being analyzed")
     notes: str = Field(..., description="General notes on the brand name's cultural sensitivity")
     symbolic_meanings: str = Field(..., description="Symbolic meanings associated with the brand name")
     historical_meaning: str = Field(..., description="Historical meanings and associations of the brand name")
