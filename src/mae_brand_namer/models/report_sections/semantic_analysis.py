@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Dict
 
-class SemanticAnalysis(BaseModel):
+class SemanticAnalysisDetails(BaseModel):
     """Model for the semantic analysis of a brand name."""
     
     etymology: str = Field(..., description="Etymology of the brand name")
@@ -15,4 +15,8 @@ class SemanticAnalysis(BaseModel):
     word_length_syllables: Optional[int] = Field(None, description="Number of syllables in the brand name")
     alliteration_assonance: Optional[bool] = Field(None, description="Whether the brand name uses alliteration or assonance")
     compounding_derivation: Optional[str] = Field(None, description="Compounding or derivation of the brand name")
-    semantic_trademark_risk: str = Field(..., description="Trademark risk associated with the brand name") 
+    semantic_trademark_risk: str = Field(..., description="Trademark risk associated with the brand name")
+
+class SemanticAnalysis(BaseModel):
+    """Model for semantic analysis section containing multiple brand analyses."""
+    semantic_analysis: Dict[str, SemanticAnalysisDetails] = Field(..., description="Semantic analysis for various brands") 

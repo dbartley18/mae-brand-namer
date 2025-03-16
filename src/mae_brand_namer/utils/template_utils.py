@@ -4,6 +4,7 @@ import os
 import yaml
 import re
 import logging
+import json
 from typing import Dict, Any, Optional, Union
 
 logger = logging.getLogger(__name__)
@@ -43,19 +44,58 @@ def process_template(template: Union[Dict[str, Any], str], variables: Dict[str, 
         else:
             template_str = str(template)
         
-        # Find all variables in the template using regex
-        var_pattern = r'\{\{\s*([a-zA-Z0-9_]+)\s*\}\}'
-        matches = re.findall(var_pattern, template_str)
+        # Log available variables for debugging
+        logger.debug(f"Available variables for template substitution: {list(variables.keys())}")
+        
+        # Find all variables in the template using regex (handles both single and double curly braces)
+        # First, check for double curly braces format ({{var_name}})
+        double_var_pattern = r'\{\{\s*([a-zA-Z0-9_]+)\s*\}\}'
+        double_matches = re.findall(double_var_pattern, template_str)
+        
+        # Also check for single curly braces format ({var_name})
+        single_var_pattern = r'\{([a-zA-Z0-9_]+)\}'
+        single_matches = re.findall(single_var_pattern, template_str)
+        
+        # Combine both matches (removing duplicates)
+        all_matches = list(set(double_matches + single_matches))
+        
+        logger.debug(f"Found template variables to substitute: {all_matches}")
+        
+        # Keep track of variables that failed to substitute
+        failed_vars = []
         
         # Replace each variable with its value
-        for var_name in matches:
+        for var_name in all_matches:
             if var_name in variables:
-                # Replace {{var_name}} with the actual value
-                var_pattern = r'\{\{\s*' + var_name + r'\s*\}\}'
-                var_value = str(variables[var_name]).replace('\\', '\\\\').replace('"', '\\"')
-                template_str = re.sub(var_pattern, var_value, template_str)
+                # Get the variable value
+                var_value = variables[var_name]
+                
+                # Handle different variable types appropriately
+                if isinstance(var_value, (list, dict)):
+                    # Use JSON serialization for lists and dicts to properly format them
+                    var_value = json.dumps(var_value)
+                else:
+                    var_value = str(var_value)
+                
+                # Escape backslashes and quotes to avoid issues in the template
+                var_value = var_value.replace('\\', '\\\\').replace('"', '\\"')
+                
+                # Replace {{var_name}} with the actual value (double braces format)
+                double_var_pattern = r'\{\{\s*' + var_name + r'\s*\}\}'
+                template_str = re.sub(double_var_pattern, var_value, template_str)
+                
+                # Replace {var_name} with the actual value (single braces format)
+                single_var_pattern = r'\{' + var_name + r'\}'
+                template_str = re.sub(single_var_pattern, var_value, template_str)
+                
+                logger.debug(f"Substituted variable '{var_name}' in template")
             else:
-                logger.warning(f"Variable {var_name} not found in provided variables")
+                failed_vars.append(var_name)
+                logger.warning(f"Variable '{var_name}' not found in provided variables")
+        
+        # Log variables that failed to substitute
+        if failed_vars:
+            logger.error(f"Variables not substituted: {failed_vars}")
         
         # Convert back to dictionary
         return yaml.safe_load(template_str)

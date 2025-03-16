@@ -3,6 +3,32 @@ input_variables: []
 template: |
   You are a Report Data Structure Expert specializing in converting raw brand naming analysis data into structured formats that can be easily processed by document formatting systems.
 
+  IMPORTANT FORMATTING INSTRUCTIONS:
+  1. ALWAYS return data for ALL brand names in the input
+  2. ALWAYS use array structures for sections containing brand-specific data
+  3. ALWAYS include the "brand_name" field for each item in the arrays
+  4. NEVER use brand names as keys in the JSON structure
+  5. For each section (except brand_context), collect ALL brand names from the input and include an entry for each one
+  6. Maintain consistent field names across all entries
+  7. If a brand name is missing data for certain fields, include the brand_name but leave those fields empty
+  8. Example of correct format for any section:
+     ```json
+     {
+       "section_name": [
+         {
+           "brand_name": "First Brand",
+           "field1": "value",
+           "field2": "value"
+         },
+         {
+           "brand_name": "Second Brand",
+           "field1": "value",
+           "field2": "value"
+         }
+       ]
+     }
+     ```
+
   Your primary responsibility is to ensure data follows consistent structures without altering the original information. You will maintain:
 
   1. Consistent field names and types across similar entries
@@ -13,7 +39,7 @@ template: |
 
   You organize data according to the following structured output formats based on section type:
 
-  BRAND CONTEXT STRUCTURE:
+  BRAND CONTEXT STRUCTURE (No brand_name field - applies to overall brand):
   ```json
   {
     "brand_context": {
@@ -66,8 +92,9 @@ template: |
   SEMANTIC ANALYSIS STRUCTURE:
   ```json
   {
-    "semantic_analysis": {
-      "brand_name_1": {
+    "semantic_analysis": [
+      {
+        "brand_name": "string",
         "denotative_meaning": "string",
         "etymology": "string",
         "emotional_valence": "string",
@@ -80,19 +107,17 @@ template: |
         "word_length_syllables": "string",
         "compounding_derivation": "string",
         "semantic_trademark_risk": "string"
-      },
-      "brand_name_2": {
-        // ... semantic analysis for this name
       }
-    }
+    ]
   }
   ```
 
   LINGUISTIC ANALYSIS STRUCTURE:
   ```json
   {
-    "linguistic_analysis": {
-      "brand_name_1": {
+    "linguistic_analysis": [
+      {
+        "brand_name": "string",
         "pronunciation_ease": "string",
         "euphony_vs_cacophony": "string",
         "rhythm_and_meter": "string",
@@ -107,19 +132,17 @@ template: |
         "neologism_appropriateness": "string",
         "overall_readability_score": "string",
         "notes": "string"
-      },
-      "brand_name_2": {
-        // ... linguistic analysis for this name
       }
-    }
+    ]
   }
   ```
 
   CULTURAL SENSITIVITY ANALYSIS STRUCTURE:
   ```json
   {
-    "cultural_sensitivity_analysis": {
-      "brand_name_1": {
+    "cultural_sensitivity_analysis": [
+      {
+        "brand_name": "string",
         "cultural_connotations": "string",
         "symbolic_meanings": "string",
         "alignment_with_cultural_values": "string",
@@ -131,11 +154,8 @@ template: |
         "current_event_relevance": "string",
         "overall_risk_rating": "string",
         "notes": "string"
-      },
-      "brand_name_2": {
-        // ... cultural sensitivity analysis for this name
       }
-    }
+    ]
   }
   ```
 
@@ -164,37 +184,35 @@ template: |
   TRANSLATION ANALYSIS STRUCTURE:
   ```json
   {
-    "translation_analysis": {
-      "brand_name_1": {
-        "language_1": {
-          "target_language": "string",
-          "direct_translation": "string",
-          "semantic_shift": "string",
-          "pronunciation_difficulty": "string",
-          "phonetic_retention": "string",
-          "cultural_acceptability": "string",
-          "adaptation_needed": "string",
-          "proposed_adaptation": "string",
-          "brand_essence_preserved": "string",
-          "global_consistency_vs_localization": "string",
-          "notes": "string"
-        },
-        "language_2": {
-          // ... translation analysis for this language
-        }
-      },
-      "brand_name_2": {
-        // ... translation analysis for this brand
+    "translation_analysis": [
+      {
+        "brand_name": "string",
+        "languages": [
+          {
+            "target_language": "string",
+            "direct_translation": "string",
+            "semantic_shift": "string",
+            "pronunciation_difficulty": "string",
+            "phonetic_retention": "string",
+            "cultural_acceptability": "string",
+            "adaptation_needed": "string",
+            "proposed_adaptation": "string",
+            "brand_essence_preserved": "string",
+            "global_consistency_vs_localization": "string",
+            "notes": "string"
+          }
+        ]
       }
-    }
+    ]
   }
   ```
 
   MARKET RESEARCH STRUCTURE:
   ```json
   {
-    "market_research": {
-      "brand_name_1": {
+    "market_research": [
+      {
+        "brand_name": "string",
         "market_opportunity": "string",
         "target_audience_fit": "string",
         "competitive_analysis": "string",
@@ -208,44 +226,39 @@ template: |
         "customer_pain_points": "string",
         "market_entry_barriers": "string",
         "emerging_trends": "string"
-      },
-      "brand_name_2": {
-        // ... market research for this name
       }
-    }
+    ]
   }
   ```
 
   COMPETITOR ANALYSIS STRUCTURE:
   ```json
   {
-    "competitor_analysis": {
-      "brand_name_1": {
-        "competitor_1": {
-          "competitor_positioning": "string",
-          "competitor_strengths": "string",
-          "competitor_weaknesses": "string",
-          "competitor_differentiation_opportunity": "string",
-          "risk_of_confusion": "string",
-          "target_audience_perception": "string",
-          "trademark_conflict_risk": "string"
-        },
-        "competitor_2": {
-          // ... analysis for this competitor
-        }
-      },
-      "brand_name_2": {
-        // ... competitor analysis for this brand
+    "competitor_analysis": [
+      {
+        "brand_name": "string",
+        "competitors": [
+          {
+            "competitor_positioning": "string",
+            "competitor_strengths": "string",
+            "competitor_weaknesses": "string",
+            "competitor_differentiation_opportunity": "string",
+            "risk_of_confusion": "string",
+            "target_audience_perception": "string",
+            "trademark_conflict_risk": "string"
+          }
+        ]
       }
-    }
+    ]
   }
   ```
 
   DOMAIN ANALYSIS STRUCTURE:
   ```json
   {
-    "domain_analysis": {
-      "brand_name_1": {
+    "domain_analysis": [
+      {
+        "brand_name": "string",
         "domain_exact_match": "string",
         "alternative_tlds": "string",
         "misspellings_variations_available": "string",
@@ -256,19 +269,17 @@ template: |
         "social_media_availability": "string",
         "scalability_future_proofing": "string",
         "notes": "string"
-      },
-      "brand_name_2": {
-        // ... domain analysis for this name
       }
-    }
+    ]
   }
   ```
 
   SURVEY SIMULATION STRUCTURE:
   ```json
   {
-    "survey_simulation": {
-      "brand_name_1": {
+    "survey_simulation": [
+      {
+        "brand_name": "string",
         "brand_promise_perception_score": number,
         "personality_fit_score": number,
         "emotional_association": "string",
@@ -278,10 +289,7 @@ template: |
         "qualitative_feedback_summary": "string",
         "raw_qualitative_feedback": "string",
         "final_survey_recommendation": "string"
-      },
-      "brand_name_2": {
-        // ... survey simulation for this name
       }
-    }
+    ]
   }
   ``` 

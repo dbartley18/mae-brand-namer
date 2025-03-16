@@ -239,13 +239,7 @@ class ReportCompiler:
                     logger.warning(f"No semantic analysis data found for run_id {run_id}")
                     return {}
                 
-                # Organize by brand name
-                by_brand = {}
-                for item in data:
-                    brand_name = item.pop("brand_name")
-                    by_brand[brand_name] = item
-                
-                return {"semantic_analysis": by_brand}
+                return {"semantic_analysis": data}
                 
             elif section_name == "linguistic_analysis":
                 # Fetch linguistic analysis data
@@ -262,13 +256,7 @@ class ReportCompiler:
                     logger.warning(f"No linguistic analysis data found for run_id {run_id}")
                     return {}
                 
-                # Organize by brand name
-                by_brand = {}
-                for item in data:
-                    brand_name = item.pop("brand_name")
-                    by_brand[brand_name] = item
-                
-                return {"linguistic_analysis": by_brand}
+                return {"linguistic_analysis": data}
                 
             elif section_name == "cultural_sensitivity_analysis":
                 # Fetch cultural sensitivity analysis data
@@ -285,16 +273,10 @@ class ReportCompiler:
                     logger.warning(f"No cultural sensitivity analysis data found for run_id {run_id}")
                     return {}
                 
-                # Organize by brand name
-                by_brand = {}
-                for item in data:
-                    brand_name = item.pop("brand_name")
-                    by_brand[brand_name] = item
-                
-                return {"cultural_sensitivity_analysis": by_brand}
+                return {"cultural_sensitivity_analysis": data}
                 
             elif section_name == "brand_name_evaluation":
-                # Fetch brand name evaluation data - ALL NAMES, not just shortlisted
+                # Fetch brand name evaluation data
                 data = await self.supabase.execute_with_retry(
                     "select",
                     "brand_name_evaluation",
@@ -309,13 +291,21 @@ class ReportCompiler:
                     logger.warning(f"No brand name evaluation data found for run_id {run_id}")
                     return {}
                 
-                # Organize by brand name
-                by_brand = {}
+                # Split into shortlisted and other names
+                shortlisted = []
+                other_names = []
                 for item in data:
-                    brand_name = item.pop("brand_name")
-                    by_brand[brand_name] = item
+                    if item.get("shortlist_status"):
+                        shortlisted.append(item)
+                    else:
+                        other_names.append(item)
                 
-                return {"brand_name_evaluation": by_brand}
+                return {
+                    "brand_name_evaluation": {
+                        "shortlisted_names": shortlisted,
+                        "other_names": other_names
+                    }
+                }
                 
             elif section_name == "translation_analysis":
                 # Fetch translation analysis data
@@ -332,17 +322,20 @@ class ReportCompiler:
                     logger.warning(f"No translation analysis data found for run_id {run_id}")
                     return {}
                 
-                # Organize by brand name, then by target language
+                # Group by brand name while preserving brand_name field
+                grouped_data = []
                 by_brand = {}
                 for item in data:
-                    brand_name = item.pop("brand_name")
+                    brand_name = item["brand_name"]
                     if brand_name not in by_brand:
-                        by_brand[brand_name] = {}
-                    
-                    target_language = item.get("target_language")
-                    by_brand[brand_name][target_language] = item
+                        by_brand[brand_name] = {
+                            "brand_name": brand_name,
+                            "languages": []
+                        }
+                    language_data = {k: v for k, v in item.items() if k != "brand_name"}
+                    by_brand[brand_name]["languages"].append(language_data)
                 
-                return {"translation_analysis": by_brand}
+                return {"translation_analysis": list(by_brand.values())}
                 
             elif section_name == "market_research":
                 # Fetch market research data
@@ -359,13 +352,7 @@ class ReportCompiler:
                     logger.warning(f"No market research data found for run_id {run_id}")
                     return {}
                 
-                # Organize by brand name
-                by_brand = {}
-                for item in data:
-                    brand_name = item.pop("brand_name")
-                    by_brand[brand_name] = item
-                
-                return {"market_research": by_brand}
+                return {"market_research": data}
                 
             elif section_name == "competitor_analysis":
                 # Fetch competitor analysis data
@@ -382,17 +369,20 @@ class ReportCompiler:
                     logger.warning(f"No competitor analysis data found for run_id {run_id}")
                     return {}
                 
-                # Organize by brand name, then by competitor name
+                # Group by brand name while preserving brand_name field
+                grouped_data = []
                 by_brand = {}
                 for item in data:
-                    brand_name = item.pop("brand_name")
+                    brand_name = item["brand_name"]
                     if brand_name not in by_brand:
-                        by_brand[brand_name] = {}
-                    
-                    competitor_name = item.pop("competitor_name")
-                    by_brand[brand_name][competitor_name] = item
+                        by_brand[brand_name] = {
+                            "brand_name": brand_name,
+                            "competitors": []
+                        }
+                    competitor_data = {k: v for k, v in item.items() if k not in ["brand_name"]}
+                    by_brand[brand_name]["competitors"].append(competitor_data)
                 
-                return {"competitor_analysis": by_brand}
+                return {"competitor_analysis": list(by_brand.values())}
                 
             elif section_name == "domain_analysis":
                 # Fetch domain analysis data
@@ -409,13 +399,7 @@ class ReportCompiler:
                     logger.warning(f"No domain analysis data found for run_id {run_id}")
                     return {}
                 
-                # Organize by brand name
-                by_brand = {}
-                for item in data:
-                    brand_name = item.pop("brand_name")
-                    by_brand[brand_name] = item
-                
-                return {"domain_analysis": by_brand}
+                return {"domain_analysis": data}
                 
             elif section_name == "survey_simulation":
                 # Fetch survey simulation data
@@ -424,7 +408,7 @@ class ReportCompiler:
                     "survey_simulation",
                     {
                         "run_id": run_id,
-                        "select": "brand_name,brand_promise_perception_score,personality_fit_score,emotional_association,competitive_differentiation_score,competitor_benchmarking_score,simulated_market_adoption_score,qualitative_feedback_summary,raw_qualitative_feedback,final_survey_recommendation,strategic_ranking,industry,company_size_employees,company_revenue,job_title,seniority,years_of_experience,department,education_level,goals_and_challenges,values_and_priorities,decision_making_style,information_sources,pain_points,purchasing_behavior,online_behavior,interaction_with_brand,influence_within_company,event_attendance,content_consumption_habits,vendor_relationship_preferences,business_chemistry,reports_to,buying_group_structure,budget_authority,social_media_usage,frustrations_annoyances,current_brand_relationships,success_metrics_product_service,channel_preferences_brand_interaction,barriers_to_adoption,generation_age_range,company_name"
+                        "select": "brand_name,brand_promise_perception_score,personality_fit_score,emotional_association,competitive_differentiation_score,competitor_benchmarking_score,simulated_market_adoption_score,qualitative_feedback_summary,raw_qualitative_feedback,final_survey_recommendation"
                     }
                 )
                 
@@ -432,13 +416,7 @@ class ReportCompiler:
                     logger.warning(f"No survey simulation data found for run_id {run_id}")
                     return {}
                 
-                # Organize by brand name
-                by_brand = {}
-                for item in data:
-                    brand_name = item.pop("brand_name")
-                    by_brand[brand_name] = item
-                
-                return {"survey_simulation": by_brand}
+                return {"survey_simulation": data}
                 
             elif section_name == "seo_online_discoverability":
                 # Fetch SEO online discoverability data
@@ -455,13 +433,7 @@ class ReportCompiler:
                     logger.warning(f"No SEO online discoverability data found for run_id {run_id}")
                     return {}
                 
-                # Organize by brand name
-                by_brand = {}
-                for item in data:
-                    brand_name = item.pop("brand_name")
-                    by_brand[brand_name] = item
-                
-                return {"seo_online_discoverability": by_brand}
+                return {"seo_online_discoverability": data}
             
             else:
                 raise ValueError(f"Unknown section: {section_name}")
@@ -604,21 +576,46 @@ Field Descriptions:
                 if not isinstance(names, list):
                     return False
                     
-        # For sections that should have brand names as keys
-        elif section_name in ["semantic_analysis", "linguistic_analysis", 
-                             "cultural_sensitivity_analysis", "brand_name_evaluation", 
-                             "market_research", "domain_analysis", "survey_simulation"]:
-            if not isinstance(data.get(section_name), dict):
+        # For brand_name_evaluation, check for shortlisted and other names arrays
+        elif section_name == "brand_name_evaluation":
+            eval_data = data.get(section_name)
+            if not isinstance(eval_data, dict):
+                return False
+            if "shortlisted_names" not in eval_data or "other_names" not in eval_data:
+                return False
+            if not isinstance(eval_data["shortlisted_names"], list) or not isinstance(eval_data["other_names"], list):
                 return False
                 
-        # For translation_analysis and competitor_analysis, check nested structure
+        # For translation_analysis and competitor_analysis, check nested array structure
         elif section_name in ["translation_analysis", "competitor_analysis"]:
-            if not isinstance(data.get(section_name), dict):
+            section_data = data.get(section_name)
+            if not isinstance(section_data, list):
                 return False
                 
-            # Check first level (brand names)
-            for brand_name, brand_data in data.get(section_name, {}).items():
-                if not isinstance(brand_data, dict):
+            # Check each brand entry has the correct structure
+            for brand_entry in section_data:
+                if not isinstance(brand_entry, dict):
+                    return False
+                if "brand_name" not in brand_entry:
+                    return False
+                    
+                # Check nested arrays
+                if section_name == "translation_analysis":
+                    if "languages" not in brand_entry or not isinstance(brand_entry["languages"], list):
+                        return False
+                elif section_name == "competitor_analysis":
+                    if "competitors" not in brand_entry or not isinstance(brand_entry["competitors"], list):
+                        return False
+                        
+        # For all other sections, check if it's an array of objects with brand_name field
+        else:
+            section_data = data.get(section_name)
+            if not isinstance(section_data, list):
+                return False
+                
+            # Check each entry has brand_name field
+            for entry in section_data:
+                if not isinstance(entry, dict) or "brand_name" not in entry:
                     return False
                     
         # Data passes all checks

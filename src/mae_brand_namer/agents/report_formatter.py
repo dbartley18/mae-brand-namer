@@ -672,11 +672,44 @@ class ReportFormatter:
             return {}
 
     def _transform_semantic_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform semantic analysis data to match expected model format.
+        
+        The semantic analysis data can be structured in several ways:
+        1. Under a "semantic_analysis" key in the top-level data
+        2. As a dictionary of brand names with semantic analysis details
+        3. As a nested structure under semantic_analysis.semantic_analysis
+        4. As a dictionary with brand names as keys and semantic details as values
+        """
         if not data:
             return {}
         try:
-            semantic_analysis_data = SemanticAnalysis.model_validate(data)
-            return semantic_analysis_data.model_dump()
+            # First check for semantic_analysis key
+            semantic_data = data.get("semantic_analysis", {})
+            
+            # If semantic_data exists but is nested one level deeper
+            if isinstance(semantic_data, dict) and "semantic_analysis" in semantic_data:
+                semantic_data = semantic_data["semantic_analysis"]
+            
+            # If not found, check if data itself contains semantic analysis
+            if not semantic_data and isinstance(data, dict):
+                # Check for characteristic fields of semantic analysis data
+                semantic_fields = ["notes", "symbolic_meanings", "historical_meaning", "overall_risk_rating"]
+                semantic_fields_alt = ["denotative_meaning", "etymology", "brand_personality", "emotional_valence"]
+                
+                # Check if any value in the dictionary has semantic analysis fields
+                for v in data.values():
+                    if isinstance(v, dict):
+                        if any(field in v for field in semantic_fields) or any(field in v for field in semantic_fields_alt):
+                            semantic_data = data
+                            break
+            
+            # Create the expected structure
+            semantic_analysis = {"semantic_analysis": semantic_data}
+            
+            # Validate against the model
+            validated_data = SemanticAnalysis.model_validate(semantic_analysis)
+            return validated_data.model_dump()
         except ValidationError as e:
             logger.error(f"Validation error for semantic analysis data: {str(e)}")
             return {}
@@ -4036,18 +4069,31 @@ class ReportFormatter:
             # Format with LLM if available
             if self.llm:
                 try:
+                    # Extract semantic analysis data
+                    semantic_data = data.get("semantic_analysis", {})
+                    
+                    # Extract brand names from the semantic analysis data
+                    brand_names = list(semantic_data.keys()) if isinstance(semantic_data, dict) else []
+                    
                     # Format data for the prompt
                     format_data = {
                         "run_id": self.current_run_id,
-                        "semantic_analysis": json.dumps(data, indent=2) if isinstance(data, dict) else str(data),
-                        "format_instructions": self._get_format_instructions("semantic_analysis")
+                        "semantic_analysis": json.dumps(semantic_data, indent=2) if isinstance(semantic_data, dict) else str(semantic_data),
+                        "format_instructions": self._get_format_instructions("semantic_analysis"),
+                        "brand_names": brand_names,
+                        "brand_names_instruction": "Please analyze the semantic properties of these brand names."
                     }
                     
-                    # Create prompt
+                    # Create prompt with template
                     prompt_content = self._format_template("semantic_analysis", format_data, "semantic_analysis")
                     
                     # Create messages
                     system_content = self._get_system_content("You are an expert report formatter helping to create a professional brand naming report.")
+                    
+                    # Add brand names directly to the system message as a fallback in case template substitution fails
+                    if brand_names:
+                        system_content += f"\nAnalyze the following brand names: {', '.join(brand_names)}"
+                    
                     messages = [
                         SystemMessage(content=system_content),
                         HumanMessage(content=prompt_content)
