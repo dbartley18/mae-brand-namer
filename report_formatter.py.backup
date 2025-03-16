@@ -13,7 +13,7 @@ import asyncio
 import time
 import traceback
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Tuple, Any
+from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 
 import docx
@@ -31,31 +31,15 @@ from pydantic import ValidationError
 from ..models.report_sections import (
     BrandContext,
     NameGenerationSection,
-    NameCategory,
-    BrandName,
-    TOCSection,
-    TableOfContentsSection,
     LinguisticAnalysis,
-    LinguisticAnalysisDetails,
     SemanticAnalysis,
-    SemanticAnalysisDetails,
     CulturalSensitivityAnalysis,
-    BrandAnalysis,
     TranslationAnalysis,
-    LanguageAnalysis,
     BrandNameEvaluation,
-    EvaluationDetails,
-    EvaluationLists,
     DomainAnalysis,
-    DomainDetails,
     SEOOnlineDiscoverability,
-    SEOOnlineDiscoverabilityDetails,
-    SEORecommendations,
     CompetitorAnalysis,
-    CompetitorDetails,
-    BrandCompetitors,
     MarketResearch,
-    MarketResearchDetails,
     SurveySimulation,
     SurveyDetails
 )
@@ -515,38 +499,10 @@ class ReportFormatter:
                 
                 if actual_template_name in template_map:
                     logger.debug(f"Using utility function for {actual_template_name}")
-                    
-                    # Make sure all required variables are in format_data
-                    if actual_template_name == "brand_name_generation" and "brand_name_generation" in format_data:
-                        # Additional handling for brand_name_generation data
-                        # Ensure the data is properly processed
-                        logger.debug("Special handling for brand_name_generation template")
-                        if isinstance(format_data["brand_name_generation"], str):
-                            try:
-                                # Try to parse as JSON if it's not already
-                                brand_name_data = json.loads(format_data["brand_name_generation"])
-                                format_data["brand_name_generation"] = json.dumps(brand_name_data, indent=2)
-                                logger.debug("Successfully parsed and reformatted brand_name_generation data")
-                            except json.JSONDecodeError:
-                                # Already a string, leave as is
-                                pass
-                    
                     prompt_data = template_map[actual_template_name](**format_data)
                     if "template" in prompt_data:
-                        template_content = prompt_data.get("template", "")
-                        logger.debug(f"Got template from utility function: {template_content[:50]}...")
-                        
-                        # Direct variable substitution for brand_name_generation template
-                        if actual_template_name == "brand_name_generation":
-                            for key, value in format_data.items():
-                                placeholder = "{{" + key + "}}"
-                                if placeholder in template_content:
-                                    if isinstance(value, (dict, list)):
-                                        value = json.dumps(value, indent=2)
-                                    template_content = template_content.replace(placeholder, str(value))
-                                    logger.debug(f"Directly replaced {placeholder} in template")
-                        
-                        return template_content
+                        logger.debug(f"Got template from utility function: {prompt_data.get('template', '')[:50]}...")
+                        return prompt_data.get("template", "")
                     else:
                         logger.warning(f"Utility function for {actual_template_name} didn't return a template key")
             except Exception as e:
@@ -563,22 +519,7 @@ class ReportFormatter:
                 
                 # Format the template with data
                 logger.debug(f"Formatting template with variables: {list(format_data.keys())}")
-                
-                # For brand_name_generation, use direct replacement instead of .format()
-                if actual_template_name == "brand_name_generation":
-                    template_content = prompt_template.template
-                    for key, value in format_data.items():
-                        placeholder = "{{" + key + "}}"
-                        if placeholder in template_content:
-                            if isinstance(value, (dict, list)):
-                                value = json.dumps(value, indent=2)
-                            template_content = template_content.replace(placeholder, str(value))
-                            logger.debug(f"Directly replaced {placeholder} in template")
-                    formatted_template = template_content
-                else:
-                    # Use normal format for other templates
-                    formatted_template = prompt_template.format(**format_data)
-                
+                formatted_template = prompt_template.format(**format_data)
                 # Log a preview of the formatted template (first 100 chars)
                 logger.debug(f"Formatted template preview: {formatted_template[:100]}...")
                 return formatted_template
@@ -729,119 +670,23 @@ class ReportFormatter:
             # Return the original data as fallback
             return data.get('brand_context', data)
 
-    def _transform_name_generation(self, data: Dict[str, Any]) -> Any:
-        """
-        Transform brand name generation data into a structured format for the report.
-        
-        This handles various formats of brand name generation data:
-        1. Raw data from brand_name_generation.md which has:
-           - Categories as top-level keys
-           - Lists of brand names as values for each category
-           - Each brand name entry has attributes like rationale, brand_promise_alignment, etc.
-        
-        2. Data already structured as a NameGenerationSection model with categories
-        
-        3. Data with a nested 'brand_name_generation' key containing any of the above formats
-        
-        Returns:
-            A structured dictionary matching the NameGenerationSection model structure
-        """
+    def _transform_name_generation(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        if not data:
+            return {}
         try:
-            # Log original data structure
-            if isinstance(data, dict):
-                logger.debug(f"Name generation data keys: {list(data.keys())}")
-                
-                # Check if data is nested under 'brand_name_generation'
-                if "brand_name_generation" in data:
-                    data = data["brand_name_generation"]
-                    logger.debug(f"Extracted nested brand_name_generation data, keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+            # Check if data has nested 'brand_name_generation' key and extract it if so
+            name_generation_data = data.get('brand_name_generation', data)
             
-            # First, handle the case where we have a raw format like in brand_name_generation.md
-            # where categories are top-level keys and values are lists of brand names
-            if isinstance(data, dict) and all(isinstance(value, list) for value in data.values() if isinstance(value, list)):
-                logger.debug("Detected raw brand name generation data format with categories as keys")
-                
-                # Convert to NameGenerationSection structure
-                categories = []
-                for category_name, names_list in data.items():
-                    # Skip non-list values and special keys that aren't categories
-                    if not isinstance(names_list, list) or category_name in ["methodology_and_approach", "introduction", "summary"]:
-                        continue
-                    
-                    # Process names in this category
-                    processed_names = []
-                    for name_data in names_list:
-                        if isinstance(name_data, dict) and "brand_name" in name_data:
-                            processed_names.append(name_data)
-                    
-                    # Create category entry
-                    if processed_names:
-                        categories.append({
-                            "category_name": category_name,
-                            "category_description": "",  # Default empty description
-                            "names": processed_names
-                        })
-                
-                # Create structured data
-                structured_data = {
-                    "introduction": data.get("introduction", ""),
-                    "methodology_and_approach": data.get("methodology_and_approach", ""),
-                    "summary": data.get("summary", ""),
-                    "categories": categories,
-                    "generated_names_overview": {
-                        "total_count": sum(len(cat.get("names", [])) for cat in categories)
-                    },
-                    "evaluation_metrics": {}  # Default empty metrics
-                }
-                
-                logger.debug(f"Converted raw data to structured format with {len(categories)} categories")
-                
-                # Try to validate with NameGenerationSection model
-                try:
-                    from mae_brand_namer.models.report_sections import NameGenerationSection
-                    validated_data = NameGenerationSection.model_validate(structured_data).model_dump()
-                    logger.debug("Successfully validated structured data with NameGenerationSection model")
-                    return validated_data
-                except Exception as validation_error:
-                    logger.warning(f"Validation of structured name generation data failed: {str(validation_error)}")
-                    # Return the structured data even if validation fails
-                    return structured_data
+            # Log what we're trying to validate
+            logger.debug(f"Validating brand name generation: {str(name_generation_data)[:200]}...")
             
-            # Attempt to directly validate the data if it's already in the right structure
-            if isinstance(data, dict) and "categories" in data:
-                try:
-                    from mae_brand_namer.models.report_sections import NameGenerationSection
-                    validated_data = NameGenerationSection.model_validate(data).model_dump()
-                    logger.debug("Successfully validated existing structured data with NameGenerationSection model")
-                    return validated_data
-                except Exception as validation_error:
-                    logger.warning(f"Validation of existing structured name generation data failed: {str(validation_error)}")
-            
-            # Try to parse from JSON directly
-            if isinstance(data, str):
-                try:
-                    parsed_data = json.loads(data)
-                    return self._transform_name_generation(parsed_data)  # Recursively process the parsed data
-                except json.JSONDecodeError:
-                    logger.warning("Failed to parse name generation data as JSON string")
-            
-            # If still here, use NameGenerationSection.from_raw_json as fallback
-            try:
-                from mae_brand_namer.models.report_sections import NameGenerationSection
-                section = NameGenerationSection.from_raw_json(data)
-                logger.debug("Successfully created NameGenerationSection from raw JSON data")
-                return section.model_dump()
-            except Exception as e:
-                logger.warning(f"Failed to create NameGenerationSection from raw JSON: {str(e)}")
-            
-            # Last resort: return the original data
-            logger.debug("Returning original name generation data as no transformation succeeded")
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error transforming name generation data: {str(e)}")
-            logger.debug(f"Error details: {traceback.format_exc()}")
-            return data
+            # Validate against the model
+            name_generation_model = NameGenerationSection.model_validate(name_generation_data)
+            return name_generation_model.model_dump()
+        except ValidationError as e:
+            logger.error(f"Validation error for name generation data: {str(e)}")
+            # Return the original data as fallback
+            return data.get('brand_name_generation', data)
 
     def _transform_semantic_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -925,34 +770,201 @@ class ReportFormatter:
             return {}
 
     def _transform_translation_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform translation analysis data to match the expected prompt format.
+        
+        The translation analysis data is organized as:
+        - First level: "translation_analysis"
+        - Second level: brand names
+        - Third level: languages
+        - Fourth level: detailed analysis fields
+        """
         if not data:
             return {}
         try:
-            translation_analysis_data = TranslationAnalysis.model_validate(data)
-            return translation_analysis_data.model_dump()
+            # First check for translation_analysis key
+            translation_data = data.get("translation_analysis", data)
+            
+            # Log what we're trying to validate
+            logger.debug(f"Validating translation analysis data: {str(translation_data)[:200]}...")
+            
+            # If it's nested one level deeper
+            if isinstance(translation_data, dict) and "translation_analysis" in translation_data:
+                translation_data = translation_data["translation_analysis"]
+                
+            # Create expected structure for validation
+            analysis_data = {"translation_analysis": translation_data}
+            
+            # Validate against the model
+            validated_data = TranslationAnalysis.model_validate(analysis_data)
+            
+            # Transform data for template format
+            template_data = {
+                "per_name_analysis": []
+            }
+            
+            # Extract brand names and their language analyses
+            for brand_name, languages in validated_data.translation_analysis.items():
+                brand_analysis = {
+                    "brand_name": brand_name,
+                    "language_analyses": []
+                }
+                
+                # Process each language analysis
+                for language, analysis in languages.items():
+                    language_analysis = analysis.model_dump()
+                    # Ensure the language field is present
+                    language_analysis["language"] = language
+                    # Ensure brand_name is consistently present
+                    if "brand_name" not in language_analysis:
+                        language_analysis["brand_name"] = brand_name
+                        
+                    brand_analysis["language_analyses"].append(language_analysis)
+                
+                # Add a placeholder for translation summary
+                brand_analysis["translation_summary"] = f"Summary of key translation insights for {brand_name}"
+                
+                # Add to the list of brand analyses
+                template_data["per_name_analysis"].append(brand_analysis)
+                
+            logger.info(f"Successfully transformed translation analysis data with {len(template_data['per_name_analysis'])} brand names")
+            return template_data
+            
         except ValidationError as e:
             logger.error(f"Validation error for translation analysis data: {str(e)}")
-            return {}
+            # Return the original data as fallback
+            return data.get('translation_analysis', data)
 
     def _transform_market_research(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform market research data to match the expected prompt format.
+        
+        The market research data can be structured in two ways:
+        1. As a dictionary with brand names as keys and market research details as values
+        2. As a list of market research detail objects, each with a brand_name field
+        """
         if not data:
             return {}
         try:
-            market_research_data = MarketResearch.model_validate(data)
-            return market_research_data.model_dump()
+            # First check for market_research key
+            market_data = data.get("market_research", data)
+            
+            # Log what we're trying to validate
+            logger.debug(f"Validating market research data: {str(market_data)[:200]}...")
+            
+            # Convert list format to dictionary if needed
+            if isinstance(market_data, list):
+                # Convert list to dictionary keyed by brand_name
+                market_dict = {}
+                for item in market_data:
+                    if "brand_name" in item:
+                        brand_name = item["brand_name"]
+                        market_dict[brand_name] = item
+                market_data = market_dict
+            
+            # If it's nested one level deeper
+            if isinstance(market_data, dict) and "market_research" in market_data:
+                market_data = market_data["market_research"]
+                
+            # Create expected structure for validation
+            analysis_data = {"market_research": market_data}
+            
+            # Validate against the model
+            validated_data = MarketResearch.model_validate(analysis_data)
+            
+            # Transform data for template format
+            template_data = {
+                "industry_overview": {
+                    "industry_description": "Combined information from industry_name fields",
+                    "market_size_analysis": "Combined analysis from market_size fields",
+                    "growth_trends": "Combined analysis from market_growth_rate fields",
+                    "competitive_landscape": "Summary of key_competitors across all brands",
+                    "market_entry_considerations": "Summary of market_entry_barriers across all brands",
+                    "customer_landscape": "Summary of customer_pain_points across all brands",
+                    "emerging_trends": "Summary from emerging_trends fields"
+                },
+                "brand_analyses": []
+            }
+            
+            # Process each brand's market research
+            for brand_name, details in validated_data.market_research.items():
+                brand_analysis = details.model_dump()
+                # Ensure brand_name is present
+                if "brand_name" not in brand_analysis:
+                    brand_analysis["brand_name"] = brand_name
+                    
+                template_data["brand_analyses"].append(brand_analysis)
+                
+            # Add placeholder for comparative analysis
+            template_data["comparative_market_analysis"] = "Comparative analysis of all brand names in market context"
+            template_data["summary"] = "Summary of key market insights and implications for brand naming"
+            
+            logger.info(f"Successfully transformed market research data with {len(template_data['brand_analyses'])} brand analyses")
+            return template_data
+            
         except ValidationError as e:
             logger.error(f"Validation error for market research data: {str(e)}")
-            return {}
+            # Return the original data as fallback
+            return data.get('market_research', data)
 
     def _transform_competitor_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform competitor analysis data to match the expected prompt format.
+        
+        The competitor analysis data is organized as a list of brand competitors:
+        - First level: "competitor_analysis"
+        - Second level: list of brand competitors with "brand_name" and "competitors" list
+        """
         if not data:
             return {}
         try:
-            competitor_analysis_data = CompetitorAnalysis.model_validate(data)
-            return competitor_analysis_data.model_dump()
+            # First check for competitor_analysis key
+            competitor_data = data.get("competitor_analysis", data)
+            
+            # Log what we're trying to validate
+            logger.debug(f"Validating competitor analysis data: {str(competitor_data)[:200]}...")
+            
+            # If it's nested one level deeper
+            if isinstance(competitor_data, dict) and "competitor_analysis" in competitor_data:
+                competitor_data = competitor_data["competitor_analysis"]
+                
+            # Create expected structure for validation
+            analysis_data = {"competitor_analysis": competitor_data}
+            
+            # Validate against the model
+            validated_data = CompetitorAnalysis.model_validate(analysis_data)
+            
+            # Transform data for template format
+            template_data = {
+                "brand_analyses": [],
+                "competitive_landscape_overview": "Analysis of the competitive landscape across all evaluated brand names."
+            }
+            
+            # Process each brand and its competitors
+            for brand_competitor in validated_data.competitor_analysis:
+                brand_analysis = {
+                    "brand_name": brand_competitor.brand_name,
+                    "competitive_context_summary": f"Competitive analysis for {brand_competitor.brand_name}",
+                    "competitor_analyses": [],
+                    "overall_competitive_position": f"Summary of {brand_competitor.brand_name}'s competitive position",
+                    "differentiation_strategy": f"Recommended differentiation strategy for {brand_competitor.brand_name}"
+                }
+                
+                # Process each competitor for this brand
+                for competitor in brand_competitor.competitors:
+                    competitor_analysis = competitor.model_dump()
+                    brand_analysis["competitor_analyses"].append(competitor_analysis)
+                
+                # Add to the list of brand analyses
+                template_data["brand_analyses"].append(brand_analysis)
+                
+            logger.info(f"Successfully transformed competitor analysis data with {len(template_data['brand_analyses'])} brand analyses")
+            return template_data
+            
         except ValidationError as e:
             logger.error(f"Validation error for competitor analysis data: {str(e)}")
-            return {}
+            # Return the original data as fallback
+            return data.get('competitor_analysis', data)
 
     def _transform_domain_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if not data:
@@ -965,14 +977,192 @@ class ReportFormatter:
             return {}
 
     def _transform_survey_simulation(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform survey simulation data to match the expected prompt format.
+        
+        The survey simulation data consists of a list of SurveyDetails, each containing persona information
+        and feedback for a specific brand name.
+        """
         if not data:
             return {}
         try:
-            survey_simulation_data = SurveySimulation.model_validate(data)
-            return survey_simulation_data.model_dump()
+            # First check for survey_simulation key
+            survey_data = data.get("survey_simulation", data)
+            
+            # Log what we're trying to validate
+            logger.debug(f"Validating survey simulation data: {str(survey_data)[:200]}...")
+            
+            # If it's nested one level deeper
+            if isinstance(survey_data, dict) and "survey_simulation" in survey_data:
+                survey_data = survey_data["survey_simulation"]
+                
+            # Create expected structure for validation
+            analysis_data = {"survey_simulation": survey_data}
+            
+            # Validate against the model
+            validated_data = SurveySimulation.model_validate(analysis_data)
+            
+            # Group survey data by brand name
+            brands_map = {}
+            for survey in validated_data.survey_simulation:
+                brand_name = survey.brand_name
+                if brand_name not in brands_map:
+                    brands_map[brand_name] = []
+                brands_map[brand_name].append(survey)
+            
+            # Transform data for template format
+            template_data = {
+                "methodology": "Detailed survey simulation using synthetic personas representing the target audience",
+                "demographics": "Comprehensive overview of simulated participant demographics across various industries and roles",
+                "overview": "General insights from the survey simulation across all tested brand names",
+                "brand_analyses": []
+            }
+            
+            # Process each brand's survey data
+            for brand_name, surveys in brands_map.items():
+                brand_analysis = {
+                    "brand_name": brand_name,
+                    "persona_profiles": [],
+                    "brand_promise_alignment": f"Analysis of brand promise perception for {brand_name}",
+                    "personality_fit": f"Analysis of personality fit for {brand_name}",
+                    "emotional_impact": f"Emotional associations with {brand_name}",
+                    "competitive_positioning": f"Competitive positioning of {brand_name}",
+                    "market_receptivity": f"Market receptivity for {brand_name}",
+                    "raw_qualitative_feedback": {},
+                    "final_recommendations": f"Recommendations based on survey results for {brand_name}"
+                }
+                
+                # Process each persona's survey for this brand
+                for survey in surveys:
+                    # Extract persona profile
+                    persona_profile = {
+                        "professional_info": self._combine_professional_info(survey),
+                        "company_context": self._combine_company_context(survey),
+                        "decision_making": self._combine_decision_making(survey),
+                        "pain_points_challenges": self._combine_pain_points(survey),
+                        "goals_priorities": self._combine_goals_priorities(survey),
+                        "information_consumption": self._combine_information_consumption(survey),
+                        "current_relationships": survey.current_brand_relationships if survey.current_brand_relationships else {},
+                        "buying_behavior": self._combine_buying_behavior(survey)
+                    }
+                    
+                    brand_analysis["persona_profiles"].append(persona_profile)
+                    
+                    # Accumulate raw feedback
+                    if survey.raw_qualitative_feedback:
+                        for key, value in survey.raw_qualitative_feedback.items():
+                            if key not in brand_analysis["raw_qualitative_feedback"]:
+                                brand_analysis["raw_qualitative_feedback"][key] = []
+                            brand_analysis["raw_qualitative_feedback"][key].append(value)
+                
+                # Add this brand's analysis to the list
+                template_data["brand_analyses"].append(brand_analysis)
+                
+            # Add comparative analysis and strategic implications
+            template_data["comparative_analysis"] = "Detailed comparison of survey performance across all names"
+            template_data["strategic_implications"] = "Overall strategic recommendations based on survey insights"
+            
+            logger.info(f"Successfully transformed survey simulation data with {len(template_data['brand_analyses'])} brand analyses")
+            return template_data
+            
         except ValidationError as e:
             logger.error(f"Validation error for survey simulation data: {str(e)}")
-            return {}
+            # Return the original data as fallback
+            return data.get('survey_simulation', data)
+            
+    def _combine_professional_info(self, survey: SurveyDetails) -> str:
+        """Combine professional background information for a persona."""
+        info_parts = []
+        if survey.industry:
+            info_parts.append(f"Industry: {survey.industry}")
+        if survey.job_title:
+            info_parts.append(f"Job Title: {survey.job_title}")
+        if survey.seniority:
+            info_parts.append(f"Seniority: {survey.seniority}")
+        if survey.years_of_experience:
+            info_parts.append(f"Years of Experience: {survey.years_of_experience}")
+        if survey.department:
+            info_parts.append(f"Department: {survey.department}")
+        if survey.education_level:
+            info_parts.append(f"Education: {survey.education_level}")
+        
+        return "; ".join(info_parts) if info_parts else "Professional information not available"
+    
+    def _combine_company_context(self, survey: SurveyDetails) -> str:
+        """Combine company context information for a persona."""
+        context_parts = []
+        if survey.company_name:
+            context_parts.append(f"Company: {survey.company_name}")
+        if survey.company_size_employees:
+            context_parts.append(f"Size: {survey.company_size_employees}")
+        if survey.company_revenue:
+            context_parts.append(f"Revenue: {survey.company_revenue}")
+        
+        return "; ".join(context_parts) if context_parts else "Company context not available"
+    
+    def _combine_decision_making(self, survey: SurveyDetails) -> str:
+        """Combine decision making information for a persona."""
+        decision_parts = []
+        if survey.decision_making_style:
+            decision_parts.append(f"Style: {survey.decision_making_style}")
+        if survey.budget_authority:
+            decision_parts.append(f"Budget Authority: {survey.budget_authority}")
+        if survey.influence_within_company:
+            decision_parts.append(f"Influence: {survey.influence_within_company}")
+        if survey.decision_maker is not None:
+            decision_parts.append(f"Decision Maker: {'Yes' if survey.decision_maker else 'No'}")
+        
+        return "; ".join(decision_parts) if decision_parts else "Decision making information not available"
+    
+    def _combine_pain_points(self, survey: SurveyDetails) -> str:
+        """Combine pain points and challenges information for a persona."""
+        pain_parts = []
+        if survey.pain_points:
+            pain_parts.append(f"Pain Points: {survey.pain_points}")
+        if survey.frustrations_annoyances:
+            pain_parts.append(f"Frustrations: {survey.frustrations_annoyances}")
+        
+        return "; ".join(pain_parts) if pain_parts else "Pain points and challenges not available"
+    
+    def _combine_goals_priorities(self, survey: SurveyDetails) -> str:
+        """Combine goals and priorities information for a persona."""
+        goal_parts = []
+        if survey.motivations:
+            goal_parts.append(f"Motivations: {survey.motivations}")
+        if survey.success_metrics_product_service:
+            goal_parts.append(f"Success Metrics: {survey.success_metrics_product_service}")
+        
+        return "; ".join(goal_parts) if goal_parts else "Goals and priorities not available"
+    
+    def _combine_information_consumption(self, survey: SurveyDetails) -> str:
+        """Combine information consumption information for a persona."""
+        info_parts = []
+        if survey.information_sources:
+            info_parts.append(f"Sources: {survey.information_sources}")
+        if survey.content_consumption_habits:
+            info_parts.append(f"Habits: {survey.content_consumption_habits}")
+        if survey.social_media_usage:
+            info_parts.append(f"Social Media: {survey.social_media_usage}")
+        if survey.online_behavior:
+            info_parts.append(f"Online Behavior: {survey.online_behavior}")
+        
+        return "; ".join(info_parts) if info_parts else "Information consumption not available"
+    
+    def _combine_buying_behavior(self, survey: SurveyDetails) -> str:
+        """Combine buying behavior information for a persona."""
+        buying_parts = []
+        if survey.purchasing_behavior:
+            buying_parts.append(f"Purchasing: {survey.purchasing_behavior}")
+        if survey.buying_group_structure:
+            buying_parts.append(f"Buying Group: {survey.buying_group_structure}")
+        if survey.vendor_relationship_preferences:
+            buying_parts.append(f"Vendor Preferences: {survey.vendor_relationship_preferences}")
+        if survey.interaction_with_brand:
+            buying_parts.append(f"Brand Interaction: {survey.interaction_with_brand}")
+        if survey.channel_preferences_brand_interaction:
+            buying_parts.append(f"Channel Preferences: {survey.channel_preferences_brand_interaction}")
+        
+        return "; ".join(buying_parts) if buying_parts else "Buying behavior not available"
 
     def _transform_seo_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if not data:
@@ -2769,281 +2959,195 @@ class ReportFormatter:
             # Add section title
             doc.add_heading("Brand Name Generation", level=1)
             
-            # Transform the data for the template
-            transformed_data = self._transform_name_generation(data)
-            logger.debug(f"Transformed name generation data: {len(str(transformed_data))} chars, keys: {list(transformed_data.keys()) if isinstance(transformed_data, dict) else 'not a dict'}")
+            # Extract name generation data if it's nested
+            name_generation_raw_data = data.get('brand_name_generation', data)
+            logger.debug(f"Raw name generation data: {str(name_generation_raw_data)[:200]}...")
             
-            # Format with LLM if available
-            if self.llm:
-                try:
-                    # Make sure transformed data is in the format expected by the LLM template
-                    brand_names = []
-                    
-                    # Extract brand names for easier reference in the prompt
-                    if isinstance(transformed_data, dict) and "categories" in transformed_data:
-                        for category in transformed_data.get("categories", []):
-                            if isinstance(category, dict) and "names" in category:
-                                for name in category.get("names", []):
-                                    if isinstance(name, dict) and "brand_name" in name:
-                                        brand_names.append(name["brand_name"])
-                    
-                    # Format data for the prompt
-                    # Convert transformed_data to string with proper indentation for template
-                    json_transformed_data = json.dumps(transformed_data, indent=2, ensure_ascii=False)
-                    
-                    # Prepare format data for the template
-                    format_data = {
-                        "run_id": self.current_run_id,
-                        "brand_name_generation": json_transformed_data,
-                        "format_instructions": self._get_format_instructions("brand_name_generation"),
-                        "brand_names": ", ".join(brand_names[:10]) + (", ..." if len(brand_names) > 10 else "")
-                    }
-                    
-                    # Log the data being sent to the template
-                    logger.debug(f"Format data for name generation template has keys: {list(format_data.keys())}")
-                    logger.debug(f"Format data includes {len(format_data['brand_name_generation'])} chars of brand name data")
-                    logger.debug(f"First 200 chars of brand_name_generation data: {format_data['brand_name_generation'][:200]}")
-                    logger.debug(f"Format instructions: {format_data['format_instructions'][:200]}")
-                    
-                    # Create prompt using our specialized template handling
-                    prompt_content = self._format_template("brand_name_generation", format_data, "brand_name_generation")
-                    
-                    # Verify that variables were correctly substituted
-                    placeholder_check = "{{" in prompt_content or "}}" in prompt_content
-                    if placeholder_check:
-                        logger.warning(f"Template variables may not have been properly substituted in the prompt")
-                        # Try direct replacement as a fallback
-                        for key, value in format_data.items():
-                            placeholder = "{{" + key + "}}"
-                            if placeholder in prompt_content:
-                                prompt_content = prompt_content.replace(placeholder, str(value))
-                                logger.debug(f"Direct fallback replacement for {placeholder}")
-                    
-                    # Log the prompt content (first 200 chars)
-                    logger.debug(f"Prompt content: {prompt_content[:200]}...")
-                    
-                    # Create messages
-                    system_content = self._get_system_content("You are an expert report formatter helping to create a professional brand naming report.")
-                    
-                    # Add brand names directly to the system message for context
-                    if brand_names:
-                        system_content += f"\nBrand names to organize and analyze: {', '.join(brand_names[:10])}" + ("..." if len(brand_names) > 10 else "")
-                    
-                    messages = [
-                        SystemMessage(content=system_content),
-                        HumanMessage(content=prompt_content)
-                    ]
-                    
-                    # Invoke LLM
-                    response = await self._safe_llm_invoke(messages, "brand_name_generation")
-                    
-                    # Log the first 200 chars of the response
-                    logger.debug(f"LLM response: {response.content[:200]}...")
-                    
-                    # Extract JSON content
-                    json_content = self._extract_json_from_response(response.content, "brand_name_generation")
-                    
-                    if json_content:
-                        logger.debug(f"Extracted JSON content with keys: {list(json_content.keys()) if isinstance(json_content, dict) else 'not a dict'}")
-                        
-                        # Format the document using the enhanced LLM output
-                        # Add introduction
-                        if "introduction" in json_content and json_content["introduction"]:
-                            doc.add_paragraph(json_content["introduction"])
-                        
-                        # Add methodology and approach
-                        if "methodology_and_approach" in json_content and json_content["methodology_and_approach"]:
-                            doc.add_heading("Methodology and Approach", level=2)
-                            doc.add_paragraph(json_content["methodology_and_approach"])
-                        
-                        # Process each category in the specified order
-                        if "categories" in json_content and isinstance(json_content["categories"], list):
-                            for category in json_content["categories"]:
-                                if "category_name" in category:
-                                    # Add category heading and description
-                                    doc.add_heading(category["category_name"], level=2)
-                                    
-                                    if "category_description" in category and category["category_description"]:
-                                        doc.add_paragraph(category["category_description"])
-                                    
-                                    # Process each name in this category
-                                    if "names" in category and isinstance(category["names"], list):
-                                        for name in category["names"]:
-                                            if "brand_name" in name:
-                                                # Add name as heading
-                                                doc.add_heading(name["brand_name"], level=3)
-                                                
-                                                # Process each name attribute
-                                                name_attributes = [
-                                                    ("brand_personality_alignment", "Brand Personality Alignment"),
-                                                    ("brand_promise_alignment", "Brand Promise Alignment"),
-                                                    ("name_generation_methodology", "Methodology"),
-                                                    ("memorability_score_details", "Memorability"),
-                                                    ("pronounceability_score_details", "Pronounceability"),
-                                                    ("visual_branding_potential_details", "Visual Branding Potential"),
-                                                    ("target_audience_relevance_details", "Target Audience Relevance"),
-                                                    ("market_differentiation_details", "Market Differentiation"),
-                                                    ("rationale", "Rationale")  # Added rationale which was missing
-                                                ]
-                                                
-                                                for attr_key, attr_display in name_attributes:
-                                                    if attr_key in name and name[attr_key]:
-                                                        p = doc.add_paragraph()
-                                                        p.add_run(f"{attr_display}: ").bold = True
-                                                        p.add_run(str(name[attr_key]))
-                        
-                        # Add generated names overview
-                        if "generated_names_overview" in json_content:
-                            doc.add_heading("Generated Names Overview", level=2)
-                            
-                            # Handle both string and dictionary formats
-                            if isinstance(json_content["generated_names_overview"], dict):
-                                for key, value in json_content["generated_names_overview"].items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
-                                    p.add_run(str(value))
-                            else:
-                                doc.add_paragraph(str(json_content["generated_names_overview"]))
-                        
-                        # Add evaluation metrics
-                        if "evaluation_metrics" in json_content:
-                            doc.add_heading("Initial Evaluation Metrics", level=2)
-                            
-                            # Handle both string and dictionary formats
-                            if isinstance(json_content["evaluation_metrics"], dict):
-                                for key, value in json_content["evaluation_metrics"].items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
-                                    p.add_run(str(value))
-                            else:
-                                doc.add_paragraph(str(json_content["evaluation_metrics"]))
-                        
-                        # Add summary if available
-                        if "summary" in json_content and json_content["summary"]:
-                            doc.add_heading("Summary", level=2)
-                            doc.add_paragraph(json_content["summary"])
-                        
-                        return  # Successfully formatted with LLM
-                    else:
-                        logger.error("Failed to extract JSON content from LLM response")
-                        
-                except Exception as e:
-                    logger.error(f"Error formatting name generation section with LLM: {str(e)}")
-                    logger.debug(f"Error details: {traceback.format_exc()}")
-                    # Fall back to standard formatting
-            
-            # Standard formatting if LLM not available or if LLM formatting failed
+            # Parse the data using the Pydantic model
             try:
-                # Try to parse as a NameGenerationSection
-                name_generation_data = None
+                # Use the from_raw_json method which is designed to handle various JSON structures
+                name_generation_data = NameGenerationSection.from_raw_json(name_generation_raw_data)
+                logger.info("Successfully created name generation data using Pydantic model")
                 
-                # Check if the transformed data has the expected structure
-                if isinstance(transformed_data, dict):
-                    if "categories" in transformed_data and isinstance(transformed_data["categories"], list):
-                        # This appears to be a properly structured NameGenerationSection
-                        name_generation_data = transformed_data
-                
-                if name_generation_data:
-                    # Add introduction
-                    if "introduction" in name_generation_data and name_generation_data["introduction"]:
-                        doc.add_paragraph(name_generation_data["introduction"])
-                    
-                    # Add methodology and approach
-                    if "methodology_and_approach" in name_generation_data and name_generation_data["methodology_and_approach"]:
-                        doc.add_heading("Methodology and Approach", level=2)
-                        doc.add_paragraph(name_generation_data["methodology_and_approach"])
-                    
-                    # Add generated names overview
-                    if "generated_names_overview" in name_generation_data and name_generation_data["generated_names_overview"]:
-                        doc.add_heading("Generated Names Overview", level=2)
-                        total_count = name_generation_data["generated_names_overview"].get("total_count", 0)
-                        doc.add_paragraph(f"A total of {total_count} names were generated across various naming categories.")
+                # Format with LLM if available
+                if self.llm:
+                    try:
+                        # Format data for the prompt
+                        format_data = {
+                            "run_id": self.current_run_id,
+                            "brand_name_generation": json.dumps(name_generation_data.model_dump(), indent=2),
+                            "format_instructions": self._get_format_instructions("brand_name_generation")
+                        }
                         
-                        # Add any other overview information
-                        for key, value in name_generation_data["generated_names_overview"].items():
-                            if key != "total_count" and value:
-                                p = doc.add_paragraph()
-                                p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
-                                p.add_run(str(value))
+                        # Log the data being sent to the template
+                        logger.debug(f"Brand name generation data for template: {format_data['brand_name_generation'][:200]}...")
+                        
+                        # Create prompt
+                        prompt_content = self._format_template("brand_name_generation", format_data, "brand_name_generation")
+                        
+                        # Create messages
+                        system_content = self._get_system_content("You are an expert report formatter helping to create a professional brand naming report.")
+                        messages = [
+                            SystemMessage(content=system_content),
+                            HumanMessage(content=prompt_content)
+                        ]
+                        
+                        # Invoke LLM
+                        response = await self._safe_llm_invoke(messages, "brand_name_generation")
+                        
+                        # Extract JSON content
+                        json_content = self._extract_json_from_response(response.content, "brand_name_generation")
+                        
+                        if json_content:
+                            # Format the document using the enhanced LLM output
+                            # Add introduction
+                            if "introduction" in json_content and json_content["introduction"]:
+                                doc.add_paragraph(json_content["introduction"])
+                            
+                            # Add methodology and approach
+                            if "methodology_and_approach" in json_content and json_content["methodology_and_approach"]:
+                                doc.add_heading("Methodology and Approach", level=2)
+                                doc.add_paragraph(json_content["methodology_and_approach"])
+                            
+                            # Add generated names overview
+                            if "generated_names_overview" in json_content and json_content["generated_names_overview"]:
+                                doc.add_heading("Generated Names Overview", level=2)
+                                doc.add_paragraph(json_content["generated_names_overview"])
+                            
+                            # Add categories and names
+                            if "categories" in json_content and isinstance(json_content["categories"], list):
+                                for category in json_content["categories"]:
+                                    if "category_name" in category:
+                                        doc.add_heading(category["category_name"], level=2)
+                                        
+                                        if "category_description" in category and category["category_description"]:
+                                            doc.add_paragraph(category["category_description"])
+                                        
+                                        if "names" in category and isinstance(category["names"], list):
+                                            for name_data in category["names"]:
+                                                if "name" in name_data:
+                                                    doc.add_heading(name_data["name"], level=3)
+                                                    
+                                                    # Add all properties in a structured format
+                                                    properties = [
+                                                        ("Brand Personality Alignment", name_data.get("personality_alignment", "")),
+                                                        ("Brand Promise Alignment", name_data.get("promise_alignment", "")),
+                                                        ("Methodology", name_data.get("methodology", "")),
+                                                        ("Memorability", name_data.get("memorability", "")),
+                                                        ("Pronounceability", name_data.get("pronounceability", "")),
+                                                        ("Visual Branding Potential", name_data.get("visual_potential", "")),
+                                                        ("Target Audience Relevance", name_data.get("audience_relevance", "")),
+                                                        ("Market Differentiation", name_data.get("market_differentiation", "")),
+                                                        ("Rationale", name_data.get("rationale", ""))
+                                                    ]
+                                                    
+                                                    for prop_name, prop_value in properties:
+                                                        if prop_value:
+                                                            p = doc.add_paragraph()
+                                                            p.add_run(f"{prop_name}: ").bold = True
+                                                            p.add_run(str(prop_value))
+                                                    
+                                                    # Add spacing between names
+                                                    doc.add_paragraph()
+                            
+                            # Add evaluation metrics
+                            if "evaluation_metrics" in json_content and json_content["evaluation_metrics"]:
+                                doc.add_heading("Evaluation Metrics", level=2)
+                                doc.add_paragraph(json_content["evaluation_metrics"])
+                            
+                            # Add summary
+                            if "summary" in json_content and json_content["summary"]:
+                                doc.add_heading("Summary", level=2)
+                                doc.add_paragraph(json_content["summary"])
+                            
+                            return  # Successfully formatted with LLM
+                    except Exception as e:
+                        logger.error(f"Error during LLM formatting for name generation: {str(e)}")
+                        # Fall back to standard formatting
+                
+                # Standard formatting if LLM not available or if LLM formatting failed
+                # Add introduction
+                if name_generation_data.introduction:
+                    doc.add_paragraph(name_generation_data.introduction)
+                
+                # Add methodology and approach
+                if name_generation_data.methodology_and_approach:
+                    doc.add_heading("Methodology and Approach", level=2)
+                    doc.add_paragraph(name_generation_data.methodology_and_approach)
+                
+                # Add generated names overview
+                if name_generation_data.generated_names_overview:
+                    doc.add_heading("Generated Names Overview", level=2)
+                    total_count = name_generation_data.generated_names_overview.get("total_count", 0)
+                    doc.add_paragraph(f"A total of {total_count} names were generated across various naming categories.")
                     
-                    # Add evaluation metrics
-                    if "evaluation_metrics" in name_generation_data and name_generation_data["evaluation_metrics"]:
-                        doc.add_heading("Initial Evaluation Metrics", level=2)
-                        for key, value in name_generation_data["evaluation_metrics"].items():
+                    # Add any other overview information
+                    for key, value in name_generation_data.generated_names_overview.items():
+                        if key != "total_count" and value:
                             p = doc.add_paragraph()
                             p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
                             p.add_run(str(value))
+                
+                # Add evaluation metrics
+                if name_generation_data.evaluation_metrics:
+                    doc.add_heading("Initial Evaluation Metrics", level=2)
+                    for key, value in name_generation_data.evaluation_metrics.items():
+                        p = doc.add_paragraph()
+                        p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
+                        p.add_run(str(value))
+                
+                # Process each category and its names
+                for category in name_generation_data.categories:
+                    # Add category heading and description
+                    doc.add_heading(category.category_name, level=2)
+                    if category.category_description:
+                        doc.add_paragraph(category.category_description)
                     
-                    # Process each category and its names
-                    if "categories" in name_generation_data and isinstance(name_generation_data["categories"], list):
-                        for category in name_generation_data["categories"]:
-                            # Add category heading and description
-                            if "category_name" in category:
-                                doc.add_heading(category["category_name"], level=2)
+                    # Process each name in this category
+                    for name in category.names:
+                        # Add name as heading
+                        doc.add_heading(name.brand_name, level=3)
+                        
+                        # Add all properties in a structured format based on the required sections
+                        sections = [
+                            ("Brand Personality Alignment", getattr(name, "brand_personality_alignment", "")),
+                            ("Brand Promise Alignment", getattr(name, "brand_promise_alignment", "")),
+                            ("Methodology", getattr(name, "name_generation_methodology", "")),
+                            ("Memorability", getattr(name, "memorability_score_details", "")),
+                            ("Pronounceability", getattr(name, "pronounceability_score_details", "")),
+                            ("Visual Branding Potential", getattr(name, "visual_branding_potential_details", "")),
+                            ("Target Audience Relevance", getattr(name, "target_audience_relevance_details", "")),
+                            ("Market Differentiation", getattr(name, "market_differentiation_details", ""))
+                        ]
+                        
+                        for section_name, section_content in sections:
+                            if section_content:
+                                p = doc.add_paragraph()
+                                p.add_run(f"{section_name}: ").bold = True
+                                p.add_run(str(section_content))
                                 
-                                if "category_description" in category and category["category_description"]:
-                                    doc.add_paragraph(category["category_description"])
-                                
-                                # Process each name in this category
-                                if "names" in category and isinstance(category["names"], list):
-                                    for name in category["names"]:
-                                        if "brand_name" in name:
-                                            # Add name as heading
-                                            doc.add_heading(name["brand_name"], level=3)
-                                            
-                                            # Add all properties in a structured format based on the required sections
-                                            sections = [
-                                                ("Brand Personality Alignment", name.get("brand_personality_alignment", "")),
-                                                ("Brand Promise Alignment", name.get("brand_promise_alignment", "")),
-                                                ("Methodology", name.get("name_generation_methodology", "")),
-                                                ("Memorability", name.get("memorability_score_details", "")),
-                                                ("Pronounceability", name.get("pronounceability_score_details", "")),
-                                                ("Visual Branding Potential", name.get("visual_branding_potential_details", "")),
-                                                ("Target Audience Relevance", name.get("target_audience_relevance_details", "")),
-                                                ("Market Differentiation", name.get("market_differentiation_details", "")),
-                                                ("Rationale", name.get("rationale", ""))  # Added rationale
-                                            ]
-                                            
-                                            for section_name, section_content in sections:
-                                                if section_content:
-                                                    p = doc.add_paragraph()
-                                                    p.add_run(f"{section_name}: ").bold = True
-                                                    p.add_run(str(section_content))
+                        # Add rationale if available
+                        if hasattr(name, "rationale") and name.rationale:
+                            p = doc.add_paragraph()
+                            p.add_run("Rationale: ").bold = True
+                            p.add_run(name.rationale)
+                        
+                        # Add spacing between names
+                        doc.add_paragraph()
+                
+                # Add summary if available
+                if name_generation_data.summary:
+                    doc.add_heading("Summary", level=2)
+                    doc.add_paragraph(name_generation_data.summary)
                     
-                    # Add summary if available
-                    if "summary" in name_generation_data and name_generation_data["summary"]:
-                        doc.add_heading("Summary", level=2)
-                        doc.add_paragraph(name_generation_data["summary"])
-                else:
-                    # Fallback for when we don't have a structured NameGenerationSection
-                    doc.add_paragraph("The brand name generation section includes various name options categorized by naming approach.")
-                    
-                    # Try to extract name data from less structured format
-                    if isinstance(transformed_data, dict):
-                        for category_name, names in transformed_data.items():
-                            if isinstance(names, list):
-                                doc.add_heading(category_name, level=2)
-                                
-                                for name_data in names:
-                                    if isinstance(name_data, dict) and "brand_name" in name_data:
-                                        doc.add_heading(name_data["brand_name"], level=3)
-                                        
-                                        # Loop through key data points
-                                        for key, value in name_data.items():
-                                            if key != "brand_name" and value:
-                                                p = doc.add_paragraph()
-                                                p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
-                                                p.add_run(str(value))
             except Exception as e:
-                logger.error(f"Error in standard formatting for name generation: {str(e)}")
-                logger.debug(f"Error details: {traceback.format_exc()}")
-                # Final fallback to generic formatting
-                self._format_generic_section_fallback(doc, "brand_name_generation", data)
+                logger.error(f"Failed to parse name generation data: {str(e)}")
+                doc.add_paragraph("Error parsing name generation data. The data format doesn't match the expected structure.")
+                return
+                
         except Exception as e:
-            logger.error(f"Error formatting name generation section: {str(e)}")
-            logger.debug(f"Error details: {traceback.format_exc()}")
-            # Fallback to generic formatting as a last resort
-            self._format_generic_section_fallback(doc, "brand_name_generation", data)
+            logger.error(f"Error formatting name generation: {str(e)}")
+            doc.add_paragraph(f"Error formatting name generation section: {str(e)}", style='Intense Quote')
 
     async def _format_competitor_analysis(self, doc: Document, data: Dict[str, Any]) -> None:
         """Format the competitor analysis section."""
@@ -3054,18 +3158,34 @@ class ReportFormatter:
             # Format with LLM if available
             if self.llm:
                 try:
+                    # Transform data for template
+                    transformed_data = self._transform_competitor_analysis(data)
+                    
+                    # Extract brand names for the prompt
+                    brand_names = []
+                    if "brand_analyses" in transformed_data:
+                        brand_names = [brand["brand_name"] for brand in transformed_data["brand_analyses"] if "brand_name" in brand]
+                    
+                    # Log the transformed data
+                    logger.debug(f"Competitor analysis data for template: {str(transformed_data)[:200]}...")
+                    
                     # Format data for the prompt
                     format_data = {
                         "run_id": self.current_run_id,
-                        "competitor_analysis": json.dumps(data, indent=2),
+                        "competitor_analysis": json.dumps(transformed_data, indent=2),
                         "format_instructions": self._get_format_instructions("competitor_analysis")
                     }
                     
-                    # Create prompt
+                    # Create prompt with template
                     prompt_content = self._format_template("competitor_analysis", format_data, "competitor_analysis")
                     
                     # Create messages
                     system_content = self._get_system_content("You are an expert report formatter helping to create a professional brand naming report.")
+                    
+                    # Add brand names directly to the system message as a fallback in case template substitution fails
+                    if brand_names:
+                        system_content += f"\nAnalyze the competitive landscape for the following brand names: {', '.join(brand_names)}"
+                    
                     messages = [
                         SystemMessage(content=system_content),
                         HumanMessage(content=prompt_content)
@@ -3986,18 +4106,34 @@ class ReportFormatter:
             # Format with LLM if available
             if self.llm:
                 try:
+                    # Transform data for template
+                    transformed_data = self._transform_market_research(data)
+                    
+                    # Extract brand names for the prompt
+                    brand_names = []
+                    if "brand_analyses" in transformed_data:
+                        brand_names = [brand["brand_name"] for brand in transformed_data["brand_analyses"] if "brand_name" in brand]
+                    
+                    # Log the transformed data
+                    logger.debug(f"Market research data for template: {str(transformed_data)[:200]}...")
+                    
                     # Format data for the prompt
                     format_data = {
                         "run_id": self.current_run_id,
-                        "market_research": json.dumps(data, indent=2) if isinstance(data, dict) else str(data),
+                        "market_research": json.dumps(transformed_data, indent=2),
                         "format_instructions": self._get_format_instructions("market_research")
                     }
                     
-                    # Create prompt
+                    # Create prompt with template
                     prompt_content = self._format_template("market_research", format_data, "market_research")
                     
                     # Create messages
                     system_content = self._get_system_content("You are an expert report formatter helping to create a professional brand naming report.")
+                    
+                    # Add brand names directly to the system message as a fallback in case template substitution fails
+                    if brand_names:
+                        system_content += f"\nPresent market research for the following brand names: {', '.join(brand_names)}"
+                    
                     messages = [
                         SystemMessage(content=system_content),
                         HumanMessage(content=prompt_content)
@@ -4535,18 +4671,34 @@ class ReportFormatter:
             # Use LLM if available
             if self.llm:
                 try:
+                    # Transform data for template
+                    transformed_data = self._transform_translation_analysis(data)
+                    
+                    # Extract brand names for the prompt
+                    brand_names = []
+                    if "per_name_analysis" in transformed_data:
+                        brand_names = [brand["brand_name"] for brand in transformed_data["per_name_analysis"] if "brand_name" in brand]
+                    
+                    # Log the transformed data
+                    logger.debug(f"Translation analysis data for template: {str(transformed_data)[:200]}...")
+                    
                     # Format data for the prompt
                     format_data = {
                         "run_id": self.current_run_id,
-                        "translation_data": json.dumps(data, indent=2) if isinstance(data, dict) else str(data),
+                        "translation_data": json.dumps(transformed_data, indent=2),
                         "format_instructions": self._get_format_instructions("translation_analysis")
                     }
                     
-                    # Create prompt
+                    # Create prompt with template
                     prompt_content = self._format_template("translation_analysis", format_data, "translation_analysis")
                     
                     # Create messages
                     system_content = self._get_system_content("You are an expert report formatter helping to create a professional brand naming report.")
+                    
+                    # Add brand names directly to the system message as a fallback in case template substitution fails
+                    if brand_names:
+                        system_content += f"\nAnalyze the translation of the following brand names: {', '.join(brand_names)}"
+                    
                     messages = [
                         SystemMessage(content=system_content),
                         HumanMessage(content=prompt_content)
@@ -5093,126 +5245,4 @@ class ReportFormatter:
         except Exception as e:
             logger.error(f"Error storing report metadata: {str(e)}")
             logger.error(f"Error details: {traceback.format_exc()}")
-            # Don't raise the exception - this is not critical for report generation
-
-    async def generate_report(self, run_id: str, upload_to_storage: bool = True) -> str:
-        """
-        Generate a formatted report for the given run ID.
-        
-        Args:
-            run_id: The run ID to generate a report for
-            upload_to_storage: Whether to upload the report to Supabase storage (default: True)
-            
-        Returns:
-            str: The path to the generated report
-        """
-        logger.info(f"Generating report for run ID: {run_id}")
-        
-        # Initialize run ID
-        self.current_run_id = run_id
-        
-        # Initialize LLM if not already done
-        if not self.llm:
-            self._initialize_llm()
-        
-        # Fetch raw data
-        data = await self.fetch_raw_data(run_id)
-        
-        if not data:
-            logger.error(f"No data found for run ID: {run_id}")
-            return None
-        
-        # Create document
-        doc = Document()
-        
-        # Set up document styles
-        self._setup_document_styles(doc)
-        
-        # Add title page - Required to be first!
-        await self._add_title_page(doc, data)
-        
-        # Add table of contents - Required to be second!
-        await self._add_table_of_contents(doc)
-        
-        # Add executive summary - Required to be third!
-        if "exec_summary" in data:
-            await self._add_executive_summary(doc, data["exec_summary"])
-        
-        # Process each section in order
-        for section_name in self.SECTION_ORDER:
-            # Skip already processed sections
-            if section_name in ["exec_summary", "final_recommendations"]:
-                continue
-                
-            if section_name in data:
-                section_data = data[section_name]
-                
-                # Format the section based on its name
-                if hasattr(self, f"_format_{self.REVERSE_SECTION_MAPPING.get(section_name, section_name)}"):
-                    # Call the specific formatter method
-                    formatter_method = getattr(self, f"_format_{self.REVERSE_SECTION_MAPPING.get(section_name, section_name)}")
-                    await formatter_method(doc, section_data)
-                else:
-                    # Use generic formatter as fallback
-                    await self._format_generic_section(doc, section_name, section_data)
-        
-        # Add recommendations section at the end
-        if "final_recommendations" in data:
-            await self._add_recommendations(doc, data["final_recommendations"])
-        
-        # Save document to a temporary file
-        temp_dir = Path("tmp")
-        temp_dir.mkdir(exist_ok=True)
-        file_path = temp_dir / f"report_{run_id}.docx"
-        
-        doc.save(str(file_path))
-        logger.info(f"Report saved to: {file_path}")
-        
-        # Upload to storage if available and requested
-        report_url = None
-        if upload_to_storage and self.supabase:
-            try:
-                logger.info("Attempting to upload report to Supabase storage")
-                report_url = await self.upload_report_to_storage(str(file_path), run_id)
-                
-                if report_url:
-                    logger.info(f"Report successfully uploaded to: {report_url}")
-                    # File size in KB
-                    file_size_kb = file_path.stat().st_size / 1024
-                    # Store metadata
-                    await self.store_report_metadata(run_id, report_url, file_size_kb, self.FORMAT_DOCX)
-                else:
-                    logger.error("Failed to upload report to Supabase storage - report_url is None")
-            except Exception as e:
-                logger.error(f"Unexpected error during upload process: {str(e)}")
-                logger.error(traceback.format_exc())
-        elif not upload_to_storage:
-            logger.info("Skipping upload to storage as requested (upload_to_storage=False)")
-        else:
-            logger.warning("Supabase client not available - skipping upload to storage")
-        
-        return str(file_path)
-
-async def main(run_id: str = None, upload_to_storage: bool = True):
-    """Main function to run the formatter."""
-    if not run_id:
-        # Use a default run ID for testing
-        run_id = "mae_20250312_141302_d45cccde"  # Replace with an actual run ID
-        
-    formatter = ReportFormatter()
-    output_path = await formatter.generate_report(run_id, upload_to_storage=upload_to_storage)
-    print(f"Report generated at: {output_path}")
-
-
-if __name__ == "__main__":
-    # Command-line interface
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Generate a formatted report from raw data")
-    parser.add_argument("run_id", help="The run ID to generate a report for")
-    parser.add_argument("--no-upload", dest="upload_to_storage", action="store_false", 
-                        help="Skip uploading the report to Supabase storage")
-    parser.set_defaults(upload_to_storage=True)
-    args = parser.parse_args()
-    
-    asyncio.run(main(args.run_id, args.upload_to_storage)) 
+            # Do not raise the exception - this is not critical for report generation

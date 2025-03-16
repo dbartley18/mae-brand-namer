@@ -47,6 +47,10 @@ def process_template(template: Union[Dict[str, Any], str], variables: Dict[str, 
         # Log available variables for debugging
         logger.debug(f"Available variables for template substitution: {list(variables.keys())}")
         
+        # Extra debugging for double curly braces
+        if '{{' in template_str:
+            logger.debug(f"Template contains double curly braces. Example: {template_str.split('{{')[1].split('}}')[0] if '{{' in template_str and '}}' in template_str else 'none found'}")
+            
         # Find all variables in the template using regex (handles both single and double curly braces)
         # First, check for double curly braces format ({{var_name}})
         double_var_pattern = r'\{\{\s*([a-zA-Z0-9_]+)\s*\}\}'
@@ -70,6 +74,13 @@ def process_template(template: Union[Dict[str, Any], str], variables: Dict[str, 
                 # Get the variable value
                 var_value = variables[var_name]
                 
+                # More detailed debug for important variables
+                if var_name in ['run_id', 'brand_name_generation', 'format_instructions']:
+                    if isinstance(var_value, str):
+                        logger.debug(f"Variable '{var_name}' value type: {type(var_value)}, length: {len(var_value)}, starts with: {var_value[:50]}...")
+                    else:
+                        logger.debug(f"Variable '{var_name}' value type: {type(var_value)}")
+                
                 # Handle different variable types appropriately
                 if isinstance(var_value, (list, dict)):
                     # Use JSON serialization for lists and dicts to properly format them
@@ -82,20 +93,36 @@ def process_template(template: Union[Dict[str, Any], str], variables: Dict[str, 
                 
                 # Replace {{var_name}} with the actual value (double braces format)
                 double_var_pattern = r'\{\{\s*' + var_name + r'\s*\}\}'
+                old_template_str = template_str
                 template_str = re.sub(double_var_pattern, var_value, template_str)
+                
+                # Check if any replacements were made
+                if old_template_str != template_str:
+                    logger.debug(f"Substituted variable '{var_name}' in template (double braces)")
                 
                 # Replace {var_name} with the actual value (single braces format)
                 single_var_pattern = r'\{' + var_name + r'\}'
+                old_template_str = template_str
                 template_str = re.sub(single_var_pattern, var_value, template_str)
                 
-                logger.debug(f"Substituted variable '{var_name}' in template")
+                # Check if any replacements were made
+                if old_template_str != template_str:
+                    logger.debug(f"Substituted variable '{var_name}' in template (single braces)")
             else:
                 failed_vars.append(var_name)
-                logger.warning(f"Variable '{var_name}' not found in provided variables")
+                logger.warning(f"Variable '{var_name}' not found in provided variables. Available keys: {list(variables.keys())}")
+        
+        # Check if any variables remain unsubstituted
+        remaining_double_vars = re.findall(r'\{\{\s*([a-zA-Z0-9_]+)\s*\}\}', template_str)
+        if remaining_double_vars:
+            logger.warning(f"Some double-braced variables remain unsubstituted: {remaining_double_vars}")
         
         # Log variables that failed to substitute
         if failed_vars:
             logger.error(f"Variables not substituted: {failed_vars}")
+        
+        # Log a sample of the processed template
+        logger.debug(f"Processed template (first 200 chars): {template_str[:200]}...")
         
         # Convert back to dictionary
         return yaml.safe_load(template_str)
