@@ -239,7 +239,13 @@ class ReportCompiler:
                     logger.warning(f"No semantic analysis data found for run_id {run_id}")
                     return {}
                 
-                return {"semantic_analysis": data}
+                # Structure data with brand names as keys
+                formatted_data = {}
+                for item in data:
+                    brand_name = item.pop("brand_name")  # Remove and get brand_name
+                    formatted_data[brand_name] = item
+                
+                return {"semantic_analysis": formatted_data}
                 
             elif section_name == "linguistic_analysis":
                 # Fetch linguistic analysis data
@@ -256,7 +262,13 @@ class ReportCompiler:
                     logger.warning(f"No linguistic analysis data found for run_id {run_id}")
                     return {}
                 
-                return {"linguistic_analysis": data}
+                # Structure data with brand names as keys
+                formatted_data = {}
+                for item in data:
+                    brand_name = item.pop("brand_name")  # Remove and get brand_name
+                    formatted_data[brand_name] = item
+                
+                return {"linguistic_analysis": formatted_data}
                 
             elif section_name == "cultural_sensitivity_analysis":
                 # Fetch cultural sensitivity analysis data
@@ -273,7 +285,13 @@ class ReportCompiler:
                     logger.warning(f"No cultural sensitivity analysis data found for run_id {run_id}")
                     return {}
                 
-                return {"cultural_sensitivity_analysis": data}
+                # Structure data with brand names as keys
+                formatted_data = {}
+                for item in data:
+                    brand_name = item.pop("brand_name")  # Remove and get brand_name
+                    formatted_data[brand_name] = item
+                
+                return {"cultural_sensitivity_analysis": formatted_data}
                 
             elif section_name == "brand_name_evaluation":
                 # Fetch brand name evaluation data
@@ -291,14 +309,16 @@ class ReportCompiler:
                     logger.warning(f"No brand name evaluation data found for run_id {run_id}")
                     return {}
                 
-                # Split into shortlisted and other names
+                # Split into shortlisted and other names, ensuring brand_name is first
                 shortlisted = []
                 other_names = []
                 for item in data:
+                    formatted_item = {"brand_name": item["brand_name"]}
+                    formatted_item.update({k: v for k, v in item.items() if k != "brand_name"})
                     if item.get("shortlist_status"):
-                        shortlisted.append(item)
+                        shortlisted.append(formatted_item)
                     else:
-                        other_names.append(item)
+                        other_names.append(formatted_item)
                 
                 return {
                     "brand_name_evaluation": {
@@ -322,20 +342,17 @@ class ReportCompiler:
                     logger.warning(f"No translation analysis data found for run_id {run_id}")
                     return {}
                 
-                # Group by brand name while preserving brand_name field
-                grouped_data = []
-                by_brand = {}
+                # Structure data with brand names as keys
+                formatted_data = {}
                 for item in data:
                     brand_name = item["brand_name"]
-                    if brand_name not in by_brand:
-                        by_brand[brand_name] = {
-                            "brand_name": brand_name,
+                    if brand_name not in formatted_data:
+                        formatted_data[brand_name] = {
                             "languages": []
                         }
-                    language_data = {k: v for k, v in item.items() if k != "brand_name"}
-                    by_brand[brand_name]["languages"].append(language_data)
+                    formatted_data[brand_name]["languages"].append(item)
                 
-                return {"translation_analysis": list(by_brand.values())}
+                return {"translation_analysis": formatted_data}
                 
             elif section_name == "market_research":
                 # Fetch market research data
@@ -352,7 +369,14 @@ class ReportCompiler:
                     logger.warning(f"No market research data found for run_id {run_id}")
                     return {}
                 
-                return {"market_research": data}
+                # Ensure brand_name is first in each object
+                formatted_data = []
+                for item in data:
+                    formatted_item = {"brand_name": item["brand_name"]}
+                    formatted_item.update({k: v for k, v in item.items() if k != "brand_name"})
+                    formatted_data.append(formatted_item)
+                
+                return {"market_research": formatted_data}
                 
             elif section_name == "competitor_analysis":
                 # Fetch competitor analysis data
@@ -370,7 +394,6 @@ class ReportCompiler:
                     return {}
                 
                 # Group by brand name while preserving brand_name field
-                grouped_data = []
                 by_brand = {}
                 for item in data:
                     brand_name = item["brand_name"]
@@ -382,7 +405,14 @@ class ReportCompiler:
                     competitor_data = {k: v for k, v in item.items() if k not in ["brand_name"]}
                     by_brand[brand_name]["competitors"].append(competitor_data)
                 
-                return {"competitor_analysis": list(by_brand.values())}
+                # Convert to list and ensure brand_name is first
+                formatted_data = []
+                for brand_data in by_brand.values():
+                    formatted_item = {"brand_name": brand_data["brand_name"]}
+                    formatted_item["competitors"] = brand_data["competitors"]
+                    formatted_data.append(formatted_item)
+                
+                return {"competitor_analysis": formatted_data}
                 
             elif section_name == "domain_analysis":
                 # Fetch domain analysis data
@@ -399,7 +429,13 @@ class ReportCompiler:
                     logger.warning(f"No domain analysis data found for run_id {run_id}")
                     return {}
                 
-                return {"domain_analysis": data}
+                # Structure data with brand names as keys
+                formatted_data = {}
+                for item in data:
+                    brand_name = item.pop("brand_name")  # Remove and get brand_name
+                    formatted_data[brand_name] = item
+                
+                return {"domain_analysis": formatted_data}
                 
             elif section_name == "survey_simulation":
                 # Fetch survey simulation data
@@ -416,7 +452,14 @@ class ReportCompiler:
                     logger.warning(f"No survey simulation data found for run_id {run_id}")
                     return {}
                 
-                return {"survey_simulation": data}
+                # Ensure brand_name is first in each object
+                formatted_data = []
+                for item in data:
+                    formatted_item = {"brand_name": item["brand_name"]}
+                    formatted_item.update({k: v for k, v in item.items() if k != "brand_name"})
+                    formatted_data.append(formatted_item)
+                
+                return {"survey_simulation": formatted_data}
                 
             elif section_name == "seo_online_discoverability":
                 # Fetch SEO online discoverability data
@@ -433,7 +476,14 @@ class ReportCompiler:
                     logger.warning(f"No SEO online discoverability data found for run_id {run_id}")
                     return {}
                 
-                return {"seo_online_discoverability": data}
+                # Ensure brand_name is first in each object
+                formatted_data = []
+                for item in data:
+                    formatted_item = {"brand_name": item["brand_name"]}
+                    formatted_item.update({k: v for k, v in item.items() if k != "brand_name"})
+                    formatted_data.append(formatted_item)
+                
+                return {"seo_online_discoverability": formatted_data}
             
             else:
                 raise ValueError(f"Unknown section: {section_name}")
