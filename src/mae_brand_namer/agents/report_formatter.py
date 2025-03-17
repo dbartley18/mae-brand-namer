@@ -4305,12 +4305,17 @@ class ReportFormatter:
                     # Log the transformed data
                     logger.debug(f"Semantic analysis data for template: {str(transformed_data)[:200]}...")
                     
-                    # Format data for the prompt
+                    # Get the original semantic analysis data
+                    original_semantic_data = data.get("semantic_analysis", data)
+                    if isinstance(original_semantic_data, dict) and "semantic_analysis" in original_semantic_data:
+                        original_semantic_data = original_semantic_data["semantic_analysis"]
+                    
+                    # Format data for the prompt - use the original data for the template
                     format_data = {
                         "run_id": self.current_run_id,
-                        "semantic_analysis": json.dumps(transformed_data, indent=2),
+                        "semantic_analysis": json.dumps(original_semantic_data, indent=2),
                         "format_instructions": self._get_format_instructions("semantic_analysis"),
-                        "brand_names": json.dumps(brand_names),
+                        "brand_names": ", ".join(brand_names) if brand_names else "",
                         "brand_names_instruction": "Please analyze the semantic properties of these brand names."
                     }
                     
