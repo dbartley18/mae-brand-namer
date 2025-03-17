@@ -1,13 +1,10 @@
 _type: prompt
-input_variables: ["run_id", "semantic_analysis", "format_instructions", "brand_names", "brand_names_instruction"]
+input_variables: ["run_id", "semantic_analysis", "format_instructions"]
 template: |
   Your task is to create a well-structured semantic analysis section for a brand naming report based on the provided data.
 
   Run ID: {{run_id}}
-  Brand Names: {{brand_names}}
-  
-  IMPORTANT INSTRUCTION ABOUT BRAND NAMES:
-  {{brand_names_instruction}}
+  Semantic Analysis Data: {{semantic_analysis}}
   
   Format Instructions: {{format_instructions}}
 
@@ -56,7 +53,3 @@ template: |
     "summary": "Summary of key semantic insights"
   }
   ```
-
-  Semantic Analysis Data:
-  {{semantic_analysis}}
-  
