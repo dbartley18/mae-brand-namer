@@ -656,21 +656,108 @@ class ReportFormatter:
             return {}
 
     def _transform_cultural_sensitivity(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform cultural sensitivity analysis data to match expected format.
+        
+        The cultural sensitivity analysis data should contain brand name analyses with
+        attributes such as symbolic_meanings, cultural_connotations, etc.
+        
+        Args:
+            data: Raw cultural sensitivity analysis data
+            
+        Returns:
+            Transformed data with brand_analyses and summary fields
+        """
         if not data:
             return {}
         try:
-            cultural_sensitivity_analysis_data = CulturalSensitivityAnalysis.model_validate(data)
-            return cultural_sensitivity_analysis_data.model_dump()
+            # Validate data against the model
+            cultural_sensitivity_data = CulturalSensitivityAnalysis.model_validate(data)
+            
+            # Transform to a format more suitable for the template
+            transformed_data = {
+                "brand_analyses": [],
+                "summary": "The cultural sensitivity analysis evaluated brand names across multiple dimensions including symbolic meanings, cultural connotations, religious sensitivities, and regional variations. This analysis helps identify names that minimize cultural risks while maximizing positive associations across diverse markets."
+            }
+            
+            # Process each brand analysis
+            if hasattr(cultural_sensitivity_data, "cultural_sensitivity_analysis"):
+                for brand_name, analysis in cultural_sensitivity_data.cultural_sensitivity_analysis.items():
+                    # Create a brand analysis entry with all fields from the model
+                    brand_analysis = analysis.model_dump()
+                    # Ensure brand_name is included
+                    if "brand_name" not in brand_analysis:
+                        brand_analysis["brand_name"] = brand_name
+                    
+                    transformed_data["brand_analyses"].append(brand_analysis)
+            
+            logger.info(f"Successfully transformed cultural sensitivity data with {len(transformed_data['brand_analyses'])} brand analyses")
+            return transformed_data
+            
         except ValidationError as e:
             logger.error(f"Validation error for cultural sensitivity analysis data: {str(e)}")
             return {}
 
     def _transform_name_evaluation(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform brand name evaluation data to match expected model format.
+        
+        The brand name evaluation data should have:
+        1. A "brand_name_evaluation" key with shortlisted_names and other_names lists
+        2. Each name evaluation contains brand_name, overall_score, shortlist_status, and evaluation_comments
+        
+        Args:
+            data: Raw brand name evaluation data
+            
+        Returns:
+            Transformed data in the format expected by the formatter
+        """
         if not data:
             return {}
         try:
+            # First, validate data against the model
             name_evaluation_data = BrandNameEvaluation.model_validate(data)
-            return name_evaluation_data.model_dump()
+            
+            # Transform to a format more suitable for the template
+            transformed_data = {
+                "shortlisted_names": [],
+                "other_names": [],
+                "evaluation_methodology": "Each brand name was evaluated based on multiple criteria including distinctiveness, memorability, strategic alignment, and cultural considerations.",
+                "comparative_analysis": "The shortlisted names demonstrated stronger overall performance across evaluation criteria, particularly in areas of strategic alignment with the brand's values and positioning in the market."
+            }
+            
+            # Process shortlisted names
+            if hasattr(name_evaluation_data.brand_name_evaluation, "shortlisted_names"):
+                transformed_data["shortlisted_names"] = [
+                    {
+                        "brand_name": item.brand_name,
+                        "overall_score": item.overall_score,
+                        "evaluation_comments": item.evaluation_comments
+                    }
+                    for item in name_evaluation_data.brand_name_evaluation.shortlisted_names
+                ]
+            
+            # Process other names
+            if hasattr(name_evaluation_data.brand_name_evaluation, "other_names"):
+                transformed_data["other_names"] = [
+                    {
+                        "brand_name": item.brand_name,
+                        "overall_score": item.overall_score,
+                        "evaluation_comments": item.evaluation_comments
+                    }
+                    for item in name_evaluation_data.brand_name_evaluation.other_names
+                ]
+                
+            # Add final rankings based on scores
+            all_names = transformed_data["shortlisted_names"] + transformed_data["other_names"]
+            rankings = {
+                item["brand_name"]: item["overall_score"] for item in all_names
+            }
+            transformed_data["final_rankings"] = rankings
+            
+            logger.info(f"Successfully transformed name evaluation data with {len(transformed_data['shortlisted_names'])} shortlisted names and {len(transformed_data['other_names'])} other names")
+            return transformed_data
+            
         except ValidationError as e:
             logger.error(f"Validation error for name evaluation data: {str(e)}")
             return {}
@@ -696,11 +783,62 @@ class ReportFormatter:
             return {}
 
     def _transform_competitor_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform competitor analysis data to match expected format.
+        
+        The competitor analysis data contains:
+        1. A "competitor_analysis" key with a list of brand competitor analyses
+        2. Each brand analysis has a "brand_name" and "competitors" array
+        3. Each competitor has details like name, strengths, weaknesses, etc.
+        
+        Args:
+            data: Raw competitor analysis data
+            
+        Returns:
+            Transformed data suitable for the formatter
+        """
         if not data:
             return {}
         try:
+            # Validate data against the model
             competitor_analysis_data = CompetitorAnalysis.model_validate(data)
-            return competitor_analysis_data.model_dump()
+            
+            # Transform to a format more suitable for the template
+            transformed_data = {
+                "brand_names": {},
+                "summary": "This competitive analysis evaluates how each proposed brand name compares to competitors in the industry, highlighting opportunities for differentiation and potential risks."
+            }
+            
+            # Process each brand's competitor analysis
+            if hasattr(competitor_analysis_data, "competitor_analysis"):
+                for brand_analysis in competitor_analysis_data.competitor_analysis:
+                    brand_name = brand_analysis.brand_name
+                    
+                    # Create competitor analyses for this brand
+                    competitor_analyses = []
+                    for competitor in brand_analysis.competitors:
+                        competitor_analyses.append({
+                            "competitor_name": competitor.competitor_name,
+                            "risk_of_confusion": competitor.risk_of_confusion,
+                            "strengths": competitor.competitor_strengths,
+                            "weaknesses": competitor.competitor_weaknesses,
+                            "positioning": competitor.competitor_positioning,
+                            "trademark_conflict_risk": competitor.trademark_conflict_risk,
+                            "target_audience": competitor.target_audience_perception,
+                            "differentiation_opportunity": competitor.competitor_differentiation_opportunity
+                        })
+                    
+                    # Store brand-specific competitor analysis
+                    transformed_data["brand_names"][brand_name] = {
+                        "competitors": competitor_analyses,
+                        "differentiation": f"Analysis of {len(competitor_analyses)} key competitors reveals opportunities for {brand_name} to differentiate through distinct positioning and messaging.",
+                        "similarity_assessment": {c["competitor_name"]: f"Risk of confusion: {c['risk_of_confusion']}/10" for c in competitor_analyses},
+                        "recommendations": ["Emphasize unique brand attributes", "Monitor trademark risks", "Leverage differentiation opportunities"]
+                    }
+            
+            logger.info(f"Successfully transformed competitor analysis data with {len(transformed_data['brand_names'])} brand analyses")
+            return transformed_data
+            
         except ValidationError as e:
             logger.error(f"Validation error for competitor analysis data: {str(e)}")
             return {}
@@ -768,11 +906,93 @@ class ReportFormatter:
             return {"survey_simulation": data if isinstance(data, list) else []}
 
     def _transform_seo_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform SEO online discoverability data to match expected format.
+        
+        The SEO analysis data is structured as a list of brand name analyses with
+        various attributes such as search_volume, keyword_alignment, etc.
+        
+        Args:
+            data: Raw SEO analysis data
+            
+        Returns:
+            Transformed data with brand_names and summary fields
+        """
         if not data:
             return {}
         try:
-            seo_analysis_data = SEOOnlineDiscoverability.model_validate(data)
-            return seo_analysis_data.model_dump()
+            # Validate data against the model
+            seo_data = SEOOnlineDiscoverability.model_validate(data)
+            
+            # Transform to a format more suitable for the formatter
+            transformed_data = {
+                "brand_names": {},
+                "summary": "This SEO and online discoverability analysis evaluated brand names based on search metrics, keyword potential, and social media presence to identify names with the strongest digital marketing potential.",
+                "general_recommendations": [
+                    "Prioritize consistent branding across all online platforms",
+                    "Implement thorough technical SEO best practices on the website",
+                    "Develop content marketing strategies aligned with target keywords",
+                    "Monitor and respond to brand mentions across digital channels",
+                    "Regularly review SEO performance and adapt strategies accordingly"
+                ]
+            }
+            
+            # Process each brand analysis
+            if hasattr(seo_data, "seo_online_discoverability"):
+                for analysis in seo_data.seo_online_discoverability:
+                    # Get brand name
+                    brand_name = analysis.brand_name
+                    
+                    # Parse recommendations - handle string or list
+                    if hasattr(analysis, "seo_recommendations"):
+                        if isinstance(analysis.seo_recommendations, str):
+                            try:
+                                recommendations = json.loads(analysis.seo_recommendations)
+                            except (json.JSONDecodeError, AttributeError):
+                                recommendations = [analysis.seo_recommendations]
+                        else:
+                            recommendations = analysis.seo_recommendations
+                    else:
+                        recommendations = []
+                        
+                    # Create brand analysis entry with formatted structure
+                    transformed_data["brand_names"][brand_name] = {
+                        "search_metrics": {
+                            "Search Volume": analysis.search_volume,
+                            "Exact Match Results": analysis.exact_match_search_results,
+                            "SEO Viability Score": analysis.seo_viability_score
+                        },
+                        "competitive_analysis": {
+                            "Keyword Competition": analysis.keyword_competition,
+                            "Competitor Domain Strength": analysis.competitor_domain_strength,
+                            "Negative Search Results": "Yes" if analysis.negative_search_results else "No"
+                        },
+                        "keyword_opportunities": {
+                            "Keyword Alignment": analysis.keyword_alignment,
+                            "Branded Keyword Potential": analysis.branded_keyword_potential,
+                            "Non-Branded Keyword Potential": analysis.non_branded_keyword_potential,
+                            "Negative Keyword Associations": analysis.negative_keyword_associations
+                        },
+                        "social_media_potential": {
+                            "Social Media Availability": "Available" if analysis.social_media_availability else "Not Available",
+                            "Social Media Discoverability": analysis.social_media_discoverability
+                        },
+                        "seo_strengths": [
+                            f"Name length is {analysis.name_length_searchability.lower()}, which positively affects search behavior",
+                            f"Strong potential for branded keyword dominance" if "high" in analysis.branded_keyword_potential.lower() else "Moderate potential for branded keyword development",
+                            f"Content marketing opportunities: {analysis.content_marketing_opportunities}"
+                        ],
+                        "seo_challenges": [
+                            f"Unusual spelling impacts searchability" if analysis.unusual_spelling_impact else "No spelling issues affecting searchability",
+                            f"Negative keyword associations: {analysis.negative_keyword_associations}" if analysis.negative_keyword_associations.lower() not in ["none", "no", "none identified"] else "No negative keyword associations"
+                        ],
+                        "recommendations": recommendations,
+                        "overall_seo_rating": f"{analysis.seo_viability_score}/10"
+                    }
+            
+            logger.info(f"Successfully transformed SEO analysis data with {len(transformed_data['brand_names'])} brand analyses")
+            return transformed_data
+            
         except ValidationError as e:
             logger.error(f"Validation error for SEO analysis data: {str(e)}")
             return {}
@@ -1331,7 +1551,7 @@ class ReportFormatter:
             
             # Transform data using model
             transformed_data = self._transform_linguistic_analysis(data)
-            logger.debug(f"Transformed linguistic analysis data: {len(str(transformed_data))} chars")
+            logger.info(f"Transformed linguistic analysis data: {len(str(transformed_data))} chars")
             
             # Check if we have linguistic analysis data
             if "linguistic_analysis" in transformed_data and transformed_data["linguistic_analysis"]:
@@ -1349,18 +1569,17 @@ class ReportFormatter:
                     attributes = [
                         ("word_class", "Word Class"),
                         ("sound_symbolism", "Sound Symbolism"),
-                        ("pronunciation_guide", "Pronunciation Guide"),
-                        ("syllable_count", "Syllable Count"),
-                        ("stress_pattern", "Stress Pattern"),
-                        ("vowel_consonant_pattern", "Vowel-Consonant Pattern"),
-                        ("alliteration", "Alliteration"),
-                        ("rhyme", "Rhyme"),
-                        ("assonance", "Assonance"),
-                        ("rhythm", "Rhythm"),
-                        ("spelling_complexity", "Spelling Complexity"),
-                        ("language_origin", "Language Origin"),
-                        ("prefixes_suffixes", "Prefixes/Suffixes"),
-                        ("linguistic_insights", "Linguistic Insights"),
+                        ("rhythm_and_meter", "Rhythm and Meter"),
+                        ("pronunciation_ease", "Pronunciation Ease"),
+                        ("euphony_vs_cacophony", "Euphony vs Cacophony"),
+                        ("inflectional_properties", "Inflectional Properties"),
+                        ("neologism_appropriateness", "Neologism Appropriateness"),
+                        ("overall_readability_score", "Overall Readability Score"),
+                        ("morphological_transparency", "Morphological Transparency"),
+                        ("naturalness_in_collocations", "Naturalness in Collocations"),
+                        ("ease_of_marketing_integration", "Ease of Marketing Integration"),
+                        ("phoneme_frequency_distribution", "Phoneme Frequency Distribution"),
+                        ("semantic_distance_from_competitors", "Semantic Distance from Competitors"),
                         ("notes", "Notes")
                     ]
                     
@@ -1373,34 +1592,32 @@ class ReportFormatter:
                             p = doc.add_paragraph()
                             p.add_run(f"{attr_display}: ").bold = True
                             
-                            # Handle dictionary attributes
+                            # Handle different value types
                             if isinstance(value, dict):
                                 # Add each dictionary item as a bullet point
                                 for sub_key, sub_value in value.items():
                                     bullet_p = doc.add_paragraph(style="List Bullet")
                                     bullet_p.add_run(f"{sub_key.replace('_', ' ').title()}: ").bold = True
                                     bullet_p.add_run(str(sub_value))
-                            # Handle list attributes
                             elif isinstance(value, list):
                                 # Add the attribute value as a comma-separated list
                                 p.add_run(", ".join(str(item) for item in value))
-                            # Handle simple string/number attributes
                             else:
                                 p.add_run(str(value))
                     
                     # Add separator between brand analyses (except after the last one)
                     if brand_name != list(linguistic_analyses.keys())[-1]:
-                        doc.add_paragraph("")
+                        doc.add_paragraph("", style="Normal")
                 
-                # Add comparative analysis if available
-                if "comparative_analysis" in transformed_data and transformed_data["comparative_analysis"]:
-                    doc.add_heading("Comparative Linguistic Analysis", level=2)
-                    doc.add_paragraph(transformed_data["comparative_analysis"])
+                # Add summary section
+                doc.add_heading("Linguistic Analysis Summary", level=2)
+                doc.add_paragraph(
+                    "The linguistic analysis examines how each brand name functions from a linguistic perspective, "
+                    "considering pronunciation, rhythm, sound symbolism, and other factors that influence "
+                    "memorability and effectiveness. This analysis helps identify names that are not only "
+                    "semantically appropriate but also linguistically strong."
+                )
                     
-                # Add summary if available
-                if "summary" in transformed_data and transformed_data["summary"]:
-                    doc.add_heading("Summary", level=2)
-                    doc.add_paragraph(transformed_data["summary"])
             else:
                 # No linguistic analysis data available
                 doc.add_paragraph("No linguistic analysis data available for this brand naming project.")
@@ -1408,7 +1625,6 @@ class ReportFormatter:
         except Exception as e:
             logger.error(f"Error formatting linguistic analysis section: {str(e)}")
             logger.debug(f"Error details: {traceback.format_exc()}")
-            doc.add_paragraph(f"Error formatting linguistic analysis section: {str(e)}")
             # Add a generic error message to the document
             doc.add_paragraph("Unable to format the linguistic analysis section due to an error in processing the data.")
 
@@ -1433,7 +1649,7 @@ class ReportFormatter:
             
             # Transform data using model
             transformed_data = self._transform_cultural_sensitivity(data)
-            logger.debug(f"Transformed cultural sensitivity data: {len(str(transformed_data))} chars")
+            logger.info(f"Transformed cultural sensitivity data: {len(str(transformed_data))} chars")
             
             # Check if we have analysis data
             if transformed_data and isinstance(transformed_data, dict):
@@ -1451,17 +1667,18 @@ class ReportFormatter:
                         # Add brand name as heading
                         doc.add_heading(brand_name, level=2)
                         
-                        # Process attributes in a structured way
+                        # Process attributes in a structured way - updated to match BrandAnalysis model fields
                         attributes = [
                             ("symbolic_meanings", "Symbolic Meanings"),
-                            ("cultural_associations", "Cultural Associations"),
-                            ("religious_significance", "Religious Significance"),
-                            ("political_implications", "Political Implications"),
-                            ("historical_context", "Historical Context"),
-                            ("linguistic_challenges", "Linguistic Challenges"),
-                            ("taboo_associations", "Taboo Associations"),
-                            ("regional_considerations", "Regional Considerations"),
+                            ("historical_meaning", "Historical Meaning"),
                             ("overall_risk_rating", "Overall Risk Rating"),
+                            ("regional_variations", "Regional Variations"),
+                            ("cultural_connotations", "Cultural Connotations"),
+                            ("current_event_relevance", "Current Event Relevance"),
+                            ("religious_sensitivities", "Religious Sensitivities"), 
+                            ("social_political_taboos", "Social Political Taboos"),
+                            ("age_related_connotations", "Age-Related Connotations"),
+                            ("alignment_with_cultural_values", "Alignment with Cultural Values"),
                             ("notes", "Notes")
                         ]
                         
@@ -1495,23 +1712,9 @@ class ReportFormatter:
                         if analysis != brand_analyses[-1]:
                             doc.add_paragraph("")
                     
-                    # Add regional analysis summary if available
-                    if "regional_analysis" in transformed_data and transformed_data["regional_analysis"]:
-                        doc.add_heading("Regional Analysis", level=2)
-                        
-                        regional_analysis = transformed_data["regional_analysis"]
-                        # Check if it's a dictionary with regions as keys
-                        if isinstance(regional_analysis, dict):
-                            for region, analysis in regional_analysis.items():
-                                doc.add_heading(region, level=3)
-                                doc.add_paragraph(str(analysis))
-                        else:
-                            # Simple string
-                            doc.add_paragraph(str(regional_analysis))
-                    
                     # Add summary if available
                     if "summary" in transformed_data and transformed_data["summary"]:
-                        doc.add_heading("Summary", level=2)
+                        doc.add_heading("Cultural Sensitivity Summary", level=2)
                         doc.add_paragraph(transformed_data["summary"])
                 else:
                     # No brand analyses available
@@ -1523,9 +1726,8 @@ class ReportFormatter:
         except Exception as e:
             logger.error(f"Error formatting cultural sensitivity section: {str(e)}")
             logger.debug(f"Error details: {traceback.format_exc()}")
-            doc.add_paragraph(f"Error formatting cultural sensitivity section: {str(e)}")
             # Add a generic error message to the document
-            doc.add_paragraph("Unable to format the cultural sensitivity analysis section due to an error in processing the data.")
+            doc.add_paragraph("Unable to format the cultural sensitivity section due to an error in processing the data.")
 
     async def _format_name_evaluation(self, doc: Document, data: Dict[str, Any]) -> None:
         """
@@ -1548,126 +1750,63 @@ class ReportFormatter:
             
             # Transform data using model
             transformed_data = self._transform_name_evaluation(data)
-            logger.debug(f"Transformed name evaluation data: {len(str(transformed_data))} chars")
+            logger.info(f"Transformed name evaluation data: {len(str(transformed_data))} chars")
             
             # Check if we have evaluation data
             if transformed_data and isinstance(transformed_data, dict):
-                # Process overall information
+                # Process evaluation methodology
                 if "evaluation_methodology" in transformed_data and transformed_data["evaluation_methodology"]:
                     doc.add_heading("Evaluation Methodology", level=2)
                     doc.add_paragraph(transformed_data["evaluation_methodology"])
                 
-                # Process evaluation criteria
-                if "evaluation_criteria" in transformed_data and transformed_data["evaluation_criteria"]:
-                    doc.add_heading("Evaluation Criteria", level=2)
+                # Process shortlisted names
+                if "shortlisted_names" in transformed_data and transformed_data["shortlisted_names"]:
+                    doc.add_heading("Shortlisted Brand Names", level=2)
+                    doc.add_paragraph(
+                        f"The following {len(transformed_data['shortlisted_names'])} brand names were shortlisted "
+                        f"based on their strong performance across evaluation criteria."
+                    )
                     
-                    criteria = transformed_data["evaluation_criteria"]
-                    if isinstance(criteria, dict):
-                        # Process each criterion with description
-                        for criterion, description in criteria.items():
-                            p = doc.add_paragraph(style="List Bullet")
-                            p.add_run(f"{criterion}: ").bold = True
-                            p.add_run(str(description))
-                    elif isinstance(criteria, list):
-                        # Process list of criteria
-                        for criterion in criteria:
-                            doc.add_paragraph(f"• {criterion}", style="List Bullet")
-                    else:
-                        # Simple string
-                        doc.add_paragraph(str(criteria))
-                
-                # Process brand evaluations
-                if "brand_evaluations" in transformed_data and transformed_data["brand_evaluations"]:
-                    doc.add_heading("Brand Name Evaluations", level=2)
-                    
-                    brand_evaluations = transformed_data["brand_evaluations"]
-                    
-                    # Process each brand evaluation
-                    for brand_name, evaluation in brand_evaluations.items():
-                        # Add brand name as heading
-                        doc.add_heading(brand_name, level=3)
+                    # Process each shortlisted name
+                    for name_data in transformed_data["shortlisted_names"]:
+                        doc.add_heading(name_data["brand_name"], level=3)
                         
-                        # Process evaluation scores
-                        if "scores" in evaluation and evaluation["scores"]:
-                            doc.add_heading("Evaluation Scores", level=4)
-                            
-                            scores = evaluation["scores"]
-                            if isinstance(scores, dict):
-                                # Create a table for scores
-                                table = doc.add_table(rows=len(scores)+1, cols=2)
-                                table.style = 'Table Grid'
-                                
-                                # Add header row
-                                header_cells = table.rows[0].cells
-                                header_cells[0].text = "Criterion"
-                                header_cells[1].text = "Score"
-                                
-                                # Add score rows
-                                for i, (criterion, score) in enumerate(scores.items(), 1):
-                                    cells = table.rows[i].cells
-                                    cells[0].text = criterion
-                                    cells[1].text = str(score)
-                                
-                                # Add spacing after table
-                                doc.add_paragraph("")
+                        # Add overall score
+                        p = doc.add_paragraph()
+                        p.add_run("Overall Score: ").bold = True
+                        p.add_run(f"{name_data['overall_score']}/10")
                         
-                        # Process strengths
-                        if "strengths" in evaluation and evaluation["strengths"]:
-                            doc.add_heading("Strengths", level=4)
-                            
-                            strengths = evaluation["strengths"]
-                            if isinstance(strengths, list):
-                                for strength in strengths:
-                                    doc.add_paragraph(f"• {strength}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(strengths))
-                        
-                        # Process weaknesses
-                        if "weaknesses" in evaluation and evaluation["weaknesses"]:
-                            doc.add_heading("Weaknesses", level=4)
-                            
-                            weaknesses = evaluation["weaknesses"]
-                            if isinstance(weaknesses, list):
-                                for weakness in weaknesses:
-                                    doc.add_paragraph(f"• {weakness}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(weaknesses))
-                        
-                        # Process opportunities
-                        if "opportunities" in evaluation and evaluation["opportunities"]:
-                            doc.add_heading("Opportunities", level=4)
-                            
-                            opportunities = evaluation["opportunities"]
-                            if isinstance(opportunities, list):
-                                for opportunity in opportunities:
-                                    doc.add_paragraph(f"• {opportunity}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(opportunities))
-                        
-                        # Process risks
-                        if "risks" in evaluation and evaluation["risks"]:
-                            doc.add_heading("Risks", level=4)
-                            
-                            risks = evaluation["risks"]
-                            if isinstance(risks, list):
-                                for risk in risks:
-                                    doc.add_paragraph(f"• {risk}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(risks))
-                        
-                        # Process overall rating
-                        if "overall_rating" in evaluation and evaluation["overall_rating"]:
-                            p = doc.add_paragraph()
-                            p.add_run("Overall Rating: ").bold = True
-                            p.add_run(str(evaluation["overall_rating"]))
-                        
-                        # Process additional notes
-                        if "notes" in evaluation and evaluation["notes"]:
-                            doc.add_heading("Additional Notes", level=4)
-                            doc.add_paragraph(str(evaluation["notes"]))
+                        # Add evaluation comments
+                        if "evaluation_comments" in name_data and name_data["evaluation_comments"]:
+                            doc.add_paragraph(name_data["evaluation_comments"])
                         
                         # Add separator between brand evaluations (except for the last one)
-                        if brand_name != list(brand_evaluations.keys())[-1]:
+                        if name_data != transformed_data["shortlisted_names"][-1]:
+                            doc.add_paragraph("")
+                
+                # Process other names
+                if "other_names" in transformed_data and transformed_data["other_names"]:
+                    doc.add_heading("Other Evaluated Brand Names", level=2)
+                    doc.add_paragraph(
+                        f"The following {len(transformed_data['other_names'])} brand names were evaluated "
+                        f"but not shortlisted."
+                    )
+                    
+                    # Process each non-shortlisted name
+                    for name_data in transformed_data["other_names"]:
+                        doc.add_heading(name_data["brand_name"], level=3)
+                        
+                        # Add overall score
+                        p = doc.add_paragraph()
+                        p.add_run("Overall Score: ").bold = True
+                        p.add_run(f"{name_data['overall_score']}/10")
+                        
+                        # Add evaluation comments
+                        if "evaluation_comments" in name_data and name_data["evaluation_comments"]:
+                            doc.add_paragraph(name_data["evaluation_comments"])
+                        
+                        # Add separator between brand evaluations (except for the last one)
+                        if name_data != transformed_data["other_names"][-1]:
                             doc.add_paragraph("")
                 
                 # Process comparative analysis
@@ -1680,22 +1819,7 @@ class ReportFormatter:
                     doc.add_heading("Final Rankings", level=2)
                     
                     rankings = transformed_data["final_rankings"]
-                    if isinstance(rankings, list):
-                        # Create a table for rankings
-                        table = doc.add_table(rows=len(rankings)+1, cols=2)
-                        table.style = 'Table Grid'
-                        
-                        # Add header row
-                        header_cells = table.rows[0].cells
-                        header_cells[0].text = "Rank"
-                        header_cells[1].text = "Brand Name"
-                        
-                        # Add ranking rows
-                        for i, brand_name in enumerate(rankings, 1):
-                            cells = table.rows[i].cells
-                            cells[0].text = str(i)
-                            cells[1].text = str(brand_name)
-                    elif isinstance(rankings, dict):
+                    if isinstance(rankings, dict):
                         # Create a table for rankings with scores
                         table = doc.add_table(rows=len(rankings)+1, cols=3)
                         table.style = 'Table Grid'
@@ -1716,13 +1840,17 @@ class ReportFormatter:
                             cells[1].text = str(brand_name)
                             cells[2].text = str(score)
                     else:
-                        # Simple string
+                        # Simple string or list format
                         doc.add_paragraph(str(rankings))
                 
-                # Process summary
-                if "summary" in transformed_data and transformed_data["summary"]:
-                    doc.add_heading("Summary", level=2)
-                    doc.add_paragraph(transformed_data["summary"])
+                # Add summary section
+                doc.add_heading("Evaluation Summary", level=2)
+                doc.add_paragraph(
+                    "The brand name evaluation process identified names that best align with "
+                    "the brand's strategic objectives, target audience, and positioning. "
+                    "The shortlisted names demonstrated stronger performance across key criteria "
+                    "including distinctiveness, memorability, and strategic alignment."
+                )
             else:
                 # No evaluation data available
                 doc.add_paragraph("No brand name evaluation data available for this brand naming project.")
@@ -1730,7 +1858,6 @@ class ReportFormatter:
         except Exception as e:
             logger.error(f"Error formatting brand name evaluation section: {str(e)}")
             logger.debug(f"Error details: {traceback.format_exc()}")
-            doc.add_paragraph(f"Error formatting brand name evaluation section: {str(e)}")
             # Add a generic error message to the document
             doc.add_paragraph("Unable to format the brand name evaluation section due to an error in processing the data.")
 
@@ -1749,12 +1876,13 @@ class ReportFormatter:
             # Add introduction
             doc.add_paragraph(
                 "This section analyzes the SEO potential and online discoverability of the brand name options, "
-                "evaluating factors such as search volume, competition, domain availability, and social media presence."
+                "evaluating factors such as search volume, competition, keyword potential, and social media presence "
+                "to identify names with the strongest digital marketing potential."
             )
             
             # Transform data using model
             transformed_data = self._transform_seo_analysis(data)
-            logger.debug(f"Transformed SEO analysis data: {len(str(transformed_data))} chars")
+            logger.info(f"Transformed SEO analysis data: {len(str(transformed_data))} chars")
             
             # Check if we have analysis data
             if transformed_data and isinstance(transformed_data, dict):
@@ -1792,7 +1920,7 @@ class ReportFormatter:
                                 # Add metrics rows
                                 for i, (metric, value) in enumerate(search_metrics.items(), 1):
                                     cells = metrics_table.rows[i].cells
-                                    cells[0].text = metric.replace("_", " ").title()
+                                    cells[0].text = str(metric)
                                     cells[1].text = str(value)
                                 
                                 # Add spacing after table
@@ -1810,7 +1938,7 @@ class ReportFormatter:
                             elif isinstance(comp_analysis, dict):
                                 for key, value in comp_analysis.items():
                                     p = doc.add_paragraph()
-                                    p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
+                                    p.add_run(f"{key}: ").bold = True
                                     p.add_run(str(value))
                             elif isinstance(comp_analysis, list):
                                 for item in comp_analysis:
@@ -1821,7 +1949,12 @@ class ReportFormatter:
                             doc.add_heading("Keyword Opportunities", level=4)
                             
                             opportunities = analysis["keyword_opportunities"]
-                            if isinstance(opportunities, list):
+                            if isinstance(opportunities, dict):
+                                for key, value in opportunities.items():
+                                    p = doc.add_paragraph()
+                                    p.add_run(f"{key}: ").bold = True
+                                    p.add_run(str(value))
+                            elif isinstance(opportunities, list):
                                 for opportunity in opportunities:
                                     doc.add_paragraph(f"• {opportunity}", style="List Bullet")
                             else:
@@ -1910,7 +2043,6 @@ class ReportFormatter:
         except Exception as e:
             logger.error(f"Error formatting SEO analysis section: {str(e)}")
             logger.debug(f"Error details: {traceback.format_exc()}")
-            doc.add_paragraph(f"Error formatting SEO analysis section: {str(e)}")
             # Add a generic error message to the document
             doc.add_paragraph("Unable to format the SEO analysis section due to an error in processing the data.")
 
@@ -2058,7 +2190,7 @@ class ReportFormatter:
             
             # Transform data using model
             transformed_data = self._transform_name_generation(data)
-            logger.debug(f"Transformed name generation data: {len(str(transformed_data))} chars")
+            logger.info(f"Transformed name generation data: {len(str(transformed_data))} chars")
             
             # Add introduction if available
             if "introduction" in transformed_data and transformed_data["introduction"]:
@@ -2071,6 +2203,60 @@ class ReportFormatter:
             if "methodology_and_approach" in transformed_data and transformed_data["methodology_and_approach"]:
                 doc.add_heading("Methodology and Approach", level=2)
                 doc.add_paragraph(transformed_data["methodology_and_approach"])
+            
+            # Process categories and names
+            if "categories" in transformed_data and isinstance(transformed_data["categories"], list):
+                doc.add_heading("Brand Name Categories", level=2)
+                
+                # Add each category
+                for category in transformed_data["categories"]:
+                    # Add category heading
+                    category_name = category.get("category_name")
+                    if category_name:
+                        doc.add_heading(category_name, level=3)
+                    
+                    # Add category description
+                    category_description = category.get("category_description")
+                    if category_description:
+                        doc.add_paragraph(category_description)
+                    
+                    # Process names in this category
+                    names = category.get("names", [])
+                    if names:
+                        # Add a count of names in this category
+                        doc.add_paragraph(f"This category includes {len(names)} brand name options:")
+                        
+                        # Process each name in this category
+                        for name in names:
+                            # Add name heading
+                            brand_name = name.get("brand_name")
+                            if brand_name:
+                                doc.add_heading(brand_name, level=4)
+                            
+                            # Add name attributes in a structured format
+                            attributes = [
+                                ("brand_personality_alignment", "Brand Personality Alignment"),
+                                ("brand_promise_alignment", "Brand Promise Alignment"),
+                                ("name_generation_methodology", "Methodology"),
+                                ("memorability_score_details", "Memorability"),
+                                ("pronounceability_score_details", "Pronounceability"),
+                                ("visual_branding_potential_details", "Visual Branding Potential"),
+                                ("target_audience_relevance_details", "Target Audience Relevance"),
+                                ("market_differentiation_details", "Market Differentiation"),
+                                ("rationale", "Rationale"),
+                                ("trademark_status", "Trademark Status"),
+                                ("cultural_considerations", "Cultural Considerations")
+                            ]
+                            
+                            for attr_key, attr_display in attributes:
+                                if attr_key in name and name[attr_key]:
+                                    p = doc.add_paragraph()
+                                    p.add_run(f"{attr_display}: ").bold = True
+                                    p.add_run(str(name[attr_key]))
+                            
+                            # Add a separator between names (except for the last one)
+                            if name != names[-1]:
+                                doc.add_paragraph("", style="Normal")
             
             # Add generated names overview if available
             if "generated_names_overview" in transformed_data and transformed_data["generated_names_overview"]:
@@ -2101,49 +2287,6 @@ class ReportFormatter:
                         p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
                         p.add_run(str(value))
             
-            # Process categories and names
-            if "categories" in transformed_data and isinstance(transformed_data["categories"], list):
-                # Add each category
-                for category in transformed_data["categories"]:
-                    # Add category heading
-                    category_name = category.get("category_name")
-                    if category_name:
-                        doc.add_heading(category_name, level=2)
-                    
-                    # Add category description
-                    category_description = category.get("category_description")
-                    if category_description:
-                        doc.add_paragraph(category_description)
-                    
-                    # Process names in this category
-                    names = category.get("names", [])
-                    for name in names:
-                        # Add name heading
-                        brand_name = name.get("brand_name")
-                        if brand_name:
-                            doc.add_heading(brand_name, level=3)
-                        
-                        # Add name attributes in a structured format
-                        attributes = [
-                            ("brand_personality_alignment", "Brand Personality Alignment"),
-                            ("brand_promise_alignment", "Brand Promise Alignment"),
-                            ("name_generation_methodology", "Methodology"),
-                            ("memorability_score_details", "Memorability"),
-                            ("pronounceability_score_details", "Pronounceability"),
-                            ("visual_branding_potential_details", "Visual Branding Potential"),
-                            ("target_audience_relevance_details", "Target Audience Relevance"),
-                            ("market_differentiation_details", "Market Differentiation"),
-                            ("rationale", "Rationale"),
-                            ("trademark_status", "Trademark Status"),
-                            ("cultural_considerations", "Cultural Considerations")
-                        ]
-                        
-                        for attr_key, attr_display in attributes:
-                            if attr_key in name and name[attr_key]:
-                                p = doc.add_paragraph()
-                                p.add_run(f"{attr_display}: ").bold = True
-                                p.add_run(str(name[attr_key]))
-            
             # Add summary if available
             if "summary" in transformed_data and transformed_data["summary"]:
                 doc.add_heading("Summary", level=2)
@@ -2152,7 +2295,6 @@ class ReportFormatter:
         except Exception as e:
             logger.error(f"Error formatting name generation section: {str(e)}")
             logger.debug(f"Error details: {traceback.format_exc()}")
-            doc.add_paragraph(f"Error formatting name generation section: {str(e)}")
             # Add a generic error message to the document
             doc.add_paragraph("Unable to format the brand name generation section due to an error in processing the data.")
 
@@ -2172,12 +2314,13 @@ class ReportFormatter:
             doc.add_paragraph(
                 "This section analyzes competitors' brand naming strategies and industry positioning, "
                 "providing valuable context for the evaluation of proposed brand names. "
-                "Understanding competitor naming patterns helps inform differentiation strategies."
+                "Understanding competitor naming patterns helps inform differentiation strategies "
+                "and identify potential risks of market confusion."
             )
             
             # Transform data using model
             transformed_data = self._transform_competitor_analysis(data)
-            logger.debug(f"Transformed competitor analysis data: {len(str(transformed_data))} chars")
+            logger.info(f"Transformed competitor analysis data: {len(str(transformed_data))} chars")
             
             # Check if we have analysis data
             if transformed_data and isinstance(transformed_data, dict):
@@ -2212,101 +2355,6 @@ class ReportFormatter:
                             p.add_run(f"{pattern_type.replace('_', ' ').title()}: ").bold = True
                             p.add_run(str(description))
                 
-                # Process competitors
-                if "competitors" in transformed_data and transformed_data["competitors"]:
-                    doc.add_heading("Key Competitors", level=2)
-                    
-                    competitors = transformed_data["competitors"]
-                    if isinstance(competitors, list):
-                        for competitor in competitors:
-                            if isinstance(competitor, dict) and "name" in competitor:
-                                # Add competitor name heading
-                                doc.add_heading(competitor["name"], level=3)
-                                
-                                # Process company description
-                                if "description" in competitor and competitor["description"]:
-                                    doc.add_paragraph(competitor["description"])
-                                
-                                # Process brand name analysis
-                                if "brand_name_analysis" in competitor and competitor["brand_name_analysis"]:
-                                    doc.add_heading("Brand Name Analysis", level=4)
-                                    
-                                    analysis = competitor["brand_name_analysis"]
-                                    if isinstance(analysis, str):
-                                        doc.add_paragraph(analysis)
-                                    elif isinstance(analysis, dict):
-                                        for aspect, details in analysis.items():
-                                            p = doc.add_paragraph()
-                                            p.add_run(f"{aspect.replace('_', ' ').title()}: ").bold = True
-                                            p.add_run(str(details))
-                                
-                                # Process positioning
-                                if "positioning" in competitor and competitor["positioning"]:
-                                    doc.add_heading("Market Positioning", level=4)
-                                    doc.add_paragraph(competitor["positioning"])
-                                
-                                # Process strengths
-                                if "strengths" in competitor and competitor["strengths"]:
-                                    doc.add_heading("Strengths", level=4)
-                                    
-                                    strengths = competitor["strengths"]
-                                    if isinstance(strengths, list):
-                                        for strength in strengths:
-                                            doc.add_paragraph(f"• {strength}", style="List Bullet")
-                                    else:
-                                        doc.add_paragraph(str(strengths))
-                                
-                                # Process weaknesses
-                                if "weaknesses" in competitor and competitor["weaknesses"]:
-                                    doc.add_heading("Weaknesses", level=4)
-                                    
-                                    weaknesses = competitor["weaknesses"]
-                                    if isinstance(weaknesses, list):
-                                        for weakness in weaknesses:
-                                            doc.add_paragraph(f"• {weakness}", style="List Bullet")
-                                    else:
-                                        doc.add_paragraph(str(weaknesses))
-                                
-                                # Process target audience
-                                if "target_audience" in competitor and competitor["target_audience"]:
-                                    doc.add_heading("Target Audience", level=4)
-                                    doc.add_paragraph(competitor["target_audience"])
-                                
-                                # Process digital presence
-                                if "digital_presence" in competitor and competitor["digital_presence"]:
-                                    doc.add_heading("Digital Presence", level=4)
-                                    
-                                    digital = competitor["digital_presence"]
-                                    if isinstance(digital, dict):
-                                        for platform, details in digital.items():
-                                            p = doc.add_paragraph()
-                                            p.add_run(f"{platform.replace('_', ' ').title()}: ").bold = True
-                                            p.add_run(str(details))
-                                    else:
-                                        doc.add_paragraph(str(digital))
-                            else:
-                                doc.add_paragraph(f"• {competitor}", style="List Bullet")
-                    elif isinstance(competitors, dict):
-                        for comp_name, comp_details in competitors.items():
-                            # Add competitor name heading
-                            doc.add_heading(comp_name, level=3)
-                            
-                            if isinstance(comp_details, str):
-                                doc.add_paragraph(comp_details)
-                            elif isinstance(comp_details, dict):
-                                # Process each field in the competitor details
-                                for field, value in comp_details.items():
-                                    if field.lower() == "description":
-                                        doc.add_paragraph(value)
-                                    else:
-                                        doc.add_heading(field.replace('_', ' ').title(), level=4)
-                                        
-                                        if isinstance(value, list):
-                                            for item in value:
-                                                doc.add_paragraph(f"• {item}", style="List Bullet")
-                                        else:
-                                            doc.add_paragraph(str(value))
-                
                 # Process brand name analysis for proposed names
                 if "brand_names" in transformed_data and transformed_data["brand_names"]:
                     doc.add_heading("Competitive Analysis of Proposed Brand Names", level=2)
@@ -2318,101 +2366,91 @@ class ReportFormatter:
                         # Add brand name as heading
                         doc.add_heading(brand_name, level=3)
                         
-                        if isinstance(analysis, str):
-                            doc.add_paragraph(analysis)
-                        elif isinstance(analysis, dict):
-                            # Process differentiation
-                            if "differentiation" in analysis and analysis["differentiation"]:
-                                doc.add_heading("Competitive Differentiation", level=4)
-                                doc.add_paragraph(analysis["differentiation"])
+                        # Process differentiation
+                        if "differentiation" in analysis and analysis["differentiation"]:
+                            doc.add_heading("Competitive Differentiation", level=4)
+                            doc.add_paragraph(analysis["differentiation"])
+                        
+                        # Process competitor section
+                        if "competitors" in analysis and analysis["competitors"]:
+                            doc.add_heading("Key Competitors", level=4)
                             
-                            # Process similarity assessment
-                            if "similarity_assessment" in analysis and analysis["similarity_assessment"]:
-                                doc.add_heading("Similarity Assessment", level=4)
+                            for competitor in analysis["competitors"]:
+                                # Add competitor name as subheading
+                                doc.add_heading(competitor["competitor_name"], level=5)
                                 
-                                similarity = analysis["similarity_assessment"]
-                                if isinstance(similarity, dict):
-                                    for competitor, assessment in similarity.items():
-                                        p = doc.add_paragraph()
-                                        p.add_run(f"{competitor}: ").bold = True
-                                        p.add_run(str(assessment))
-                                else:
-                                    doc.add_paragraph(str(similarity))
+                                # Add risk of confusion
+                                if "risk_of_confusion" in competitor:
+                                    p = doc.add_paragraph()
+                                    p.add_run("Risk of Confusion: ").bold = True
+                                    p.add_run(f"{competitor['risk_of_confusion']}/10")
+                                
+                                # Add trademark conflict risk
+                                if "trademark_conflict_risk" in competitor:
+                                    p = doc.add_paragraph()
+                                    p.add_run("Trademark Conflict Risk: ").bold = True
+                                    p.add_run(competitor["trademark_conflict_risk"])
+                                
+                                # Add positioning
+                                if "positioning" in competitor:
+                                    p = doc.add_paragraph()
+                                    p.add_run("Positioning: ").bold = True
+                                    p.add_run(competitor["positioning"])
+                                
+                                # Add strengths
+                                if "strengths" in competitor:
+                                    p = doc.add_paragraph()
+                                    p.add_run("Strengths: ").bold = True
+                                    p.add_run(competitor["strengths"])
+                                
+                                # Add weaknesses
+                                if "weaknesses" in competitor:
+                                    p = doc.add_paragraph()
+                                    p.add_run("Weaknesses: ").bold = True
+                                    p.add_run(competitor["weaknesses"])
+                                
+                                # Add target audience
+                                if "target_audience" in competitor:
+                                    p = doc.add_paragraph()
+                                    p.add_run("Target Audience Perception: ").bold = True
+                                    p.add_run(competitor["target_audience"])
+                                
+                                # Add differentiation opportunity
+                                if "differentiation_opportunity" in competitor:
+                                    p = doc.add_paragraph()
+                                    p.add_run("Differentiation Opportunity: ").bold = True
+                                    p.add_run(competitor["differentiation_opportunity"])
+                                
+                                # Add space between competitors
+                                doc.add_paragraph("")
+                        
+                        # Process similarity assessment
+                        if "similarity_assessment" in analysis and analysis["similarity_assessment"]:
+                            doc.add_heading("Similarity Assessment", level=4)
                             
-                            # Process competitive advantage
-                            if "competitive_advantage" in analysis and analysis["competitive_advantage"]:
-                                doc.add_heading("Competitive Advantage", level=4)
-                                
-                                advantage = analysis["competitive_advantage"]
-                                if isinstance(advantage, list):
-                                    for adv in advantage:
-                                        doc.add_paragraph(f"• {adv}", style="List Bullet")
-                                else:
-                                    doc.add_paragraph(str(advantage))
+                            similarity = analysis["similarity_assessment"]
+                            if isinstance(similarity, dict):
+                                for competitor, assessment in similarity.items():
+                                    p = doc.add_paragraph()
+                                    p.add_run(f"{competitor}: ").bold = True
+                                    p.add_run(str(assessment))
+                            else:
+                                doc.add_paragraph(str(similarity))
+                        
+                        # Process recommendations
+                        if "recommendations" in analysis and analysis["recommendations"]:
+                            doc.add_heading("Competitive Recommendations", level=4)
                             
-                            # Process competitive disadvantage
-                            if "competitive_disadvantage" in analysis and analysis["competitive_disadvantage"]:
-                                doc.add_heading("Competitive Disadvantage", level=4)
-                                
-                                disadvantage = analysis["competitive_disadvantage"]
-                                if isinstance(disadvantage, list):
-                                    for disadv in disadvantage:
-                                        doc.add_paragraph(f"• {disadv}", style="List Bullet")
-                                else:
-                                    doc.add_paragraph(str(disadvantage))
-                            
-                            # Process recommendations
-                            if "recommendations" in analysis and analysis["recommendations"]:
-                                doc.add_heading("Competitive Recommendations", level=4)
-                                
-                                recommendations = analysis["recommendations"]
-                                if isinstance(recommendations, list):
-                                    for recommendation in recommendations:
-                                        doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                                else:
-                                    doc.add_paragraph(str(recommendations))
+                            recommendations = analysis["recommendations"]
+                            if isinstance(recommendations, list):
+                                for recommendation in recommendations:
+                                    doc.add_paragraph(f"• {recommendation}", style="List Bullet")
+                            else:
+                                doc.add_paragraph(str(recommendations))
                         
                         # Add separator between brand analyses (except for the last one)
                         if brand_name != list(brand_analyses.keys())[-1]:
                             doc.add_paragraph("")
-                
-                # Process differentiation opportunities
-                if "differentiation_opportunities" in transformed_data and transformed_data["differentiation_opportunities"]:
-                    doc.add_heading("Differentiation Opportunities", level=2)
-                    
-                    opportunities = transformed_data["differentiation_opportunities"]
-                    if isinstance(opportunities, list):
-                        for opportunity in opportunities:
-                            doc.add_paragraph(f"• {opportunity}", style="List Bullet")
-                    else:
-                        doc.add_paragraph(str(opportunities))
-                
-                # Process gaps in competitor naming
-                if "market_gaps" in transformed_data and transformed_data["market_gaps"]:
-                    doc.add_heading("Gaps in Competitor Naming", level=2)
-                    
-                    gaps = transformed_data["market_gaps"]
-                    if isinstance(gaps, list):
-                        for gap in gaps:
-                            doc.add_paragraph(f"• {gap}", style="List Bullet")
-                    else:
-                        doc.add_paragraph(str(gaps))
-                
-                # Process comparative analysis
-                if "comparative_analysis" in transformed_data and transformed_data["comparative_analysis"]:
-                    doc.add_heading("Comparative Analysis", level=2)
-                    doc.add_paragraph(transformed_data["comparative_analysis"])
-                
-                # Process recommendations
-                if "recommendations" in transformed_data and transformed_data["recommendations"]:
-                    doc.add_heading("Strategic Recommendations", level=2)
-                    
-                    recommendations = transformed_data["recommendations"]
-                    if isinstance(recommendations, list):
-                        for recommendation in recommendations:
-                            doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                    else:
-                        doc.add_paragraph(str(recommendations))
                 
                 # Process summary
                 if "summary" in transformed_data and transformed_data["summary"]:
@@ -2425,7 +2463,6 @@ class ReportFormatter:
         except Exception as e:
             logger.error(f"Error formatting competitor analysis section: {str(e)}")
             logger.debug(f"Error details: {traceback.format_exc()}")
-            doc.add_paragraph(f"Error formatting competitor analysis section: {str(e)}")
             # Add a generic error message to the document
             doc.add_paragraph("Unable to format the competitor analysis section due to an error in processing the data.")
 
@@ -3360,7 +3397,7 @@ class ReportFormatter:
             
             # Transform data using model
             transformed_data = self._transform_semantic_analysis(data)
-            logger.debug(f"Transformed semantic analysis data: {len(str(transformed_data))} chars")
+            logger.info(f"Transformed semantic analysis data: {len(str(transformed_data))} chars")
             
             # Check if we have brand analyses
             if "brand_analyses" in transformed_data and transformed_data["brand_analyses"]:
@@ -3376,15 +3413,19 @@ class ReportFormatter:
                     # Add brand name as heading
                     doc.add_heading(brand_name, level=2)
                     
-                    # Process attributes in a structured way
+                    # Process attributes in a structured way - updated to match the exact fields in SemanticAnalysisDetails model
                     attributes = [
                         ("etymology", "Etymology"),
                         ("sound_symbolism", "Sound Symbolism"),
                         ("brand_personality", "Brand Personality"),
-                        ("semantic_fields", "Semantic Fields"),
                         ("emotional_valence", "Emotional Valence"),
-                        ("connotations", "Connotations"),
-                        ("notes", "Notes"),
+                        ("denotative_meaning", "Denotative Meaning"),
+                        ("figurative_language", "Figurative Language"),
+                        ("phoneme_combinations", "Phoneme Combinations"),
+                        ("sensory_associations", "Sensory Associations"),
+                        ("word_length_syllables", "Word Length (Syllables)"),
+                        ("alliteration_assonance", "Alliteration/Assonance"),
+                        ("compounding_derivation", "Compounding/Derivation"),
                         ("semantic_trademark_risk", "Semantic Trademark Risk")
                     ]
                     
@@ -3408,6 +3449,9 @@ class ReportFormatter:
                             elif isinstance(value, list):
                                 # Add the attribute value as a comma-separated list
                                 p.add_run(", ".join(str(item) for item in value))
+                            # Handle special formatting for boolean values
+                            elif isinstance(value, bool):
+                                p.add_run("Yes" if value else "No")
                             # Handle simple string/number attributes
                             else:
                                 p.add_run(str(value))
@@ -3415,6 +3459,14 @@ class ReportFormatter:
                     # Add separator between brand analyses (except after the last one)
                     if analysis != brand_analyses[-1]:
                         doc.add_paragraph("")
+                
+                # Add summary section
+                doc.add_heading("Semantic Analysis Summary", level=2)
+                doc.add_paragraph(
+                    "The semantic analysis reveals how each brand name option communicates meaning through various "
+                    "linguistic dimensions. This analysis helps identify names with strong semantic foundations that "
+                    "align with the desired brand positioning and minimize potential semantic confusion or negative associations."
+                )
             else:
                 # No semantic analysis data available
                 doc.add_paragraph("No semantic analysis data available for this brand naming project.")
@@ -3422,7 +3474,6 @@ class ReportFormatter:
         except Exception as e:
             logger.error(f"Error formatting semantic analysis section: {str(e)}")
             logger.debug(f"Error details: {traceback.format_exc()}")
-            doc.add_paragraph(f"Error formatting semantic analysis section: {str(e)}")
             # Add a generic error message to the document
             doc.add_paragraph("Unable to format the semantic analysis section due to an error in processing the data.")
 
