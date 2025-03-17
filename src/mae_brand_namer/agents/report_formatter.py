@@ -31,7 +31,6 @@ from pydantic import ValidationError
 from ..models.report_sections import (
     BrandContext,
     NameGenerationSection,
-    NameCategory,
     BrandName,
     TOCSection,
     TableOfContentsSection,
@@ -736,6 +735,7 @@ class ReportFormatter:
                     }
                     for item in name_evaluation_data.brand_name_evaluation.shortlisted_names
                 ]
+                logger.info(f"Processed {len(transformed_data['shortlisted_names'])} shortlisted names")
             
             # Process other names
             if hasattr(name_evaluation_data.brand_name_evaluation, "other_names"):
@@ -747,6 +747,7 @@ class ReportFormatter:
                     }
                     for item in name_evaluation_data.brand_name_evaluation.other_names
                 ]
+                logger.info(f"Processed {len(transformed_data['other_names'])} other names")
                 
             # Add final rankings based on scores
             all_names = transformed_data["shortlisted_names"] + transformed_data["other_names"]
@@ -756,10 +757,59 @@ class ReportFormatter:
             transformed_data["final_rankings"] = rankings
             
             logger.info(f"Successfully transformed name evaluation data with {len(transformed_data['shortlisted_names'])} shortlisted names and {len(transformed_data['other_names'])} other names")
+            logger.debug(f"Transformed data: {transformed_data}")
             return transformed_data
             
         except ValidationError as e:
             logger.error(f"Validation error for name evaluation data: {str(e)}")
+            
+            # Try a fallback approach if the validation fails
+            try:
+                # Check if the data is already in the expected format
+                if "brand_name_evaluation" in data and isinstance(data["brand_name_evaluation"], dict):
+                    eval_lists = data["brand_name_evaluation"]
+                    
+                    transformed_data = {
+                        "shortlisted_names": [],
+                        "other_names": [],
+                        "evaluation_methodology": "Each brand name was evaluated based on multiple criteria including distinctiveness, memorability, strategic alignment, and cultural considerations.",
+                        "comparative_analysis": "The shortlisted names demonstrated stronger overall performance across evaluation criteria, particularly in areas of strategic alignment with the brand's values and positioning in the market."
+                    }
+                    
+                    # Process shortlisted names
+                    if "shortlisted_names" in eval_lists and isinstance(eval_lists["shortlisted_names"], list):
+                        transformed_data["shortlisted_names"] = [
+                            {
+                                "brand_name": item.get("brand_name", ""),
+                                "overall_score": item.get("overall_score", 0),
+                                "evaluation_comments": item.get("evaluation_comments", "")
+                            }
+                            for item in eval_lists["shortlisted_names"]
+                        ]
+                    
+                    # Process other names
+                    if "other_names" in eval_lists and isinstance(eval_lists["other_names"], list):
+                        transformed_data["other_names"] = [
+                            {
+                                "brand_name": item.get("brand_name", ""),
+                                "overall_score": item.get("overall_score", 0),
+                                "evaluation_comments": item.get("evaluation_comments", "")
+                            }
+                            for item in eval_lists["other_names"]
+                        ]
+                    
+                    # Add final rankings
+                    all_names = transformed_data["shortlisted_names"] + transformed_data["other_names"]
+                    rankings = {
+                        item["brand_name"]: item["overall_score"] for item in all_names
+                    }
+                    transformed_data["final_rankings"] = rankings
+                    
+                    logger.info(f"Fallback transformation successful with {len(transformed_data['shortlisted_names'])} shortlisted names and {len(transformed_data['other_names'])} other names")
+                    return transformed_data
+            except Exception as fallback_error:
+                logger.error(f"Fallback transformation also failed: {str(fallback_error)}")
+            
             return {}
 
     def _transform_translation_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -2622,10 +2672,19 @@ class ReportFormatter:
             if "brand_name_evaluation" in all_data:
                 eval_data = all_data["brand_name_evaluation"]
                 
-                # Extract shortlisted names
-                for name, details in eval_data.items():
-                    if isinstance(details, dict) and details.get("shortlist_status", False):
-                        shortlisted_names.append(name)
+                # Check if eval_data has expected structure
+                if "brand_name_evaluation" in eval_data and isinstance(eval_data["brand_name_evaluation"], dict):
+                    # Extract from proper structure
+                    eval_lists = eval_data["brand_name_evaluation"]
+                    if "shortlisted_names" in eval_lists and isinstance(eval_lists["shortlisted_names"], list):
+                        shortlisted_names = [item.get("brand_name", "") for item in eval_lists["shortlisted_names"]]
+                elif isinstance(eval_data, dict):
+                    # Try alternate format with names as keys
+                    for name, details in eval_data.items():
+                        if isinstance(details, dict) and details.get("shortlist_status", False):
+                            shortlisted_names.append(name)
+                
+                logger.info(f"Found {len(shortlisted_names)} shortlisted names for executive summary")
             
             # Prepare data for all sections to include in executive summary
             sections_data = {}

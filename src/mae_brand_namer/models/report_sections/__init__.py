@@ -6,9 +6,7 @@ This package contains Pydantic models for structuring and validating data.
 
 from ..state import BrandNameGenerationState
 from ..common import Dependencies, create_dependencies
-from .brand_name import BrandName
-from .name_category import NameCategory
-from .name_generation_section import NameGenerationSection
+from .name_generation_section import BrandName, NameGenerationSection
 from .table_of_contents_section import TOCSection, TableOfContentsSection
 from .brand_context import BrandContext
 from .semantic_analysis import SemanticAnalysis, SemanticAnalysisDetails
@@ -25,7 +23,7 @@ from .survey_simulation import SurveySimulation, SurveyDetails
 # Export commonly used classes at the package level
 __all__ = [
     "BrandNameGenerationState", "Dependencies", "create_dependencies",
-    "BrandName", "NameCategory", "NameGenerationSection", "TOCSection", "TableOfContentsSection",
+    "BrandName", "NameGenerationSection", "TOCSection", "TableOfContentsSection",
     "BrandContext", "SemanticAnalysis", "SemanticAnalysisDetails", 
     "LinguisticAnalysis", "LinguisticAnalysisDetails",
     "CulturalSensitivityAnalysis", "BrandAnalysis",
