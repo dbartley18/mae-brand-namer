@@ -907,270 +907,172 @@ class ReportFormatter:
 
     def _transform_competitor_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Transform competitor analysis data to match expected format.
-        
-        The competitor analysis data contains:
-        1. A "competitor_analysis" key with a list of brand competitor analyses
-        2. Each brand analysis has a "brand_name" and "competitors" array
-        3. Each competitor has details like name, strengths, weaknesses, etc.
+        Transform competitor analysis data to match expected format for the formatter.
         
         Args:
             data: Raw competitor analysis data
             
         Returns:
-            Transformed data suitable for the formatter
+            Transformed data structure
         """
-        if not data:
+        # Debug the input data structure
+        logger.info(f"Competitor analysis raw data type: {type(data)}")
+        if isinstance(data, dict):
+            logger.info(f"Competitor analysis raw data keys: {list(data.keys())}")
+        
+        # Updated handling for different data structures
+        if data is None:
+            logger.warning("Competitor analysis data is None")
             return {}
-        try:
-            # Validate data against the model
-            competitor_analysis_data = CompetitorAnalysis.model_validate(data)
-            
-            # Transform to a format more suitable for the template
-            transformed_data = {
-                "brand_names": {},
-                "summary": "This competitive analysis evaluates how each proposed brand name compares to competitors in the industry, highlighting opportunities for differentiation and potential risks."
-            }
-            
-            # Process each brand's competitor analysis
-            if hasattr(competitor_analysis_data, "competitor_analysis"):
-                for brand_analysis in competitor_analysis_data.competitor_analysis:
-                    brand_name = brand_analysis.brand_name
-                    
-                    # Create competitor analyses for this brand
-                    competitor_analyses = []
-                    for competitor in brand_analysis.competitors:
-                        # Map fields from model to format expected by formatter
-                        competitor_analyses.append({
-                            "competitor_name": competitor.competitor_name,
-                            "risk_of_confusion": competitor.risk_of_confusion,
-                            "strengths": competitor.competitor_strengths,
-                            "weaknesses": competitor.competitor_weaknesses,
-                            "positioning": competitor.competitor_positioning,
-                            "trademark_conflict_risk": competitor.trademark_conflict_risk,
-                            # Map target_audience_perception to target_audience_perception for formatter compatibility
-                            "target_audience_perception": competitor.target_audience_perception,
-                            "differentiation_opportunity": competitor.competitor_differentiation_opportunity
-                        })
-                    
-                    # Store brand-specific competitor analysis
-                    transformed_data["brand_names"][brand_name] = {
-                        "competitors": competitor_analyses,
-                        "differentiation": f"Analysis of {len(competitor_analyses)} key competitors reveals opportunities for {brand_name} to differentiate through distinct positioning and messaging.",
-                        "similarity_assessment": {c["competitor_name"]: f"Risk of confusion: {c['risk_of_confusion']}/10" for c in competitor_analyses},
-                        "recommendations": ["Emphasize unique brand attributes", "Monitor trademark risks", "Leverage differentiation opportunities"]
-                    }
-            
-            logger.info(f"Successfully transformed competitor analysis data with {len(transformed_data['brand_names'])} brand analyses")
-            return transformed_data
-            
-        except ValidationError as e:
-            logger.error(f"Validation error for competitor analysis data: {str(e)}")
-            
-            # Try a fallback transformation approach
+        
+        # Handle string data (JSON string)
+        if isinstance(data, str):
             try:
-                if "competitor_analysis" in data and isinstance(data["competitor_analysis"], list):
-                    transformed_data = {
-                        "brand_names": {},
-                        "summary": "This competitive analysis evaluates how each proposed brand name compares to competitors in the industry, highlighting opportunities for differentiation and potential risks."
-                    }
-                    
-                    for brand_data in data["competitor_analysis"]:
-                        if isinstance(brand_data, dict) and "brand_name" in brand_data and "competitors" in brand_data:
-                            brand_name = brand_data["brand_name"]
-                            competitors = brand_data["competitors"]
-                            
-                            if isinstance(competitors, list):
-                                competitor_analyses = []
-                                for comp in competitors:
-                                    if isinstance(comp, dict) and "competitor_name" in comp:
-                                        competitor_analyses.append({
-                                            "competitor_name": comp.get("competitor_name", ""),
-                                            "risk_of_confusion": comp.get("risk_of_confusion", 0),
-                                            "strengths": comp.get("competitor_strengths", ""),
-                                            "weaknesses": comp.get("competitor_weaknesses", ""),
-                                            "positioning": comp.get("competitor_positioning", ""),
-                                            "trademark_conflict_risk": comp.get("trademark_conflict_risk", ""),
-                                            "target_audience_perception": comp.get("target_audience_perception", ""),
-                                            "differentiation_opportunity": comp.get("competitor_differentiation_opportunity", "")
-                                        })
-                                
-                                if competitor_analyses:
-                                    transformed_data["brand_names"][brand_name] = {
-                                        "competitors": competitor_analyses,
-                                        "differentiation": f"Analysis of {len(competitor_analyses)} key competitors reveals opportunities for {brand_name} to differentiate through distinct positioning and messaging.",
-                                        "similarity_assessment": {c["competitor_name"]: f"Risk of confusion: {c.get('risk_of_confusion', 0)}/10" for c in competitor_analyses},
-                                        "recommendations": ["Emphasize unique brand attributes", "Monitor trademark risks", "Leverage differentiation opportunities"]
-                                    }
-                    
-                    if transformed_data["brand_names"]:
-                        logger.info(f"Fallback transformation successful with {len(transformed_data['brand_names'])} brand analyses")
-                        return transformed_data
-            except Exception as fallback_error:
-                logger.error(f"Fallback transformation for competitor analysis failed: {str(fallback_error)}")
-            
-            return {}
-
-    def _transform_domain_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        if not data:
-            return {}
-        try:
-            domain_analysis_data = DomainAnalysis.model_validate(data)
-            return domain_analysis_data.model_dump()
-        except ValidationError as e:
-            logger.error(f"Validation error for domain analysis data: {str(e)}")
-            return {}
-
-    def _transform_survey_simulation(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Transform survey simulation data into a structured format.
+                data = json.loads(data)
+                logger.info("Successfully parsed competitor analysis data from JSON string")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse competitor analysis data JSON string: {e}")
+                return {}
         
-        The raw data has a different structure than other sections, containing a list of
-        survey responses directly in the root, rather than a nested structure.
-        """
-        if not data:
-            return {}
-            
-        try:
-            # Log the data structure to help with debugging
-            logger.debug(f"Survey simulation data type: {type(data)}")
-            logger.debug(f"Survey simulation data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dictionary'}")
-            
-            # Check if the data is already a list of survey details
-            if isinstance(data, list):
-                # Data is already a list of survey details
-                survey_items = data
-            elif isinstance(data, dict) and "survey_simulation" in data:
-                # Data follows the model structure
-                survey_items = data["survey_simulation"]
+        # Structure is either:
+        # 1. Already has "brand_names" (from previous call)
+        # 2. Has "competitor_analysis" as a key with a list of analyses
+        # 3. Is itself a list of brand analyses
+        
+        # Case 1: Already correctly structured
+        if isinstance(data, dict) and "brand_names" in data:
+            logger.info("Competitor analysis data already in correct format with brand_names key")
+            return data
+        
+        # Create the transformed data structure
+        transformed_data = {
+            "brand_names": {},
+            "summary": "This competitor analysis evaluates how each proposed brand name positions against existing market competitors, identifying strengths, weaknesses, and potential market gaps."
+        }
+        
+        # Extract the brand analyses from the data
+        brand_analyses = []
+        
+        # Case 2: Has "competitor_analysis" key with a list
+        if isinstance(data, dict) and "competitor_analysis" in data:
+            if isinstance(data["competitor_analysis"], list):
+                brand_analyses = data["competitor_analysis"]
+                logger.info(f"Found {len(brand_analyses)} brand analyses in competitor_analysis list")
             else:
-                # Data might be in a different format, try to extract it
-                survey_items = []
-                if isinstance(data, dict):
-                    # Loop through all keys to find any that might contain survey items
-                    for key, value in data.items():
-                        if isinstance(value, list) and value:
-                            survey_items = value
-                            break
-                
-            # Now transform each survey item
-            formatted_survey_details = []
-            for item in survey_items:
-                try:
-                    survey_detail = SurveyDetails.model_validate(item)
-                    formatted_survey_details.append(survey_detail.model_dump())
-                except ValidationError as e:
-                    logger.error(f"Validation error for survey item: {str(e)}")
-                    # Add the item as-is, even if it doesn't fully validate
-                    if isinstance(item, dict):
-                        formatted_survey_details.append(item)
-            
-            return {"survey_simulation": formatted_survey_details}
-            
-        except Exception as e:
-            logger.error(f"Error transforming survey simulation data: {str(e)}")
-            # Return the original data as a fallback
-            if isinstance(data, dict):
-                return data
-            return {"survey_simulation": data if isinstance(data, list) else []}
-
-    def _transform_seo_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Transform SEO online discoverability data to match expected format.
-        
-        The SEO analysis data is structured as a list of brand name analyses with
-        various attributes such as search_volume, keyword_alignment, etc.
-        
-        Args:
-            data: Raw SEO analysis data
-            
-        Returns:
-            Transformed data with brand_names and summary fields
-        """
-        if not data:
-            return {}
-        try:
-            # Validate data against the model
-            seo_data = SEOOnlineDiscoverability.model_validate(data)
-            
-            # Transform to a format more suitable for the formatter
-            transformed_data = {
-                "brand_names": {},
-                "summary": "This SEO and online discoverability analysis evaluated brand names based on search metrics, keyword potential, and social media presence to identify names with the strongest digital marketing potential.",
-                "general_recommendations": [
-                    "Prioritize consistent branding across all online platforms",
-                    "Implement thorough technical SEO best practices on the website",
-                    "Develop content marketing strategies aligned with target keywords",
-                    "Monitor and respond to brand mentions across digital channels",
-                    "Regularly review SEO performance and adapt strategies accordingly"
-                ]
-            }
-            
-            # Process each brand analysis
-            if hasattr(seo_data, "seo_online_discoverability"):
-                for analysis in seo_data.seo_online_discoverability:
-                    # Get brand name
-                    brand_name = analysis.brand_name
-                    
-                    # Parse recommendations - handle different potential data structures
-                    recommendations = []
-                    if hasattr(analysis, "seo_recommendations"):
-                        if isinstance(analysis.seo_recommendations, str):
-                            # Try to parse as JSON string first
-                            try:
-                                recommendations = json.loads(analysis.seo_recommendations)
-                            except (json.JSONDecodeError, AttributeError):
-                                recommendations = [analysis.seo_recommendations]
-                        elif isinstance(analysis.seo_recommendations, dict) and hasattr(analysis.seo_recommendations, "recommendations"):
-                            # If it's a properly structured SEORecommendations object
-                            recommendations = analysis.seo_recommendations.recommendations
-                        elif isinstance(analysis.seo_recommendations, list):
-                            # If it's already a list
-                            recommendations = analysis.seo_recommendations
-                        else:
-                            # Fallback to string representation
-                            recommendations = [str(analysis.seo_recommendations)]
-                        
-                    # Create brand analysis entry with formatted structure
-                    transformed_data["brand_names"][brand_name] = {
-                        "search_metrics": {
-                            "Search Volume": analysis.search_volume,
-                            "Exact Match Results": analysis.exact_match_search_results,
-                            "SEO Viability Score": analysis.seo_viability_score
-                        },
-                        "competitive_analysis": {
-                            "Keyword Competition": analysis.keyword_competition,
-                            "Competitor Domain Strength": analysis.competitor_domain_strength,
-                            "Negative Search Results": "Yes" if analysis.negative_search_results else "No"
-                        },
-                        "keyword_opportunities": {
-                            "Keyword Alignment": analysis.keyword_alignment,
-                            "Branded Keyword Potential": analysis.branded_keyword_potential,
-                            "Non-Branded Keyword Potential": analysis.non_branded_keyword_potential,
-                            "Negative Keyword Associations": analysis.negative_keyword_associations
-                        },
-                        "social_media_potential": {
-                            "Social Media Availability": "Available" if analysis.social_media_availability else "Not Available",
-                            "Social Media Discoverability": analysis.social_media_discoverability
-                        },
-                        "seo_strengths": [
-                            f"Name length is {analysis.name_length_searchability.lower()}, which positively affects search behavior",
-                            f"Strong potential for branded keyword dominance" if "high" in analysis.branded_keyword_potential.lower() else "Moderate potential for branded keyword development",
-                            f"Content marketing opportunities: {analysis.content_marketing_opportunities}"
-                        ],
-                        "seo_challenges": [
-                            f"Unusual spelling impacts searchability" if analysis.unusual_spelling_impact else "No spelling issues affecting searchability",
-                            f"Negative keyword associations: {analysis.negative_keyword_associations}" if analysis.negative_keyword_associations.lower() not in ["none", "no", "none identified"] else "No negative keyword associations"
-                        ],
-                        "recommendations": recommendations,
-                        "overall_seo_rating": f"{analysis.seo_viability_score}/10"
-                    }
-            
-            logger.info(f"Successfully transformed SEO analysis data with {len(transformed_data['brand_names'])} brand analyses")
+                logger.warning(f"competitor_analysis is not a list: {type(data['competitor_analysis'])}")
+                return transformed_data
+        # Case 3: Is itself a list of brand analyses
+        elif isinstance(data, list):
+            brand_analyses = data
+            logger.info(f"Found {len(brand_analyses)} brand analyses in root list")
+        else:
+            logger.warning(f"Unrecognized competitor analysis data structure: {type(data)}")
             return transformed_data
+        
+        # Process each brand analysis
+        for analysis in brand_analyses:
+            # Skip items without brand_name
+            if not isinstance(analysis, dict) or "brand_name" not in analysis:
+                logger.warning("Skipping brand analysis without brand_name field")
+                continue
+                
+            brand_name = analysis.get("brand_name", "")
+            logger.info(f"Processing competitor analysis for: {brand_name}")
             
-        except ValidationError as e:
-            logger.error(f"Validation error for SEO analysis data: {str(e)}")
-            return {}
+            # Extract strengths safely
+            strengths = []
+            if "strengths" in analysis:
+                strength_data = analysis.get("strengths", [])
+                if isinstance(strength_data, str):
+                    try:
+                        # Try to parse as JSON string
+                        strengths = json.loads(strength_data)
+                        logger.info(f"Parsed {len(strengths)} strengths from JSON string")
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.warning(f"Failed to parse strengths as JSON: {e}")
+                        # If not valid JSON, use as a single string
+                        strengths = [strength_data]
+                elif isinstance(strength_data, list):
+                    strengths = strength_data
+                    logger.info(f"Found {len(strengths)} strengths as list")
+                else:
+                    strengths = [str(strength_data)]
+                    logger.info(f"Converted strengths to string: {strengths[0][:30]}...")
+            
+            # Extract weaknesses safely
+            weaknesses = []
+            if "weaknesses" in analysis:
+                weakness_data = analysis.get("weaknesses", [])
+                if isinstance(weakness_data, str):
+                    try:
+                        # Try to parse as JSON string
+                        weaknesses = json.loads(weakness_data)
+                        logger.info(f"Parsed {len(weaknesses)} weaknesses from JSON string")
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.warning(f"Failed to parse weaknesses as JSON: {e}")
+                        # If not valid JSON, use as a single string
+                        weaknesses = [weakness_data]
+                elif isinstance(weakness_data, list):
+                    weaknesses = weakness_data
+                    logger.info(f"Found {len(weaknesses)} weaknesses as list")
+                else:
+                    weaknesses = [str(weakness_data)]
+                    logger.info(f"Converted weaknesses to string: {weaknesses[0][:30]}...")
+            
+            # Extract opportunities safely
+            opportunities = []
+            if "opportunities" in analysis:
+                opportunity_data = analysis.get("opportunities", [])
+                if isinstance(opportunity_data, str):
+                    try:
+                        # Try to parse as JSON string
+                        opportunities = json.loads(opportunity_data)
+                        logger.info(f"Parsed {len(opportunities)} opportunities from JSON string")
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.warning(f"Failed to parse opportunities as JSON: {e}")
+                        # If not valid JSON, use as a single string
+                        opportunities = [opportunity_data]
+                elif isinstance(opportunity_data, list):
+                    opportunities = opportunity_data
+                    logger.info(f"Found {len(opportunities)} opportunities as list")
+                else:
+                    opportunities = [str(opportunity_data)]
+                    logger.info(f"Converted opportunities to string: {opportunities[0][:30]}...")
+            
+            # Extract threats safely
+            threats = []
+            if "threats" in analysis:
+                threat_data = analysis.get("threats", [])
+                if isinstance(threat_data, str):
+                    try:
+                        # Try to parse as JSON string
+                        threats = json.loads(threat_data)
+                        logger.info(f"Parsed {len(threats)} threats from JSON string")
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.warning(f"Failed to parse threats as JSON: {e}")
+                        # If not valid JSON, use as a single string
+                        threats = [threat_data]
+                elif isinstance(threat_data, list):
+                    threats = threat_data
+                    logger.info(f"Found {len(threats)} threats as list")
+                else:
+                    threats = [str(threat_data)]
+                    logger.info(f"Converted threats to string: {threats[0][:30]}...")
+            
+            # Create brand analysis entry with formatted structure
+            transformed_data["brand_names"][brand_name] = {
+                "top_competitors": analysis.get("top_competitors", ""),
+                "market_position": analysis.get("market_position", ""),
+                "differentiation_score": analysis.get("differentiation_score", 0),
+                "market_saturation": analysis.get("market_saturation", ""),
+                "strengths": strengths,
+                "weaknesses": weaknesses,
+                "opportunities": opportunities,
+                "threats": threats
+            }
+        
+        logger.info(f"Transformed competitor analysis data with {len(transformed_data['brand_names'])} brand analyses")
+        return transformed_data
 
     def _validate_section_data(self, section_name: str, data: Any) -> Tuple[bool, List[str]]:
         """
@@ -2073,127 +1975,172 @@ class ReportFormatter:
                     doc.add_heading("Brand Name SEO Analysis", level=2)
                     
                     # Process each brand name analysis
-                    for brand_name, analysis in brand_analyses.items():
+                    for brand_name, brand_key in brand_analyses.items():
                         # Add brand name as heading
                         doc.add_heading(brand_name, level=3)
                         
-                        # Process search metrics
-                        if "search_metrics" in analysis and analysis["search_metrics"]:
-                            doc.add_heading("Search Metrics", level=4)
+                        # Get the actual analysis data from transformed_data using the brand name
+                        if brand_name in transformed_data:
+                            analysis = transformed_data[brand_name]
                             
-                            search_metrics = analysis["search_metrics"]
-                            if isinstance(search_metrics, dict):
-                                # Create a table for metrics
-                                metrics_table = doc.add_table(rows=len(search_metrics)+1, cols=2)
-                                metrics_table.style = 'Table Grid'
+                            # Create a metrics table for all basic metrics
+                            metrics_table = doc.add_table(rows=1, cols=2)
+                            metrics_table.style = 'Table Grid'
+                            
+                            # Add header row
+                            header_cells = metrics_table.rows[0].cells
+                            header_cells[0].text = "Metric"
+                            header_cells[1].text = "Value"
+                            
+                            # Add all SEO metrics to the table
+                            metrics = [
+                                ("Search Volume", analysis.get("search_volume", "Unknown")),
+                                ("Keyword Alignment", analysis.get("keyword_alignment", "Unknown")),
+                                ("Keyword Competition", analysis.get("keyword_competition", "Unknown")),
+                                ("SEO Viability Score", analysis.get("seo_viability_score", "Unknown")),
+                                ("Negative Search Results", "Yes" if analysis.get("negative_search_results", False) else "No"),
+                                ("Unusual Spelling Impact", "Yes" if analysis.get("unusual_spelling_impact", False) else "No"),
+                                ("Branded Keyword Potential", analysis.get("branded_keyword_potential", "Unknown")),
+                                ("Name Length Searchability", analysis.get("name_length_searchability", "Unknown")),
+                                ("Social Media Availability", "Yes" if analysis.get("social_media_availability", False) else "No"),
+                                ("Competitor Domain Strength", analysis.get("competitor_domain_strength", "Unknown")),
+                                ("Exact Match Search Results", analysis.get("exact_match_search_results", "Unknown")),
+                                ("Social Media Discoverability", analysis.get("social_media_discoverability", "Unknown")),
+                                ("Negative Keyword Associations", analysis.get("negative_keyword_associations", "Unknown")),
+                                ("Non-Branded Keyword Potential", analysis.get("non_branded_keyword_potential", "Unknown")),
+                                ("Content Marketing Opportunities", analysis.get("content_marketing_opportunities", "Unknown")),
+                            ]
+                            
+                            # Fill the metrics table
+                            for metric, value in metrics:
+                                row = metrics_table.add_row()
+                                cells = row.cells
+                                cells[0].text = metric
+                                cells[1].text = str(value)
+                            
+                            # Add spacing after table
+                            doc.add_paragraph("")
+                            
+                            # Process search metrics
+                            if "search_metrics" in analysis and analysis["search_metrics"]:
+                                doc.add_heading("Search Metrics", level=4)
                                 
-                                # Add header row
-                                header_cells = metrics_table.rows[0].cells
-                                header_cells[0].text = "Metric"
-                                header_cells[1].text = "Value"
+                                search_metrics = analysis["search_metrics"]
+                                if isinstance(search_metrics, dict):
+                                    # Create a table for metrics
+                                    metrics_table = doc.add_table(rows=len(search_metrics)+1, cols=2)
+                                    metrics_table.style = 'Table Grid'
+                                    
+                                    # Add header row
+                                    header_cells = metrics_table.rows[0].cells
+                                    header_cells[0].text = "Metric"
+                                    header_cells[1].text = "Value"
+                                    
+                                    # Add metrics rows
+                                    for i, (metric, value) in enumerate(search_metrics.items(), 1):
+                                        cells = metrics_table.rows[i].cells
+                                        cells[0].text = str(metric)
+                                        cells[1].text = str(value)
+                                    
+                                    # Add spacing after table
+                                    doc.add_paragraph("")
+                                else:
+                                    doc.add_paragraph(str(search_metrics))
+                            
+                            # Process competitive analysis
+                            if "competitive_analysis" in analysis and analysis["competitive_analysis"]:
+                                doc.add_heading("Competitive Analysis", level=4)
                                 
-                                # Add metrics rows
-                                for i, (metric, value) in enumerate(search_metrics.items(), 1):
-                                    cells = metrics_table.rows[i].cells
-                                    cells[0].text = str(metric)
-                                    cells[1].text = str(value)
+                                comp_analysis = analysis["competitive_analysis"]
+                                if isinstance(comp_analysis, str):
+                                    doc.add_paragraph(comp_analysis)
+                                elif isinstance(comp_analysis, dict):
+                                    for key, value in comp_analysis.items():
+                                        p = doc.add_paragraph()
+                                        p.add_run(f"{key}: ").bold = True
+                                        p.add_run(str(value))
+                                elif isinstance(comp_analysis, list):
+                                    for item in comp_analysis:
+                                        doc.add_paragraph(f"• {item}", style="List Bullet")
+                            
+                            # Process keyword opportunities
+                            if "keyword_opportunities" in analysis and analysis["keyword_opportunities"]:
+                                doc.add_heading("Keyword Opportunities", level=4)
                                 
-                                # Add spacing after table
-                                doc.add_paragraph("")
-                            else:
-                                doc.add_paragraph(str(search_metrics))
-                        
-                        # Process competitive analysis
-                        if "competitive_analysis" in analysis and analysis["competitive_analysis"]:
-                            doc.add_heading("Competitive Analysis", level=4)
+                                opportunities = analysis["keyword_opportunities"]
+                                if isinstance(opportunities, dict):
+                                    for key, value in opportunities.items():
+                                        p = doc.add_paragraph()
+                                        p.add_run(f"{key}: ").bold = True
+                                        p.add_run(str(value))
+                                elif isinstance(opportunities, list):
+                                    for opportunity in opportunities:
+                                        doc.add_paragraph(f"• {opportunity}", style="List Bullet")
+                                else:
+                                    doc.add_paragraph(str(opportunities))
                             
-                            comp_analysis = analysis["competitive_analysis"]
-                            if isinstance(comp_analysis, str):
-                                doc.add_paragraph(comp_analysis)
-                            elif isinstance(comp_analysis, dict):
-                                for key, value in comp_analysis.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{key}: ").bold = True
-                                    p.add_run(str(value))
-                            elif isinstance(comp_analysis, list):
-                                for item in comp_analysis:
-                                    doc.add_paragraph(f"• {item}", style="List Bullet")
-                        
-                        # Process keyword opportunities
-                        if "keyword_opportunities" in analysis and analysis["keyword_opportunities"]:
-                            doc.add_heading("Keyword Opportunities", level=4)
-                            
-                            opportunities = analysis["keyword_opportunities"]
-                            if isinstance(opportunities, dict):
-                                for key, value in opportunities.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{key}: ").bold = True
-                                    p.add_run(str(value))
-                            elif isinstance(opportunities, list):
-                                for opportunity in opportunities:
-                                    doc.add_paragraph(f"• {opportunity}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(opportunities))
-                        
-                        # Process social media potential
-                        if "social_media_potential" in analysis and analysis["social_media_potential"]:
-                            doc.add_heading("Social Media Potential", level=4)
-                            
-                            social_media = analysis["social_media_potential"]
-                            if isinstance(social_media, dict):
-                                for platform, assessment in social_media.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{platform}: ").bold = True
-                                    p.add_run(str(assessment))
-                            else:
-                                doc.add_paragraph(str(social_media))
-                        
-                        # Process SEO strengths
-                        if "seo_strengths" in analysis and analysis["seo_strengths"]:
-                            doc.add_heading("SEO Strengths", level=4)
-                            
-                            strengths = analysis["seo_strengths"]
-                            if isinstance(strengths, list):
-                                for strength in strengths:
-                                    if strength:  # Only add non-empty strengths
-                                        doc.add_paragraph(f"• {strength}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(strengths))
-                        
-                        # Process SEO challenges
-                        if "seo_challenges" in analysis and analysis["seo_challenges"]:
-                            doc.add_heading("SEO Challenges", level=4)
-                            
-                            challenges = analysis["seo_challenges"]
-                            if isinstance(challenges, list):
-                                for challenge in challenges:
-                                    if challenge:  # Only add non-empty challenges
-                                        doc.add_paragraph(f"• {challenge}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(challenges))
-                        
-                        # Process overall rating
-                        if "overall_seo_rating" in analysis and analysis["overall_seo_rating"]:
-                            p = doc.add_paragraph()
-                            p.add_run("Overall SEO Rating: ").bold = True
-                            p.add_run(str(analysis["overall_seo_rating"]))
-                        
-                        # Process recommendations
-                        if "recommendations" in analysis and analysis["recommendations"]:
-                            doc.add_heading("SEO Recommendations", level=4)
-                            
-                            recommendations = analysis["recommendations"]
-                            if isinstance(recommendations, list):
-                                has_recommendations = False
-                                for recommendation in recommendations:
-                                    if recommendation:  # Only add non-empty recommendations
-                                        doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                                        has_recommendations = True
+                            # Process social media potential
+                            if "social_media_potential" in analysis and analysis["social_media_potential"]:
+                                doc.add_heading("Social Media Potential", level=4)
                                 
-                                if not has_recommendations:
-                                    doc.add_paragraph("No specific SEO recommendations available for this brand name.")
-                            else:
-                                doc.add_paragraph(str(recommendations))
+                                social_media = analysis["social_media_potential"]
+                                if isinstance(social_media, dict):
+                                    for platform, assessment in social_media.items():
+                                        p = doc.add_paragraph()
+                                        p.add_run(f"{platform}: ").bold = True
+                                        p.add_run(str(assessment))
+                                else:
+                                    doc.add_paragraph(str(social_media))
+                            
+                            # Process SEO strengths
+                            if "strengths" in analysis and analysis["strengths"]:
+                                doc.add_heading("SEO Strengths", level=4)
+                                
+                                strengths = analysis["strengths"]
+                                if isinstance(strengths, list):
+                                    for strength in strengths:
+                                        if strength:  # Only add non-empty strengths
+                                            doc.add_paragraph(f"• {strength}", style="List Bullet")
+                                else:
+                                    doc.add_paragraph(str(strengths))
+                            
+                            # Process SEO challenges
+                            if "challenges" in analysis and analysis["challenges"]:
+                                doc.add_heading("SEO Challenges", level=4)
+                                
+                                challenges = analysis["challenges"]
+                                if isinstance(challenges, list):
+                                    for challenge in challenges:
+                                        if challenge:  # Only add non-empty challenges
+                                            doc.add_paragraph(f"• {challenge}", style="List Bullet")
+                                else:
+                                    doc.add_paragraph(str(challenges))
+                            
+                            # Process overall rating
+                            if "overall_seo_rating" in analysis and analysis["overall_seo_rating"]:
+                                p = doc.add_paragraph()
+                                p.add_run("Overall SEO Rating: ").bold = True
+                                p.add_run(str(analysis["overall_seo_rating"]))
+                            
+                            # Process recommendations
+                            if "recommendations" in analysis and analysis["recommendations"]:
+                                doc.add_heading("SEO Recommendations", level=4)
+                                
+                                recommendations = analysis["recommendations"]
+                                if isinstance(recommendations, list):
+                                    has_recommendations = False
+                                    for recommendation in recommendations:
+                                        if recommendation:  # Only add non-empty recommendations
+                                            doc.add_paragraph(f"• {recommendation}", style="List Bullet")
+                                            has_recommendations = True
+                                    
+                                    if not has_recommendations:
+                                        doc.add_paragraph("No specific SEO recommendations available for this brand name.")
+                                else:
+                                    doc.add_paragraph(str(recommendations))
+                        else:
+                            # No analysis data for this brand name
+                            doc.add_paragraph(f"No detailed SEO analysis available for {brand_name}.")
                         
                         # Add separator between brand analyses (except for the last one)
                         if brand_name != list(brand_analyses.keys())[-1]:
@@ -2208,36 +2155,24 @@ class ReportFormatter:
                         for recommendation in recommendations:
                             if recommendation:  # Only add non-empty recommendations
                                 doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                    else:
-                        doc.add_paragraph(str(recommendations))
                 
                 # Process comparative analysis
-                if "comparative_analysis" in transformed_data and transformed_data["comparative_analysis"]:
+                if "seo_comparative_analysis" in transformed_data and transformed_data["seo_comparative_analysis"]:
                     doc.add_heading("Comparative SEO Analysis", level=2)
-                    doc.add_paragraph(transformed_data["comparative_analysis"])
+                    doc.add_paragraph(transformed_data["seo_comparative_analysis"])
                 
                 # Process summary
                 if "summary" in transformed_data and transformed_data["summary"]:
-                    doc.add_heading("Summary", level=2)
+                    doc.add_heading("SEO Analysis Summary", level=2)
                     doc.add_paragraph(transformed_data["summary"])
             else:
-                # Log specific issues with transformed data
-                if not transformed_data:
-                    logger.warning("SEO analysis transformation returned empty data")
-                elif not isinstance(transformed_data, dict):
-                    logger.warning(f"SEO analysis transformation returned non-dictionary data: {type(transformed_data)}")
-                elif "brand_names" not in transformed_data:
-                    logger.warning("SEO analysis transformation missing 'brand_names' key")
-                elif not transformed_data["brand_names"]:
-                    logger.warning("SEO analysis transformation contains empty 'brand_names' dictionary")
-                
                 # No SEO analysis data available
-                doc.add_paragraph("No SEO and online discoverability analysis data available for this brand naming project.")
+                doc.add_paragraph("No SEO analysis data available for this brand naming project.")
+                if transformed_data:
+                    logger.warning(f"SEO analysis data missing expected keys: {list(transformed_data.keys())}")
+                else:
+                    logger.warning("SEO analysis transformation returned empty data")
                 
-        except ValidationError as ve:
-            logger.error(f"Validation error in SEO analysis data: {str(ve)}")
-            logger.debug(f"Validation error details: {traceback.format_exc()}")
-            doc.add_paragraph("Unable to format the SEO analysis section due to invalid data structure.")
         except Exception as e:
             logger.error(f"Error formatting SEO analysis section: {str(e)}")
             logger.debug(f"Error details: {traceback.format_exc()}")
@@ -4057,6 +3992,241 @@ class ReportFormatter:
             logger.warning("Supabase client not available - skipping upload to storage")
         
         return str(file_path)
+
+    def _transform_domain_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform domain analysis data to match expected format for the formatter.
+        
+        Args:
+            data: Raw domain analysis data
+            
+        Returns:
+            Transformed data structure
+        """
+        if not data:
+            return {}
+        try:
+            domain_analysis_data = DomainAnalysis.model_validate(data)
+            return domain_analysis_data.model_dump()
+        except ValidationError as e:
+            logger.error(f"Validation error for domain analysis data: {str(e)}")
+            return {}
+
+    def _transform_survey_simulation(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Transform survey simulation data into a structured format.
+        
+        The raw data has a different structure than other sections, containing a list of
+        survey responses directly in the root, rather than a nested structure.
+        """
+        if not data:
+            return {}
+            
+        try:
+            # Log the data structure to help with debugging
+            logger.debug(f"Survey simulation data type: {type(data)}")
+            logger.debug(f"Survey simulation data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dictionary'}")
+            
+            # Check if the data is already a list of survey details
+            if isinstance(data, list):
+                # Data is already a list of survey details
+                survey_items = data
+            elif isinstance(data, dict) and "survey_simulation" in data:
+                # Data follows the model structure
+                survey_items = data["survey_simulation"]
+            else:
+                # Data might be in a different format, try to extract it
+                survey_items = []
+                if isinstance(data, dict):
+                    # Loop through all keys to find any that might contain survey items
+                    for key, value in data.items():
+                        if isinstance(value, list) and value:
+                            survey_items = value
+                            break
+                
+            # Now transform each survey item
+            formatted_survey_details = []
+            for item in survey_items:
+                try:
+                    survey_detail = SurveyDetails.model_validate(item)
+                    formatted_survey_details.append(survey_detail.model_dump())
+                except ValidationError as e:
+                    logger.error(f"Validation error for survey item: {str(e)}")
+                    # Add the item as-is, even if it doesn't fully validate
+                    if isinstance(item, dict):
+                        formatted_survey_details.append(item)
+            
+            return {"survey_simulation": formatted_survey_details}
+            
+        except Exception as e:
+            logger.error(f"Error transforming survey simulation data: {str(e)}")
+            # Return the original data as a fallback
+            if isinstance(data, dict):
+                return data
+            return {"survey_simulation": data if isinstance(data, list) else []}
+
+    def _transform_seo_analysis(self, data: Any) -> Dict[str, Any]:
+        """Transform SEO analysis data to match the expected format for the formatter."""
+        transformed_data = {
+            "brand_names": {},  # Dictionary mapping brand names to themselves
+            "summary": "",
+            "general_recommendations": []
+        }
+        
+        # Check if data is a dictionary
+        if not isinstance(data, dict):
+            logger.warning("SEO analysis data is not a dictionary")
+            return transformed_data
+            
+        # Log the incoming data structure for debugging
+        if isinstance(data, dict):
+            logger.info(f"SEO data keys: {list(data.keys())}")
+            if "brand_names" in data:
+                logger.info(f"SEO data already contains brand_names with {len(data['brand_names'])} entries")
+                # We have the brand names directly in the raw data
+                return data
+            
+        # Extract brand analyses - check for both direct format and nested format
+        seo_analyses = None
+        
+        # Case 1: Direct format where some brand data is directly in the root object
+        # This happens in the SEO tests where the data already has "VerityGlobal", "Cerebryx", etc. keys
+        brand_keys = ["VerityGlobal", "Cerebryx", "CatalystAxis"]
+        if any(key in data for key in brand_keys):
+            logger.info("Found SEO data in direct brand key format")
+            # Create the structure we need with the data
+            for brand_key in brand_keys:
+                if brand_key in data:
+                    transformed_data["brand_names"][brand_key] = brand_key
+                    transformed_data[brand_key] = data[brand_key]
+            
+            # Add any other top-level fields that might be in the data
+            if "summary" in data:
+                transformed_data["summary"] = data["summary"]
+            if "general_recommendations" in data:
+                transformed_data["general_recommendations"] = data["general_recommendations"]
+                
+            return transformed_data
+            
+        # Case 2: Nested under "seo_online_discoverability" key
+        elif "seo_online_discoverability" in data:
+            logger.info("Found SEO data nested under seo_online_discoverability key")
+            seo_analyses = data["seo_online_discoverability"]
+        
+        # No recognizable format found
+        else:
+            logger.warning("SEO analysis data does not contain expected keys or structure")
+            return transformed_data
+            
+        # If the seo_analyses is a list, process each brand analysis
+        if isinstance(seo_analyses, list):
+            logger.info(f"Found {len(seo_analyses)} brand analyses in the root list")
+            
+            # Process each brand analysis
+            for brand_analysis in seo_analyses:
+                if not isinstance(brand_analysis, dict):
+                    continue
+                    
+                brand_name = brand_analysis.get("brand_name", "Unknown Brand")
+                # Add to the dictionary of brand names
+                transformed_data["brand_names"][brand_name] = brand_name
+                
+                # Extract ALL metrics and fields from the model
+                search_volume = brand_analysis.get("search_volume", "Unknown")
+                keyword_alignment = brand_analysis.get("keyword_alignment", "Unknown")
+                
+                # Get the field mapping correctly based on the model
+                keyword_competition = brand_analysis.get("keyword_competition", "Unknown")
+                seo_viability_score = brand_analysis.get("seo_viability_score", "Unknown")
+                
+                # Extract all additional fields from the model
+                negative_search_results = brand_analysis.get("negative_search_results", False)
+                unusual_spelling_impact = brand_analysis.get("unusual_spelling_impact", False)
+                branded_keyword_potential = brand_analysis.get("branded_keyword_potential", "Unknown")
+                name_length_searchability = brand_analysis.get("name_length_searchability", "Unknown")
+                social_media_availability = brand_analysis.get("social_media_availability", False)
+                competitor_domain_strength = brand_analysis.get("competitor_domain_strength", "Unknown")
+                exact_match_search_results = brand_analysis.get("exact_match_search_results", "Unknown")
+                social_media_discoverability = brand_analysis.get("social_media_discoverability", "Unknown")
+                negative_keyword_associations = brand_analysis.get("negative_keyword_associations", "Unknown")
+                non_branded_keyword_potential = brand_analysis.get("non_branded_keyword_potential", "Unknown")
+                content_marketing_opportunities = brand_analysis.get("content_marketing_opportunities", "Unknown")
+                
+                # Also keep compatibility with older field names
+                competition = brand_analysis.get("competition", keyword_competition)
+                social_media_potential = brand_analysis.get("social_media_potential", social_media_discoverability)
+                
+                # Parse recommendations
+                recommendations = []
+                raw_recommendations = brand_analysis.get("seo_recommendations", "[]")
+                
+                # Handle recommendations whether they're a string, list, or object
+                if isinstance(raw_recommendations, dict) and "recommendations" in raw_recommendations:
+                    recommendations = raw_recommendations["recommendations"]
+                    if not isinstance(recommendations, list):
+                        recommendations = [str(recommendations)]
+                elif isinstance(raw_recommendations, str):
+                    try:
+                        recommendations_data = json.loads(raw_recommendations)
+                        if isinstance(recommendations_data, dict) and "recommendations" in recommendations_data:
+                            recommendations = recommendations_data["recommendations"]
+                        else:
+                            recommendations = recommendations_data if isinstance(recommendations_data, list) else [raw_recommendations]
+                    except json.JSONDecodeError:
+                        recommendations = [raw_recommendations]
+                elif isinstance(raw_recommendations, list):
+                    recommendations = raw_recommendations
+                
+                # Add brand data to transformed data with ALL fields from the model
+                transformed_data[brand_name] = {
+                    "search_volume": search_volume,
+                    "keyword_alignment": keyword_alignment,
+                    "keyword_competition": keyword_competition,
+                    "competition": competition,  # Compatibility
+                    "seo_viability_score": seo_viability_score,
+                    "social_media_potential": social_media_potential,  # Compatibility
+                    "negative_search_results": negative_search_results,
+                    "unusual_spelling_impact": unusual_spelling_impact,
+                    "branded_keyword_potential": branded_keyword_potential,
+                    "name_length_searchability": name_length_searchability,
+                    "social_media_availability": social_media_availability,
+                    "competitor_domain_strength": competitor_domain_strength,
+                    "exact_match_search_results": exact_match_search_results,
+                    "social_media_discoverability": social_media_discoverability,
+                    "negative_keyword_associations": negative_keyword_associations,
+                    "non_branded_keyword_potential": non_branded_keyword_potential,
+                    "content_marketing_opportunities": content_marketing_opportunities,
+                    "recommendations": recommendations,
+                    "strengths": [],
+                    "challenges": []
+                }
+                
+                # Extract strengths and challenges if available
+                if "strengths" in brand_analysis:
+                    strengths = brand_analysis["strengths"]
+                    if isinstance(strengths, str):
+                        try:
+                            transformed_data[brand_name]["strengths"] = json.loads(strengths)
+                        except json.JSONDecodeError:
+                            transformed_data[brand_name]["strengths"] = [strengths]
+                    elif isinstance(strengths, list):
+                        transformed_data[brand_name]["strengths"] = strengths
+                
+                if "challenges" in brand_analysis:
+                    challenges = brand_analysis["challenges"]
+                    if isinstance(challenges, str):
+                        try:
+                            transformed_data[brand_name]["challenges"] = json.loads(challenges)
+                        except json.JSONDecodeError:
+                            transformed_data[brand_name]["challenges"] = [challenges]
+                    elif isinstance(challenges, list):
+                        transformed_data[brand_name]["challenges"] = challenges
+        
+        # Log results and return
+        logger.info(f"Processed {len(transformed_data['brand_names'])} brand analyses")
+        logger.info(f"Transformed SEO analysis data: {len(str(transformed_data))} chars")
+        if len(transformed_data['brand_names']) == 0:
+            logger.warning("SEO analysis transformation contains empty 'brand_names' dictionary")
+        return transformed_data
 
 async def main(run_id: str = None, upload_to_storage: bool = True):
     """Main function to run the formatter."""
