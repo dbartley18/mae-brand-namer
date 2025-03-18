@@ -1111,17 +1111,24 @@ class ReportFormatter:
                     # Get brand name
                     brand_name = analysis.brand_name
                     
-                    # Parse recommendations - handle string or list
+                    # Parse recommendations - handle different potential data structures
+                    recommendations = []
                     if hasattr(analysis, "seo_recommendations"):
                         if isinstance(analysis.seo_recommendations, str):
+                            # Try to parse as JSON string first
                             try:
                                 recommendations = json.loads(analysis.seo_recommendations)
                             except (json.JSONDecodeError, AttributeError):
                                 recommendations = [analysis.seo_recommendations]
-                        else:
+                        elif isinstance(analysis.seo_recommendations, dict) and hasattr(analysis.seo_recommendations, "recommendations"):
+                            # If it's a properly structured SEORecommendations object
+                            recommendations = analysis.seo_recommendations.recommendations
+                        elif isinstance(analysis.seo_recommendations, list):
+                            # If it's already a list
                             recommendations = analysis.seo_recommendations
-                    else:
-                        recommendations = []
+                        else:
+                            # Fallback to string representation
+                            recommendations = [str(analysis.seo_recommendations)]
                         
                     # Create brand analysis entry with formatted structure
                     transformed_data["brand_names"][brand_name] = {
@@ -2053,17 +2060,17 @@ class ReportFormatter:
             logger.info(f"Transformed SEO analysis data: {len(str(transformed_data))} chars")
             
             # Check if we have analysis data
-            if transformed_data and isinstance(transformed_data, dict):
+            if transformed_data and isinstance(transformed_data, dict) and "brand_names" in transformed_data and transformed_data["brand_names"]:
                 # Process methodology if available
                 if "methodology" in transformed_data and transformed_data["methodology"]:
                     doc.add_heading("Methodology", level=2)
                     doc.add_paragraph(transformed_data["methodology"])
                 
                 # Process brand name analyses
-                if "brand_names" in transformed_data and transformed_data["brand_names"]:
+                brand_analyses = transformed_data["brand_names"]
+                
+                if brand_analyses:
                     doc.add_heading("Brand Name SEO Analysis", level=2)
-                    
-                    brand_analyses = transformed_data["brand_names"]
                     
                     # Process each brand name analysis
                     for brand_name, analysis in brand_analyses.items():
@@ -2148,7 +2155,8 @@ class ReportFormatter:
                             strengths = analysis["seo_strengths"]
                             if isinstance(strengths, list):
                                 for strength in strengths:
-                                    doc.add_paragraph(f"• {strength}", style="List Bullet")
+                                    if strength:  # Only add non-empty strengths
+                                        doc.add_paragraph(f"• {strength}", style="List Bullet")
                             else:
                                 doc.add_paragraph(str(strengths))
                         
@@ -2159,7 +2167,8 @@ class ReportFormatter:
                             challenges = analysis["seo_challenges"]
                             if isinstance(challenges, list):
                                 for challenge in challenges:
-                                    doc.add_paragraph(f"• {challenge}", style="List Bullet")
+                                    if challenge:  # Only add non-empty challenges
+                                        doc.add_paragraph(f"• {challenge}", style="List Bullet")
                             else:
                                 doc.add_paragraph(str(challenges))
                         
@@ -2175,8 +2184,14 @@ class ReportFormatter:
                             
                             recommendations = analysis["recommendations"]
                             if isinstance(recommendations, list):
+                                has_recommendations = False
                                 for recommendation in recommendations:
-                                    doc.add_paragraph(f"• {recommendation}", style="List Bullet")
+                                    if recommendation:  # Only add non-empty recommendations
+                                        doc.add_paragraph(f"• {recommendation}", style="List Bullet")
+                                        has_recommendations = True
+                                
+                                if not has_recommendations:
+                                    doc.add_paragraph("No specific SEO recommendations available for this brand name.")
                             else:
                                 doc.add_paragraph(str(recommendations))
                         
@@ -2191,7 +2206,8 @@ class ReportFormatter:
                     recommendations = transformed_data["general_recommendations"]
                     if isinstance(recommendations, list):
                         for recommendation in recommendations:
-                            doc.add_paragraph(f"• {recommendation}", style="List Bullet")
+                            if recommendation:  # Only add non-empty recommendations
+                                doc.add_paragraph(f"• {recommendation}", style="List Bullet")
                     else:
                         doc.add_paragraph(str(recommendations))
                 
@@ -2205,9 +2221,23 @@ class ReportFormatter:
                     doc.add_heading("Summary", level=2)
                     doc.add_paragraph(transformed_data["summary"])
             else:
+                # Log specific issues with transformed data
+                if not transformed_data:
+                    logger.warning("SEO analysis transformation returned empty data")
+                elif not isinstance(transformed_data, dict):
+                    logger.warning(f"SEO analysis transformation returned non-dictionary data: {type(transformed_data)}")
+                elif "brand_names" not in transformed_data:
+                    logger.warning("SEO analysis transformation missing 'brand_names' key")
+                elif not transformed_data["brand_names"]:
+                    logger.warning("SEO analysis transformation contains empty 'brand_names' dictionary")
+                
                 # No SEO analysis data available
                 doc.add_paragraph("No SEO and online discoverability analysis data available for this brand naming project.")
                 
+        except ValidationError as ve:
+            logger.error(f"Validation error in SEO analysis data: {str(ve)}")
+            logger.debug(f"Validation error details: {traceback.format_exc()}")
+            doc.add_paragraph("Unable to format the SEO analysis section due to invalid data structure.")
         except Exception as e:
             logger.error(f"Error formatting SEO analysis section: {str(e)}")
             logger.debug(f"Error details: {traceback.format_exc()}")
