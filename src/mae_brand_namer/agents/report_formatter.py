@@ -940,6 +940,7 @@ class ReportFormatter:
                     # Create competitor analyses for this brand
                     competitor_analyses = []
                     for competitor in brand_analysis.competitors:
+                        # Map fields from model to format expected by formatter
                         competitor_analyses.append({
                             "competitor_name": competitor.competitor_name,
                             "risk_of_confusion": competitor.risk_of_confusion,
@@ -947,7 +948,8 @@ class ReportFormatter:
                             "weaknesses": competitor.competitor_weaknesses,
                             "positioning": competitor.competitor_positioning,
                             "trademark_conflict_risk": competitor.trademark_conflict_risk,
-                            "target_audience": competitor.target_audience_perception,
+                            # Map target_audience_perception to target_audience_perception for formatter compatibility
+                            "target_audience_perception": competitor.target_audience_perception,
                             "differentiation_opportunity": competitor.competitor_differentiation_opportunity
                         })
                     
@@ -964,6 +966,49 @@ class ReportFormatter:
             
         except ValidationError as e:
             logger.error(f"Validation error for competitor analysis data: {str(e)}")
+            
+            # Try a fallback transformation approach
+            try:
+                if "competitor_analysis" in data and isinstance(data["competitor_analysis"], list):
+                    transformed_data = {
+                        "brand_names": {},
+                        "summary": "This competitive analysis evaluates how each proposed brand name compares to competitors in the industry, highlighting opportunities for differentiation and potential risks."
+                    }
+                    
+                    for brand_data in data["competitor_analysis"]:
+                        if isinstance(brand_data, dict) and "brand_name" in brand_data and "competitors" in brand_data:
+                            brand_name = brand_data["brand_name"]
+                            competitors = brand_data["competitors"]
+                            
+                            if isinstance(competitors, list):
+                                competitor_analyses = []
+                                for comp in competitors:
+                                    if isinstance(comp, dict) and "competitor_name" in comp:
+                                        competitor_analyses.append({
+                                            "competitor_name": comp.get("competitor_name", ""),
+                                            "risk_of_confusion": comp.get("risk_of_confusion", 0),
+                                            "strengths": comp.get("competitor_strengths", ""),
+                                            "weaknesses": comp.get("competitor_weaknesses", ""),
+                                            "positioning": comp.get("competitor_positioning", ""),
+                                            "trademark_conflict_risk": comp.get("trademark_conflict_risk", ""),
+                                            "target_audience_perception": comp.get("target_audience_perception", ""),
+                                            "differentiation_opportunity": comp.get("competitor_differentiation_opportunity", "")
+                                        })
+                                
+                                if competitor_analyses:
+                                    transformed_data["brand_names"][brand_name] = {
+                                        "competitors": competitor_analyses,
+                                        "differentiation": f"Analysis of {len(competitor_analyses)} key competitors reveals opportunities for {brand_name} to differentiate through distinct positioning and messaging.",
+                                        "similarity_assessment": {c["competitor_name"]: f"Risk of confusion: {c.get('risk_of_confusion', 0)}/10" for c in competitor_analyses},
+                                        "recommendations": ["Emphasize unique brand attributes", "Monitor trademark risks", "Leverage differentiation opportunities"]
+                                    }
+                    
+                    if transformed_data["brand_names"]:
+                        logger.info(f"Fallback transformation successful with {len(transformed_data['brand_names'])} brand analyses")
+                        return transformed_data
+            except Exception as fallback_error:
+                logger.error(f"Fallback transformation for competitor analysis failed: {str(fallback_error)}")
+            
             return {}
 
     def _transform_domain_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -2533,10 +2578,10 @@ class ReportFormatter:
                                     p.add_run(competitor["weaknesses"])
                                 
                                 # Add target audience
-                                if "target_audience" in competitor:
+                                if "target_audience_perception" in competitor:
                                     p = doc.add_paragraph()
                                     p.add_run("Target Audience Perception: ").bold = True
-                                    p.add_run(competitor["target_audience"])
+                                    p.add_run(competitor["target_audience_perception"])
                                 
                                 # Add differentiation opportunity
                                 if "differentiation_opportunity" in competitor:
