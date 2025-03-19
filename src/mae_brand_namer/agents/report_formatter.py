@@ -979,6 +979,24 @@ class ReportFormatter:
             brand_name = analysis.get("brand_name", "")
             logger.info(f"Processing competitor analysis for: {brand_name}")
             
+            # Extract competitors list according to the model
+            competitors_list = []
+            if "competitors" in analysis and isinstance(analysis["competitors"], list):
+                for competitor in analysis["competitors"]:
+                    if isinstance(competitor, dict):
+                        competitor_details = {
+                            "competitor_name": competitor.get("competitor_name", "Unknown"),
+                            "risk_of_confusion": competitor.get("risk_of_confusion", 0),
+                            "competitor_strengths": competitor.get("competitor_strengths", ""),
+                            "competitor_weaknesses": competitor.get("competitor_weaknesses", ""),
+                            "competitor_positioning": competitor.get("competitor_positioning", ""),
+                            "trademark_conflict_risk": competitor.get("trademark_conflict_risk", ""),
+                            "target_audience_perception": competitor.get("target_audience_perception", ""),
+                            "competitor_differentiation_opportunity": competitor.get("competitor_differentiation_opportunity", "")
+                        }
+                        competitors_list.append(competitor_details)
+                        logger.info(f"Processed competitor: {competitor_details['competitor_name']}")
+            
             # Extract strengths safely
             strengths = []
             if "strengths" in analysis:
@@ -1061,6 +1079,7 @@ class ReportFormatter:
             
             # Create brand analysis entry with formatted structure
             transformed_data["brand_names"][brand_name] = {
+                "competitors": competitors_list,  # Add the competitors list according to the model
                 "top_competitors": analysis.get("top_competitors", ""),
                 "market_position": analysis.get("market_position", ""),
                 "differentiation_score": analysis.get("differentiation_score", 0),
@@ -2499,12 +2518,31 @@ class ReportFormatter:
                         # Add brand name as heading
                         doc.add_heading(brand_name, level=3)
                         
-                        # Process differentiation
-                        if "differentiation" in analysis and analysis["differentiation"]:
-                            doc.add_heading("Competitive Differentiation", level=4)
-                            doc.add_paragraph(analysis["differentiation"])
+                        # Process top competitors
+                        if "top_competitors" in analysis and analysis["top_competitors"]:
+                            p = doc.add_paragraph()
+                            p.add_run("Top Competitors: ").bold = True
+                            p.add_run(analysis["top_competitors"])
                         
-                        # Process competitor section
+                        # Process market position
+                        if "market_position" in analysis and analysis["market_position"]:
+                            p = doc.add_paragraph()
+                            p.add_run("Market Position: ").bold = True
+                            p.add_run(analysis["market_position"])
+                        
+                        # Process differentiation score
+                        if "differentiation_score" in analysis:
+                            p = doc.add_paragraph()
+                            p.add_run("Differentiation Score: ").bold = True
+                            p.add_run(f"{analysis['differentiation_score']}/10")
+                        
+                        # Process market saturation
+                        if "market_saturation" in analysis and analysis["market_saturation"]:
+                            p = doc.add_paragraph()
+                            p.add_run("Market Saturation: ").bold = True
+                            p.add_run(analysis["market_saturation"])
+                        
+                        # Process detailed competitor section
                         if "competitors" in analysis and analysis["competitors"]:
                             doc.add_heading("Key Competitors", level=4)
                             
@@ -2512,74 +2550,82 @@ class ReportFormatter:
                                 # Add competitor name as subheading
                                 doc.add_heading(competitor["competitor_name"], level=5)
                                 
-                                # Add risk of confusion
-                                if "risk_of_confusion" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Risk of Confusion: ").bold = True
-                                    p.add_run(f"{competitor['risk_of_confusion']}/10")
+                                # Create a metrics table for competitor details
+                                metrics_table = doc.add_table(rows=1, cols=2)
+                                metrics_table.style = 'Table Grid'
                                 
-                                # Add trademark conflict risk
-                                if "trademark_conflict_risk" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Trademark Conflict Risk: ").bold = True
-                                    p.add_run(competitor["trademark_conflict_risk"])
+                                # Add header row
+                                header_cells = metrics_table.rows[0].cells
+                                header_cells[0].text = "Metric"
+                                header_cells[1].text = "Value"
                                 
-                                # Add positioning
-                                if "positioning" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Positioning: ").bold = True
-                                    p.add_run(competitor["positioning"])
+                                # Add metrics to the table based on CompetitorDetails model
+                                metrics = [
+                                    ("Risk of Confusion", f"{competitor.get('risk_of_confusion', 0)}/10"),
+                                    ("Competitor Strengths", competitor.get("competitor_strengths", "")),
+                                    ("Competitor Weaknesses", competitor.get("competitor_weaknesses", "")),
+                                    ("Competitor Positioning", competitor.get("competitor_positioning", "")),
+                                    ("Trademark Conflict Risk", competitor.get("trademark_conflict_risk", "")),
+                                    ("Target Audience Perception", competitor.get("target_audience_perception", "")),
+                                    ("Differentiation Opportunity", competitor.get("competitor_differentiation_opportunity", ""))
+                                ]
                                 
-                                # Add strengths
-                                if "strengths" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Strengths: ").bold = True
-                                    p.add_run(competitor["strengths"])
+                                # Add metrics to table
+                                for metric, value in metrics:
+                                    row = metrics_table.add_row()
+                                    cells = row.cells
+                                    cells[0].text = metric
+                                    cells[1].text = str(value)
                                 
-                                # Add weaknesses
-                                if "weaknesses" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Weaknesses: ").bold = True
-                                    p.add_run(competitor["weaknesses"])
-                                
-                                # Add target audience
-                                if "target_audience_perception" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Target Audience Perception: ").bold = True
-                                    p.add_run(competitor["target_audience_perception"])
-                                
-                                # Add differentiation opportunity
-                                if "differentiation_opportunity" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Differentiation Opportunity: ").bold = True
-                                    p.add_run(competitor["differentiation_opportunity"])
-                                
-                                # Add space between competitors
+                                # Add spacing after table
                                 doc.add_paragraph("")
                         
-                        # Process similarity assessment
-                        if "similarity_assessment" in analysis and analysis["similarity_assessment"]:
-                            doc.add_heading("Similarity Assessment", level=4)
-                            
-                            similarity = analysis["similarity_assessment"]
-                            if isinstance(similarity, dict):
-                                for competitor, assessment in similarity.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{competitor}: ").bold = True
-                                    p.add_run(str(assessment))
-                            else:
-                                doc.add_paragraph(str(similarity))
+                        # Process SWOT analysis
+                        doc.add_heading("SWOT Analysis", level=4)
                         
-                        # Process recommendations
-                        if "recommendations" in analysis and analysis["recommendations"]:
-                            doc.add_heading("Competitive Recommendations", level=4)
+                        # Process strengths
+                        if "strengths" in analysis and analysis["strengths"]:
+                            doc.add_heading("Strengths", level=5)
                             
-                            recommendations = analysis["recommendations"]
-                            if isinstance(recommendations, list):
-                                for recommendation in recommendations:
-                                    doc.add_paragraph(f"• {recommendation}", style="List Bullet")
+                            strengths = analysis["strengths"]
+                            if isinstance(strengths, list):
+                                for strength in strengths:
+                                    doc.add_paragraph(f"• {strength}", style="List Bullet")
                             else:
-                                doc.add_paragraph(str(recommendations))
+                                doc.add_paragraph(str(strengths))
+                        
+                        # Process weaknesses
+                        if "weaknesses" in analysis and analysis["weaknesses"]:
+                            doc.add_heading("Weaknesses", level=5)
+                            
+                            weaknesses = analysis["weaknesses"]
+                            if isinstance(weaknesses, list):
+                                for weakness in weaknesses:
+                                    doc.add_paragraph(f"• {weakness}", style="List Bullet")
+                            else:
+                                doc.add_paragraph(str(weaknesses))
+                        
+                        # Process opportunities
+                        if "opportunities" in analysis and analysis["opportunities"]:
+                            doc.add_heading("Opportunities", level=5)
+                            
+                            opportunities = analysis["opportunities"]
+                            if isinstance(opportunities, list):
+                                for opportunity in opportunities:
+                                    doc.add_paragraph(f"• {opportunity}", style="List Bullet")
+                            else:
+                                doc.add_paragraph(str(opportunities))
+                        
+                        # Process threats
+                        if "threats" in analysis and analysis["threats"]:
+                            doc.add_heading("Threats", level=5)
+                            
+                            threats = analysis["threats"]
+                            if isinstance(threats, list):
+                                for threat in threats:
+                                    doc.add_paragraph(f"• {threat}", style="List Bullet")
+                            else:
+                                doc.add_paragraph(str(threats))
                         
                         # Add separator between brand analyses (except for the last one)
                         if brand_name != list(brand_analyses.keys())[-1]:

@@ -194,3 +194,7 @@ docs/survey.md
 docs/translation_analysis.md
 check_seo_data.py
 tmp/report_mae_20250318_180629_c3741e03.docx
+.langgraph_api/.langgraph_checkpoint.1.pckl
+.langgraph_api/.langgraph_checkpoint.2.pckl
+.langgraph_api/.langgraph_ops.pckl
+.langgraph_api/.langgraph_retry_counter.pckl
