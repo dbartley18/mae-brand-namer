@@ -8,7 +8,19 @@ import altair as alt
 from dotenv import load_dotenv
 from typing import Dict, List, Any, Optional
 import logging
-from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+from langchain.callbacks.streamlit import StreamlitCallbackHandler
+from langchain.callbacks.base import BaseCallbackHandler
+
+# Utility function to validate LangSmith traces
+def validate_langsmith_trace(trace_id):
+    """Check if a LangSmith trace exists"""
+    langsmith_url = f"https://smith.langchain.com/api/traces/{trace_id}"
+    try:
+        # Just a HEAD request to see if it exists, we don't need the full data
+        response = requests.head(langsmith_url, timeout=2)
+        return response.status_code == 200
+    except Exception:
+        return False
 
 # Load environment variables
 load_dotenv()
@@ -296,7 +308,6 @@ def process_stream_data(stream, container, status_container, progress_bar):
     # Track run metrics
     token_counts = {"total": 0, "prompt": 0, "completion": 0}
     run_metadata = {"start_time": time.time(), "steps_completed": 0}
-    models_used = {}
     
     # Create containers for metrics and progress
     metrics_container = status_container.container()
@@ -320,208 +331,254 @@ def process_stream_data(stream, container, status_container, progress_bar):
     
     # Create separate containers for different types of information
     steps_container = status_container.container()
-    debug_container = st.container()  # Move outside status_container to make it more visible
+    debug_container = st.container()  # Container for debug information
     
     # Initialize debug data list in session state if not already there
-    if "debug_data" not in st.session_state:
-        st.session_state.debug_data = []
-    
     if "raw_debug_data" not in st.session_state:
         st.session_state.raw_debug_data = []
+    else:
+        # Clear existing debug data for new run
+        st.session_state.raw_debug_data = []
     
-    # Track steps and state
-    steps_completed = []
-    current_agent = ""
-    current_step = ""
-    current_node = ""
-    last_update_time = time.time()
+    # Also track raw stream data before JSON processing
+    if "raw_stream_lines" not in st.session_state:
+        st.session_state.raw_stream_lines = []
+    else:
+        st.session_state.raw_stream_lines = []
     
-    # LangGraph specific tracking
+    # Create a container for raw data display
+    raw_json_container = debug_container.container()
+    raw_json_display = raw_json_container.empty()
+    
+    # Set up counters and trackers
+    line_count = 0
     langgraph_data = {
         "nodes_visited": set(),
+        "node_data": {},
         "triggers": set(),
         "run_id": "",
-        "thread_id": "",
-        "model_calls": []
+        "thread_id": ""
     }
     
-    # Start tracking
-    run_metadata["start_time"] = time.time()
+    # Update display function for raw JSON
+    def update_raw_json_display():
+        if not st.session_state.raw_debug_data:
+            raw_json_display.info("Waiting for data...")
+            return
+            
+        # Show the count of events received
+        raw_json_display.markdown(f"### Raw Stream Data ({len(st.session_state.raw_debug_data)} events)")
+        
+        # Display the last 10 events as pretty JSON
+        with raw_json_display.expander("Latest Events", expanded=True):
+            for i, event in enumerate(st.session_state.raw_debug_data[-10:]):
+                st.markdown(f"**Event {len(st.session_state.raw_debug_data) - 10 + i + 1}:**")
+                st.json(event)
     
-    # Process each line from the stream
-    for i, line in enumerate(stream):
+    # Process stream data
+    for line in stream:
         if not line:
             continue
             
+        line_count += 1
+        line_str = line.decode("utf-8")
+        
+        # Store the raw line before any processing
+        st.session_state.raw_stream_lines.append(line_str)
+        
+        # Skip empty lines
+        if not line_str.strip():
+            continue
+        
+        # Update progress information
+        progress_bar.progress((line_count % 100) / 100)
+        elapsed_time = time.time() - run_metadata["start_time"]
+        time_display.metric("Time", f"{elapsed_time:.1f}s")
+            
+        # Handle Server-Sent Events (SSE) format
+        if line_str.startswith("event:") or line_str.startswith(":"):
+            # This is an SSE event marker or comment, not JSON data
+            if line_str.startswith(":"):
+                # This is a comment/heartbeat
+                status_message.info("Server heartbeat")
+                continue
+                
+            # Extract event type for debugging
+            event_type = line_str.replace("event:", "").strip()
+            status_message.info(f"Event stream: {event_type}")
+            continue
+            
+        # Process JSON data
+        data = None
+        json_str = None
+            
+        # Look for data payload in SSE format
+        if line_str.startswith("data:"):
+            # Extract the JSON data after "data:"
+            json_str = line_str[5:].strip()
+            
+            # Skip empty data
+            if not json_str:
+                continue
+        else:
+            # Try to parse as raw JSON (fallback for non-SSE format)
+            json_str = line_str
+        
+        # Try to parse the JSON data
         try:
-            # Update progress based on number of events received
-            progress_value = min((i + 1) / 20, 0.95)  # More conservative progress estimate
-            progress_bar.progress(progress_value)
+            data = json.loads(json_str)
             
-            # Update elapsed time
-            elapsed = time.time() - run_metadata["start_time"]
-            time_display.metric("Time", f"{elapsed:.1f}s")
+            # Store raw data for debugging
+            st.session_state.raw_debug_data.append(data)
+            print(f"DEBUG: Received data: {data.get('type', 'unknown')}")
             
-            # Decode bytes to string
-            line_str = line.decode('utf-8') if isinstance(line, bytes) else line
-            # Remove "data: " prefix if it exists
-            if line_str.startswith("data: "):
-                line_str = line_str[6:]
-                
-            # Parse JSON data
+            # Update the raw JSON display
+            update_raw_json_display()
+        except json.JSONDecodeError as json_err:
+            # Log the error and the problematic data
+            print(f"Error parsing JSON: {str(json_err)}")
+            print(f"Problematic data: '{json_str}'")
+            status_message.warning(f"Received non-JSON data (length: {len(json_str)})")
+            
+            # Store as raw text for debugging
+            st.session_state.raw_debug_data.append({"type": "raw_text", "content": json_str})
+            continue  # Skip to next line
+            
+        # If we have valid data, process it
+        if data:
             try:
-                data = json.loads(line_str)
-                
-                # Add raw data to session state for debugging
-                st.session_state.raw_debug_data.append(data)
-                
                 # Extract event type and metadata
-                event_type = data.get("type", "")
+                event_type = data.get("type", "unknown")
                 metadata = data.get("metadata", {}) if isinstance(data, dict) else {}
                 
-                # Process different event types
-                if event_type == "status":
-                    # Handle status message
-                    message = data.get("message", "")
-                    if message:
-                        status_message.info(message)
+                # Handle status message (keep this simple)
+                if event_type == "status" and "message" in data:
+                    status_message.info(data["message"])
                     
-                    # Extract LangGraph node information
+                    # Extract step info if available
+                    if "langgraph_step" in metadata:
+                        steps_display.metric("Steps", metadata["langgraph_step"])
+                    
+                    # Extract node name if available
                     if "langgraph_node" in metadata:
                         current_node = metadata["langgraph_node"]
-                        langgraph_data["nodes_visited"].add(current_node)
-                    
-                    # Track triggers
-                    if "langgraph_triggers" in metadata and isinstance(metadata["langgraph_triggers"], list):
-                        for trigger in metadata["langgraph_triggers"]:
-                            langgraph_data["triggers"].add(trigger)
-                    
-                    # Track run and thread IDs
-                    if "run_id" in metadata and not langgraph_data["run_id"]:
-                        langgraph_data["run_id"] = metadata["run_id"]
-                    
-                    if "thread_id" in metadata and not langgraph_data["thread_id"]:
-                        langgraph_data["thread_id"] = metadata["thread_id"]
-                    
-                    # Extract model information
-                    if "ls_model_name" in metadata:
-                        model_info = {
-                            "name": metadata.get("ls_model_name", "Unknown"),
-                            "type": metadata.get("ls_model_type", "Unknown"),
-                            "provider": metadata.get("ls_provider", "Unknown"),
-                            "temperature": metadata.get("ls_temperature", "N/A")
-                        }
-                        
-                        # Store for later display
-                        model_key = f"{model_info['provider']}:{model_info['name']}"
-                        if model_key not in models_used:
-                            models_used[model_key] = model_info
-                            langgraph_data["model_calls"].append(model_info)
-                    
-                    # Update agent information
-                    agent_name = data.get("agent", metadata.get("langgraph_node", ""))
-                    if agent_name and agent_name != current_agent:
-                        current_agent = agent_name
-                        agent_display.metric("Current Node", current_agent)
-                    
-                    # Extract step information
-                    step_name = data.get("step", "")
-                    step_num = metadata.get("langgraph_step", "")
-                    
-                    if step_name and (step_name != current_step or step_num):
-                        current_step = step_name
-                        run_metadata["steps_completed"] += 1
-                        
-                        # Create step record
-                        step_record = {
-                            "name": step_name,
-                            "time": time.time() - last_update_time,
-                            "node": current_node,
-                            "step_number": step_num
-                        }
-                        
-                        steps_completed.append(step_record)
-                        last_update_time = time.time()
-                        
-                        # Update step displays
-                        steps_display.metric("Steps", len(steps_completed))
-                        
-                        # Step info with node path if available
-                        if current_node:
-                            current_step_display.markdown(f"**Current Step:** {current_step} (Node: {current_node})")
-                        else:
-                            current_step_display.markdown(f"**Current Step:** {current_step}")
+                        current_step_display.info(f"Processing node: {current_node}")
                 
-                # Handle token information
-                if "token_count" in metadata:
-                    token_counts["total"] = metadata["token_count"]
-                    tokens_display.metric("Tokens", token_counts["total"])
-                elif "prompt_tokens" in metadata:
-                    token_counts["prompt"] = metadata["prompt_tokens"]
-                    token_counts["total"] = token_counts["prompt"] + token_counts.get("completion", 0)
-                    tokens_display.metric("Tokens", f"{token_counts['total']} ({token_counts['prompt']} prompt)")
-                elif "completion_tokens" in metadata:
-                    token_counts["completion"] = metadata["completion_tokens"]
-                    token_counts["total"] = token_counts.get("prompt", 0) + token_counts["completion"]
-                    tokens_display.metric("Tokens", f"{token_counts['total']} ({token_counts['completion']} completion)")
+                # Check for result data - multiple possible locations
+                result = None
+                for key in ["data", "output", "result"]:
+                    if key in data:
+                        result = data[key]
+                        break
                 
-                # Handle output/result data
-                elif event_type == "output" or event_type == "result":
-                    result = data.get("output", data.get("result", {}))
-                    if not isinstance(result, dict):
-                        # Try to parse if it's a string
-                        if isinstance(result, str):
-                            try:
-                                result = json.loads(result)
-                            except:
-                                # If it's not JSON, treat as plain text
-                                pass
-                    
-                    # Extract generated names and evaluations
-                    if isinstance(result, dict):
-                        # Extract names
-                        names = result.get("generated_names", [])
-                        if names:
-                            generated_names = names
-                            logging.debug(f"Extracted {len(names)} generated names: {names}")
-                        
-                            # Extract evaluations
-                            evals = result.get("evaluations", {})
-                            if evals:
-                                evaluations = evals
-                                logging.debug(f"Extracted evaluations for {len(evals)} names")
-                        
-                            # Update results in real-time
-                            if generated_names:
-                                logging.debug(f"Displaying results with {len(generated_names)} names")
+                # If result contains generated names, display them
+                if isinstance(result, dict) and "generated_names" in result:
+                    names = result["generated_names"]
+                    if names:
+                        generated_names = names
+                        evaluations = result.get("evaluations", {})
+                        display_results(generated_names, evaluations, container)
+                
+                # Also check if names are in the top-level data
+                elif isinstance(data, dict) and "generated_names" in data:
+                    names = data["generated_names"]
+                    if names:
+                        generated_names = names
+                        evaluations = data.get("evaluations", {})
+                        display_results(generated_names, evaluations, container)
+                
+                # Try to parse if it's a string that might contain the results
+                elif isinstance(result, str):
+                    try:
+                        parsed = json.loads(result)
+                        if isinstance(parsed, dict) and "generated_names" in parsed:
+                            names = parsed["generated_names"]
+                            if names:
+                                generated_names = names
+                                evaluations = parsed.get("evaluations", {})
                                 display_results(generated_names, evaluations, container)
-            except json.JSONDecodeError:
-                # Skip lines that aren't valid JSON
-                continue
-        except Exception as e:
-            # Handle any errors
-            st.error(f"Error processing stream line: {str(e)}")
+                    except:
+                        # Not JSON or doesn't contain what we're looking for
+                        pass
+            except Exception as e:
+                # Log any errors in processing
+                print(f"Error processing data: {str(e)}")
+                status_message.error(f"Error: {str(e)}")
+        else:
+            print(f"No valid data after parsing: {json_str}")
     
-    # Complete progress
-    progress_bar.progress(1.0)
+    # Final update to progress indicators
+    progress_bar.progress(100)
+    run_metadata["end_time"] = time.time()
+    elapsed_time = run_metadata["end_time"] - run_metadata["start_time"]
+    time_display.metric("Time", f"{elapsed_time:.1f}s (Completed)")
+    current_step_display.success("Generation completed")
     
-    # Final summary of run
-    total_time = time.time() - run_metadata["start_time"]
+    # Mark completion in session state
+    st.session_state.generation_complete = True
     
-    with metrics_container:
-        st.success(f"✅ Generation complete in {total_time:.2f} seconds")
+    # Display final raw JSON state
+    with debug_container:
+        st.markdown("---")
+        st.subheader("LangGraph Execution Flow")
+        st.caption("This section shows the raw data received from the stream.")
         
-        # Display final metrics
-        final_metrics = st.columns(4)
-        with final_metrics[0]:
-            st.metric("Total Steps", len(steps_completed))
-        with final_metrics[1]:
-            st.metric("Total Tokens", token_counts["total"])
-        with final_metrics[2]:
-            st.metric("Total Time", f"{total_time:.2f}s")
-        with final_metrics[3]:
-            if token_counts["total"] > 0 and total_time > 0:
-                st.metric("Tokens/Second", f"{token_counts['total']/total_time:.1f}")
+        # First, show the raw stream output
+        with st.expander("Raw Stream Data (before JSON parsing)", expanded=True):
+            st.info(f"Received {len(st.session_state.raw_stream_lines)} lines from stream")
+            if st.session_state.raw_stream_lines:
+                for i, line in enumerate(st.session_state.raw_stream_lines[:20]):  # Limit to first 20 lines
+                    st.text(f"Line {i+1}: {line}")
+                if len(st.session_state.raw_stream_lines) > 20:
+                    st.text(f"... and {len(st.session_state.raw_stream_lines) - 20} more lines")
+            else:
+                st.warning("No raw stream data captured")
+        
+        if st.session_state.raw_debug_data:
+            # Display event count
+            st.info(f"Received {len(st.session_state.raw_debug_data)} events from the stream")
+            
+            # Create tabs for different views
+            debug_tabs = st.tabs(["All Events", "Status Events", "Result Data"])
+            
+            # All events tab
+            with debug_tabs[0]:
+                st.markdown("### All Stream Events")
+                for i, event in enumerate(st.session_state.raw_debug_data):
+                    event_type = event.get("type", "unknown")
+                    with st.expander(f"Event {i+1}: {event_type}", expanded=i==0):
+                        st.json(event)
+            
+            # Status events tab
+            with debug_tabs[1]:
+                st.markdown("### Status Events")
+                status_events = [e for e in st.session_state.raw_debug_data if e.get("type") == "status"]
+                if status_events:
+                    for i, event in enumerate(status_events):
+                        message = event.get("message", "No message")
+                        metadata = event.get("metadata", {})
+                        node = metadata.get("langgraph_node", "Unknown")
+                        step = metadata.get("langgraph_step", "?")
+                        with st.expander(f"Step {step}: {node} - {message}", expanded=i==0):
+                            st.json(event)
+                else:
+                    st.warning("No status events found")
+            
+            # Result data tab
+            with debug_tabs[2]:
+                st.markdown("### Result Data")
+                result_events = [
+                    e for e in st.session_state.raw_debug_data 
+                    if e.get("type") in ["output", "result"] or "generated_names" in str(e)
+                ]
+                if result_events:
+                    for i, event in enumerate(result_events):
+                        with st.expander(f"Result {i+1}", expanded=i==0):
+                            st.json(event)
+                else:
+                    st.warning("No result events found")
+        else:
+            st.warning("No debug data captured from the stream")
     
     return generated_names, evaluations
 
@@ -819,13 +876,154 @@ with tab1:
         st.subheader("LangGraph Execution Flow")
         st.caption("This section shows detailed information about each step in the graph execution pipeline.")
     
-    # Create a container for Streamlit callback
+    # Create a container for Streamlit callback and place it before the progress indicators
     st_callback_container = st.container()
-    
+    # Initialize LangChain callback handler for Streamlit
+    st_callback = StreamlitCallbackHandler(st_callback_container, expand_new_thoughts=False, max_thought_containers=10)
+
     # Progress indicators
     progress_bar = st.progress(0)
     status_container = st.container()
     
+    # Show persisted debug data if we have it (from previous runs/tab switches)
+    debug_container = st.container()
+    with debug_container:
+        if "generation_complete" in st.session_state and st.session_state.generation_complete:
+            if "langsmith_trace_ids" in st.session_state and st.session_state.langsmith_trace_ids:
+                st.subheader("LangSmith Traces")
+                for trace_id in st.session_state.langsmith_trace_ids:
+                    # Create LangSmith trace URL
+                    langsmith_url = f"https://smith.langchain.com/traces/{trace_id}"
+                    st.markdown(f"[View detailed trace on LangSmith]({langsmith_url})")
+                
+                st.info("LangSmith traces provide the most detailed view of your flow's execution. Click the links above to view in the LangSmith UI.")
+            
+            if "raw_debug_data" in st.session_state and len(st.session_state.raw_debug_data) > 0:
+                st.write(f"Debug data available: {len(st.session_state.raw_debug_data)} events")
+                
+                # Display LangSmith trace IDs if available
+                if "langsmith_trace_ids" in st.session_state and st.session_state.langsmith_trace_ids:
+                    st.subheader("LangSmith Traces")
+                    valid_traces = []
+                    
+                    for trace_id in st.session_state.langsmith_trace_ids:
+                        # Create LangSmith trace URL
+                        langsmith_url = f"https://smith.langchain.com/traces/{trace_id}"
+                        
+                        # Add the trace link
+                        with st.spinner(f"Validating trace {trace_id[:8]}..."):
+                            is_valid = validate_langsmith_trace(trace_id)
+                        
+                        if is_valid:
+                            st.markdown(f"✅ [View detailed trace on LangSmith]({langsmith_url})")
+                            valid_traces.append(trace_id)
+                        else:
+                            st.markdown(f"❌ Trace {trace_id[:8]}... may not be available")
+                    
+                    if valid_traces:
+                        st.info(f"LangSmith traces provide the most detailed view of your flow's execution. {len(valid_traces)} valid trace(s) found.")
+                    else:
+                        st.warning("No valid LangSmith traces were found. This might be due to API limitations or LangSmith configuration.")
+                else:
+                    st.info("No LangSmith traces were captured during execution. This may be due to the LangSmith tracing being disabled in your LangGraph flow.")
+                    
+                    # Offer a manual lookup option
+                    run_id_manual = st.text_input("Enter a run ID manually to check LangSmith:")
+                    if run_id_manual and st.button("Check Trace"):
+                        with st.spinner("Validating trace ID..."):
+                            is_valid = validate_langsmith_trace(run_id_manual)
+                        
+                        if is_valid:
+                            langsmith_url = f"https://smith.langchain.com/traces/{run_id_manual}"
+                            st.success(f"✅ Valid trace found! [View on LangSmith]({langsmith_url})")
+                        else:
+                            st.error("❌ No valid trace found with that ID")
+                
+                # Continue with the rest of the debug section
+                if len(st.session_state.raw_debug_data) > 0:
+                    # Extract LangGraph-specific events
+                    langgraph_events = [
+                        event for event in st.session_state.raw_debug_data 
+                        if (event.get("type") == "status" and 
+                            "metadata" in event and 
+                            "langgraph_node" in event.get("metadata", {}))
+                    ]
+                    
+                    # Extract streaming deltas and unknown events
+                    delta_events = [
+                        event for event in st.session_state.raw_debug_data
+                        if "delta" in event and isinstance(event["delta"], dict)
+                    ]
+                    
+                    unknown_events = [
+                        event for event in st.session_state.raw_debug_data
+                        if event.get("type", "unknown") == "unknown"
+                    ]
+                    
+                    # Display LangGraph execution events
+                    if langgraph_events:
+                        st.subheader("LangGraph Execution Path")
+                        for i, event in enumerate(langgraph_events):
+                            metadata = event.get("metadata", {})
+                            node_name = metadata.get("langgraph_node", "Unknown")
+                            step = metadata.get("langgraph_step", "?")
+                            
+                            with st.expander(f"Step {step}: {node_name}", expanded=i==0):
+                                # Show additional metadata if available
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if "ls_model_name" in metadata:
+                                        st.markdown(f"**Model:** {metadata.get('ls_model_name')}")
+                                    if "prompt_tokens" in metadata:
+                                        st.markdown(f"**Tokens:** {metadata.get('prompt_tokens')}")
+                                with col2:
+                                    if "ls_provider" in metadata:
+                                        st.markdown(f"**Provider:** {metadata.get('ls_provider')}")
+                                    if "ls_run_id" in metadata:
+                                        run_id = metadata.get('ls_run_id')
+                                        langsmith_url = f"https://smith.langchain.com/runs/{run_id}"
+                                        st.markdown(f"**Run ID:** [{run_id[:8]}...]({langsmith_url})")
+                    
+                    # Display streaming completion events
+                    if delta_events:
+                        st.subheader("Streaming Completion Events")
+                        for i, event in enumerate(delta_events[:10]):  # Limit to 10 for performance
+                            delta = event.get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                with st.expander(f"Delta {i+1}: {content[:30]}...", expanded=False):
+                                    st.text(content)
+                    
+                    # Display unknown events
+                    if unknown_events:
+                        st.subheader("Unrecognized Event Types")
+                        st.caption("These events don't have a standard type field and may contain important metadata")
+                        
+                        for i, event in enumerate(unknown_events[:5]):  # Limit to 5 for UI clarity
+                            event_keys = list(event.keys())
+                            if "run_id" in event:
+                                title = f"Run Metadata: {event.get('run_id')[:8]}..."
+                            elif "content" in event:
+                                title = f"Content Chunk: {event.get('content')[:20]}..."
+                            else:
+                                title = f"Unknown Event {i+1}: Keys={', '.join(event_keys[:3])}..."
+                            
+                            with st.expander(title, expanded=i==0):
+                                # Attempt to extract useful information
+                                if "run_id" in event:
+                                    st.markdown(f"**Run ID:** {event.get('run_id')}")
+                                    
+                                    # Add LangSmith link if it appears to be a trace ID
+                                    langsmith_url = f"https://smith.langchain.com/traces/{event.get('run_id')}"
+                                    st.markdown(f"[View on LangSmith]({langsmith_url})")
+                                
+                                # Show a formatted version of the event
+                                st.json(event)
+                    
+                    # Still show raw data for complete visibility
+                    with st.expander("View Raw Event Data", expanded=False):
+                        st.json(st.session_state.raw_debug_data[:10])
+
     # Process generation
     if generate_button:
         if not user_input.strip():
@@ -905,17 +1103,72 @@ with tab1:
             )
             run_response.raise_for_status()
             
-            # Create Streamlit callback handler for real-time visualization
-            with st_callback_container:
-                st_callback = StreamlitCallbackHandler(st.container())
-
             # Process the stream
             generated_names, evaluations = process_stream_data(
                 run_response.iter_lines(),
                 results_container,
                 status_container,
-                progress_bar  # Pass the Streamlit callback handler
+                progress_bar
             )
+            
+            # If we didn't get LangGraph data, try to get it directly from LangSmith
+            if not st.session_state.langsmith_trace_ids and thread_id:
+                try:
+                    # Get run details to extract LangSmith trace IDs
+                    thread_runs = get_thread_runs(thread_id)
+                    logging.debug(f"Retrieved {len(thread_runs) if thread_runs else 0} runs for thread {thread_id}")
+                    
+                    if thread_runs:
+                        for run in thread_runs:
+                            run_id = run.get("run_id")
+                            if run_id:
+                                # Add run ID to the trace IDs
+                                st.session_state.langsmith_trace_ids.add(run_id)
+                                logging.debug(f"Added run_id {run_id} from thread runs")
+                                
+                                # Get the detailed run info
+                                run_details = get_run_details(thread_id, run_id)
+                                if run_details and "metadata" in run_details:
+                                    metadata = run_details.get("metadata", {})
+                                    # Look for trace IDs in metadata
+                                    if "ls_run_id" in metadata:
+                                        st.session_state.langsmith_trace_ids.add(metadata["ls_run_id"])
+                                        logging.debug(f"Added ls_run_id {metadata['ls_run_id']} from run metadata")
+                                    if "ls_parent_run_id" in metadata:
+                                        st.session_state.langsmith_trace_ids.add(metadata["ls_parent_run_id"])
+                                        logging.debug(f"Added ls_parent_run_id {metadata['ls_parent_run_id']} from run metadata")
+                except Exception as e:
+                    logging.error(f"Error fetching additional trace info: {str(e)}")
+            
+            # Manual debug log if we didn't capture anything
+            if len(st.session_state.raw_debug_data) == 0:
+                logging.warning("No debug data was captured during processing. Creating synthetic debug data.")
+                
+                # Create synthetic debug data
+                debug_entry = {
+                    "type": "status",
+                    "message": "Generation completed",
+                    "metadata": {
+                        "langgraph_node": "brand_generator",
+                        "langgraph_step": "1",
+                        "run_id": thread_id,
+                        "thread_id": thread_id
+                    }
+                }
+                
+                # Add to our debug data
+                st.session_state.raw_debug_data.append(debug_entry)
+                
+                # If we have at least one name, add it as result data
+                if generated_names:
+                    result_entry = {
+                        "type": "result",
+                        "data": {
+                            "generated_names": generated_names,
+                            "evaluations": evaluations
+                        }
+                    }
+                    st.session_state.raw_debug_data.append(result_entry)
             
             # Update session state
             current_run["status"] = "completed"
@@ -957,11 +1210,46 @@ with tab1:
                     st.warning("No names were generated. Please check the debug information below.")
 
             # Display debug data in case it wasn't shown
-            debug_container = st.container()
             with debug_container:
                 st.write(f"Debug data count: {len(st.session_state.raw_debug_data)}")
-                if len(st.session_state.raw_debug_data) > 0:
-                    st.json(st.session_state.raw_debug_data[:10])  # Show first 10 entries to avoid overwhelming the UI
+                
+                # Display LangSmith trace IDs if available
+                if "langsmith_trace_ids" in st.session_state and st.session_state.langsmith_trace_ids:
+                    st.subheader("LangSmith Traces")
+                    valid_traces = []
+                    
+                    for trace_id in st.session_state.langsmith_trace_ids:
+                        # Create LangSmith trace URL
+                        langsmith_url = f"https://smith.langchain.com/traces/{trace_id}"
+                        
+                        # Add the trace link
+                        with st.spinner(f"Validating trace {trace_id[:8]}..."):
+                            is_valid = validate_langsmith_trace(trace_id)
+                        
+                        if is_valid:
+                            st.markdown(f"✅ [View detailed trace on LangSmith]({langsmith_url})")
+                            valid_traces.append(trace_id)
+                        else:
+                            st.markdown(f"❌ Trace {trace_id[:8]}... may not be available")
+                    
+                    if valid_traces:
+                        st.info(f"LangSmith traces provide the most detailed view of your flow's execution. {len(valid_traces)} valid trace(s) found.")
+                    else:
+                        st.warning("No valid LangSmith traces were found. This might be due to API limitations or LangSmith configuration.")
+                else:
+                    st.info("No LangSmith traces were captured during execution. This may be due to the LangSmith tracing being disabled in your LangGraph flow.")
+                    
+                    # Offer a manual lookup option
+                    run_id_manual = st.text_input("Enter a run ID manually to check LangSmith:")
+                    if run_id_manual and st.button("Check Trace"):
+                        with st.spinner("Validating trace ID..."):
+                            is_valid = validate_langsmith_trace(run_id_manual)
+                        
+                        if is_valid:
+                            langsmith_url = f"https://smith.langchain.com/traces/{run_id_manual}"
+                            st.success(f"✅ Valid trace found! [View on LangSmith]({langsmith_url})")
+                        else:
+                            st.error("❌ No valid trace found with that ID")
 
             # Force refresh the history display
             st.rerun()
@@ -981,6 +1269,12 @@ with tab2:
     # Add refresh button
     if st.button("Refresh History"):
         st.cache_data.clear()
+        # Also check all runs for completion and update statuses
+        for i, run in enumerate(st.session_state.history):
+            if run["status"] == "running":
+                # Check if there are results
+                if run.get("generated_names"):
+                    st.session_state.history[i]["status"] = "completed"
     
     # Create tabs for local and API history
     history_tabs = st.tabs(["Current Session", "All API Generations"])
@@ -995,7 +1289,8 @@ with tab2:
                     st.write(f"**Status:** {run['status'].title()}")
                     st.write(f"**Prompt:** {run['prompt']}")
                     
-                    if run['status'] == "completed" and run.get("generated_names"):
+                    # Display generated names, even for runs in "running" state that have results
+                    if (run['status'] == "completed" or run.get("generated_names")) and run.get("generated_names"):
                         st.write("**Generated Names:**")
                         for name in run.get("generated_names", []):
                             cols = st.columns([4, 1])
@@ -1008,6 +1303,10 @@ with tab2:
                                 else:
                                     if st.button("🤍", key=f"h_fav_{i}_{name}"):
                                         add_to_favorites(name)
+                    
+                    # For runs that are still "running" but have no results, show a spinner
+                    elif run['status'] == "running":
+                        st.info("Generation in progress... Refresh to check for updates.")
                     
                     if run.get("thread_id"):
                         if st.button("Load Full Results", key=f"load_{i}"):
