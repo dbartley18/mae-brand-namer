@@ -957,6 +957,7 @@ with tab1:
                     st.warning("No names were generated. Please check the debug information below.")
 
             # Display debug data in case it wasn't shown
+            debug_container = st.container()
             with debug_container:
                 st.write(f"Debug data count: {len(st.session_state.raw_debug_data)}")
                 if len(st.session_state.raw_debug_data) > 0:
