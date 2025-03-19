@@ -7,9 +7,19 @@ import pandas as pd
 import altair as alt
 from dotenv import load_dotenv
 from typing import Dict, List, Any, Optional
+import logging
+from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 
 # Load environment variables
 load_dotenv()
+
+# Add file-based debug logging
+logging.basicConfig(
+    filename="debug_output.txt",
+    level=logging.DEBUG,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    filemode="w"  # Overwrite the file on each run
+)
 
 # Page configuration
 st.set_page_config(
@@ -42,12 +52,62 @@ if "current_thread_id" not in st.session_state:
 if "generation_complete" not in st.session_state:
     st.session_state.generation_complete = False
 
+# Initialize session state for industry selection
+if "industry_selection" not in st.session_state:
+    st.session_state.industry_selection = {
+        "industry": "",
+        "sector": "",
+        "subsector": ""
+    }
+
 # Example prompts
 example_prompts = {
     "Agentic Software": "A B2B enterprise software company providing AI-powered software solutions for Fortune 500 companies",
     "Professional Services": "A global management consulting firm specializing in digital transformation and operational excellence",
     "Financial Services": "An institutional investment management firm focusing on sustainable infrastructure investments",
     "B2B HealthTech Company": "A healthcare technology company providing enterprise solutions for hospital resource management"
+}
+
+# Define industry hierarchy data structure
+INDUSTRY_HIERARCHY = {
+    "Consumer": {
+        "Automotive": ["Automotive Manufacturing", "Auto Parts & Suppliers", "Dealerships", "Mobility Services"],
+        "Consumer Products": ["Food and Beverage", "Apparel and Footwear", "Personal Care", "Household Products"],
+        "Retail": ["Grocery", "Department Stores", "E-commerce", "Specialty Retail"],
+        "Transportation, Hospitality & Services": ["Aviation", "Gaming", "Hotels", "Restaurants", "Logistics"]
+    },
+    "Energy, Resources & Industrials": {
+        "Energy & Chemicals": ["Oil & Gas", "Chemicals"],
+        "Power, Utilities & Renewables": ["Power Generation", "Utilities", "Renewable Energy"],
+        "Industrial Products & Construction": ["Industrial Products Manufacturing", "Construction"],
+        "Mining & Metals": ["Mining", "Metals Processing", "Materials"]
+    },
+    "Financial Services": {
+        "Banking & Capital Markets": ["Retail Banking", "Commercial Banking", "Investment Banking", "Capital Markets"],
+        "Insurance": ["Life Insurance", "Property & Casualty", "Reinsurance", "InsurTech"],
+        "Investment Management & Private Equity": ["Asset Management", "Private Equity", "Hedge Funds", "Wealth Management"],
+        "Real Estate": ["Commercial Real Estate", "Residential Real Estate", "REITs"]
+    },
+    "Government & Public Services": {
+        "Central Government": ["Federal Agencies", "Defense", "Public Administration"],
+        "Regional and Local Government": ["State Government", "Municipal Services", "Local Administration"],
+        "Defense, Security & Justice": ["Defense", "Security", "Justice"],
+        "Health & Human Services": ["Public Health", "Social Services", "Welfare"],
+        "Infrastructure & Transport": ["Transportation Infrastructure", "Public Transportation"],
+        "International Donor Organizations": ["NGOs", "Foundations", "Aid Organizations"]
+    },
+    "Life Sciences & Health Care": {
+        "Health Care": ["Providers", "Payers", "Health Services"],
+        "Life Sciences": ["Pharmaceutical", "Biotechnology", "Medical Devices", "Diagnostics"]
+    },
+    "Technology, Media & Telecommunications": {
+        "Technology": ["Software", "Hardware", "Cloud Computing", "Cybersecurity", "Data Analytics"],
+        "Media & Entertainment": ["Media", "Entertainment", "Sports", "Gaming"],
+        "Telecommunications": ["Wireless Carriers", "Internet Service Providers", "Telecom Infrastructure"]
+    },
+    "Other": {
+        "Other": ["Other"]
+    }
 }
 
 # Cached API functions
@@ -148,18 +208,37 @@ def fetch_all_threads():
         st.error(f"Error fetching threads: {str(e)}")
         return []
 
-def build_complete_prompt(base_prompt, industry, target_audience, geographic_scope, name_style):
+def build_complete_prompt(base_prompt, industry_info, target_audience, geographic_scope, name_style):
     """Build a complete prompt with additional context"""
     prompt_parts = [base_prompt.strip()]
     
     additional_details = []
-    if industry and industry != "Other":
-        additional_details.append(f"The company is in the {industry} industry.")
-    if target_audience:
+    
+    # Extract industry information
+    industry = industry_info.get("industry", "")
+    sector = industry_info.get("sector", "")
+    subsector = industry_info.get("subsector", "")
+    
+    # Add industry details if available and explicitly selected
+    if industry and industry != "Other" and industry != "":
+        industry_text = f"The company is in the {industry} industry"
+        if sector and sector != "Other" and sector != "":
+            industry_text += f", specifically in the {sector} sector"
+            if subsector and subsector != "Other" and subsector != "":
+                industry_text += f", focusing on {subsector}"
+        industry_text += "."
+        additional_details.append(industry_text)
+    
+    # Only include target audience if explicitly provided
+    if target_audience and target_audience.strip():
         additional_details.append(f"The target audience is {target_audience}.")
-    if geographic_scope:
+        
+    # Only include geographic scope if explicitly selected
+    if geographic_scope and geographic_scope.strip():
         additional_details.append(f"The brand will operate at a {geographic_scope.lower()} level.")
-    if name_style:
+        
+    # Only include name style if explicitly selected
+    if name_style and len(name_style) > 0:
         additional_details.append(f"The name should have a {', '.join(name_style).lower()} feel.")
     
     if additional_details:
@@ -241,7 +320,14 @@ def process_stream_data(stream, container, status_container, progress_bar):
     
     # Create separate containers for different types of information
     steps_container = status_container.container()
-    debug_container = status_container.container()
+    debug_container = st.container()  # Move outside status_container to make it more visible
+    
+    # Initialize debug data list in session state if not already there
+    if "debug_data" not in st.session_state:
+        st.session_state.debug_data = []
+    
+    if "raw_debug_data" not in st.session_state:
+        st.session_state.raw_debug_data = []
     
     # Track steps and state
     steps_completed = []
@@ -285,198 +371,88 @@ def process_stream_data(stream, container, status_container, progress_bar):
             # Parse JSON data
             try:
                 data = json.loads(line_str)
-            except json.JSONDecodeError:
-                continue
                 
-            # Extract event type
-            event_type = data.get("type", "")
-            
-            # Store debug data for later (not in an expander)
-            with debug_container:
-                if i == 0:  # Only add the header once
-                    st.subheader("Debug Information", help="Raw API responses")
+                # Add raw data to session state for debugging
+                st.session_state.raw_debug_data.append(data)
                 
-                # Get node name from metadata if available
-                node_name = "Unknown"
-                if event_type == "status" and "metadata" in data:
-                    node_name = data["metadata"].get("langgraph_node", f"Event {i}")
-                elif event_type == "output":
-                    node_name = f"Output {i}"
-                else:
-                    node_name = f"Event {i}"
+                # Extract event type and metadata
+                event_type = data.get("type", "")
+                metadata = data.get("metadata", {}) if isinstance(data, dict) else {}
                 
-                # Add step number if available
-                step_num = ""
-                if event_type == "status" and "metadata" in data and "langgraph_step" in data["metadata"]:
-                    step_num = f" (Step {data['metadata']['langgraph_step']})"
-                
-                # Create expander with node name
-                with st.expander(f"{node_name}{step_num}: {event_type}", expanded=False):
-                    # Show streamlined metadata first if it's a status event
-                    if event_type == "status" and "metadata" in data:
-                        metadata = data.get("metadata", {})
-                        if "langgraph_node" in metadata:
-                            st.info(f"**Node:** {metadata['langgraph_node']}")
+                # Process different event types
+                if event_type == "status":
+                    # Handle status message
+                    message = data.get("message", "")
+                    if message:
+                        status_message.info(message)
+                    
+                    # Extract LangGraph node information
+                    if "langgraph_node" in metadata:
+                        current_node = metadata["langgraph_node"]
+                        langgraph_data["nodes_visited"].add(current_node)
+                    
+                    # Track triggers
+                    if "langgraph_triggers" in metadata and isinstance(metadata["langgraph_triggers"], list):
+                        for trigger in metadata["langgraph_triggers"]:
+                            langgraph_data["triggers"].add(trigger)
+                    
+                    # Track run and thread IDs
+                    if "run_id" in metadata and not langgraph_data["run_id"]:
+                        langgraph_data["run_id"] = metadata["run_id"]
+                    
+                    if "thread_id" in metadata and not langgraph_data["thread_id"]:
+                        langgraph_data["thread_id"] = metadata["thread_id"]
+                    
+                    # Extract model information
+                    if "ls_model_name" in metadata:
+                        model_info = {
+                            "name": metadata.get("ls_model_name", "Unknown"),
+                            "type": metadata.get("ls_model_type", "Unknown"),
+                            "provider": metadata.get("ls_provider", "Unknown"),
+                            "temperature": metadata.get("ls_temperature", "N/A")
+                        }
                         
-                        if "langgraph_path" in metadata and isinstance(metadata["langgraph_path"], list):
-                            st.info(f"**Path:** {' → '.join(metadata['langgraph_path'])}")
-                            
-                        if "langgraph_triggers" in metadata and isinstance(metadata["langgraph_triggers"], list) and metadata["langgraph_triggers"]:
-                            st.info(f"**Triggers:** {', '.join(metadata['langgraph_triggers'])}")
+                        # Store for later display
+                        model_key = f"{model_info['provider']}:{model_info['name']}"
+                        if model_key not in models_used:
+                            models_used[model_key] = model_info
+                            langgraph_data["model_calls"].append(model_info)
                     
-                    # Show raw data
-                    st.caption("Raw JSON Data")
-                    st.text(f"Raw data: {line_str[:200]}..." if len(line_str) > 200 else line_str)
+                    # Update agent information
+                    agent_name = data.get("agent", metadata.get("langgraph_node", ""))
+                    if agent_name and agent_name != current_agent:
+                        current_agent = agent_name
+                        agent_display.metric("Current Node", current_agent)
                     
-                    # Show full data as JSON
-                    st.json(data)
-            
-            # Handle status updates
-            if event_type == "status":
-                # Extract status message
-                message = data.get("message", "")
-                if message:
-                    status_message.info(message)
-                
-                # Extract metadata - this is where LangGraph puts its rich information
-                metadata = data.get("metadata", {})
-                
-                # Extract LangGraph-specific data
-                if "langgraph_node" in metadata:
-                    current_node = metadata["langgraph_node"]
-                    langgraph_data["nodes_visited"].add(current_node)
-                
-                if "langgraph_triggers" in metadata and isinstance(metadata["langgraph_triggers"], list):
-                    for trigger in metadata["langgraph_triggers"]:
-                        langgraph_data["triggers"].add(trigger)
-                
-                if "run_id" in metadata and not langgraph_data["run_id"]:
-                    langgraph_data["run_id"] = metadata["run_id"]
-                
-                if "thread_id" in metadata and not langgraph_data["thread_id"]:
-                    langgraph_data["thread_id"] = metadata["thread_id"]
-                
-                # Extract model information if available
-                if "ls_model_name" in metadata:
-                    model_info = {
-                        "name": metadata.get("ls_model_name", "Unknown"),
-                        "type": metadata.get("ls_model_type", "Unknown"),
-                        "provider": metadata.get("ls_provider", "Unknown"),
-                        "temperature": metadata.get("ls_temperature", "N/A")
-                    }
+                    # Extract step information
+                    step_name = data.get("step", "")
+                    step_num = metadata.get("langgraph_step", "")
                     
-                    # Store for later display
-                    model_key = f"{model_info['provider']}:{model_info['name']}"
-                    if model_key not in models_used:
-                        models_used[model_key] = model_info
-                        langgraph_data["model_calls"].append(model_info)
-                
-                # Update agent information
-                agent_name = data.get("agent", metadata.get("langgraph_node", ""))
-                if agent_name and agent_name != current_agent:
-                    current_agent = agent_name
-                    agent_display.metric("Current Node", current_agent)
-                
-                # Extract step information
-                step_name = data.get("step", "")
-                step_num = metadata.get("langgraph_step", "")
-                
-                if step_name and (step_name != current_step or step_num):
-                    current_step = step_name
-                    run_metadata["steps_completed"] += 1
-                    
-                    # Create a step record with all valuable metadata
-                    step_record = {
-                        "name": step_name,
-                        "time": time.time() - last_update_time,
-                        "node": current_node,
-                        "step_number": step_num,
-                        "metadata": {k: v for k, v in metadata.items() if k not in 
-                                    ['LANGCHAIN_CALLBACKS_BACKGROUND', 'LANGSMITH_AUTH_ENDPOINT', 
-                                     'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-port',
-                                     'x-forwarded-proto', 'x-forwarded-scheme', 'x-real-ip',
-                                     'x-request-id', 'x-scheme']}
-                    }
-                    
-                    steps_completed.append(step_record)
-                    last_update_time = time.time()
-                    
-                    # Update step displays
-                    steps_display.metric("Steps", len(steps_completed))
-                    
-                    # Step info with node path if available
-                    if current_node:
-                        current_step_display.markdown(f"**Current Step:** {current_step} (Node: {current_node})")
-                    else:
-                        current_step_display.markdown(f"**Current Step:** {current_step}")
-                    
-                    # Update steps container (not using expanders here)
-                    with steps_container:
-                        if len(steps_completed) == 1:  # Only add the header once
-                            st.subheader("Steps Details")
-                            
-                        st.markdown(f"##### Step {len(steps_completed)}: {step_name}")
+                    if step_name and (step_name != current_step or step_num):
+                        current_step = step_name
+                        run_metadata["steps_completed"] += 1
                         
-                        # Show LangGraph path info if available
-                        if "langgraph_path" in metadata and isinstance(metadata["langgraph_path"], list):
-                            st.caption(f"Path: {' → '.join(metadata['langgraph_path'])}")
+                        # Create step record
+                        step_record = {
+                            "name": step_name,
+                            "time": time.time() - last_update_time,
+                            "node": current_node,
+                            "step_number": step_num
+                        }
                         
-                        # Show key metrics in columns
-                        cols = st.columns(3)
+                        steps_completed.append(step_record)
+                        last_update_time = time.time()
                         
-                        # Show step number if available
-                        if step_num:
-                            cols[0].metric("Step Number", step_num)
+                        # Update step displays
+                        steps_display.metric("Steps", len(steps_completed))
                         
-                        # Show duration
-                        cols[1].metric("Duration", f"{step_record['time']:.2f}s")
-                        
-                        # Show model if available
-                        if "ls_model_name" in metadata:
-                            cols[2].metric("Model", metadata.get("ls_model_name", ""))
-                        
-                        # Create expandable section for detailed metadata
-                        with st.expander("Step Metadata"):
-                            # Display important metadata in a more organized way
-                            st.markdown("##### Graph Information")
-                            
-                            # Graph details
-                            graph_cols = st.columns(2)
-                            if "langgraph_node" in metadata:
-                                graph_cols[0].info(f"Node: {metadata['langgraph_node']}")
-                            
-                            if "langgraph_triggers" in metadata:
-                                graph_cols[1].info(f"Triggers: {', '.join(metadata['langgraph_triggers'])}" 
-                                                 if isinstance(metadata["langgraph_triggers"], list) 
-                                                 else metadata["langgraph_triggers"])
-                            
-                            # Model information
-                            if "ls_model_name" in metadata:
-                                st.markdown("##### Model Information")
-                                model_cols = st.columns(4)
-                                model_cols[0].info(f"Name: {metadata.get('ls_model_name', 'N/A')}")
-                                model_cols[1].info(f"Type: {metadata.get('ls_model_type', 'N/A')}")
-                                model_cols[2].info(f"Provider: {metadata.get('ls_provider', 'N/A')}")
-                                
-                                # Format temperature nicely
-                                if "ls_temperature" in metadata:
-                                    temp = metadata["ls_temperature"]
-                                    model_cols[3].info(f"Temperature: {temp}")
-                            
-                            # Invocation parameters if available
-                            if "invocation_params" in metadata:
-                                st.markdown("##### Invocation Parameters")
-                                try:
-                                    if isinstance(metadata["invocation_params"], str):
-                                        params = json.loads(metadata["invocation_params"])
-                                    else:
-                                        params = metadata["invocation_params"]
-                                    
-                                    st.json(params)
-                                except:
-                                    st.code(str(metadata["invocation_params"]))
+                        # Step info with node path if available
+                        if current_node:
+                            current_step_display.markdown(f"**Current Step:** {current_step} (Node: {current_node})")
+                        else:
+                            current_step_display.markdown(f"**Current Step:** {current_step}")
                 
-                # Extract token information
+                # Handle token information
                 if "token_count" in metadata:
                     token_counts["total"] = metadata["token_count"]
                     tokens_display.metric("Tokens", token_counts["total"])
@@ -488,44 +464,43 @@ def process_stream_data(stream, container, status_container, progress_bar):
                     token_counts["completion"] = metadata["completion_tokens"]
                     token_counts["total"] = token_counts.get("prompt", 0) + token_counts["completion"]
                     tokens_display.metric("Tokens", f"{token_counts['total']} ({token_counts['completion']} completion)")
-            
-            # Handle output data
-            elif event_type == "output" or event_type == "result":
-                result = data.get("output", data.get("result", {}))
-                if not isinstance(result, dict):
-                    # Try to parse if it's a string
-                    if isinstance(result, str):
-                        try:
-                            result = json.loads(result)
-                        except:
-                            # If it's not JSON, treat as plain text
-                            pass
                 
-                # Extract generated names and evaluations
-                if isinstance(result, dict):
-                    # Extract names
-                    names = result.get("generated_names", [])
-                    if names:
-                        generated_names = names
+                # Handle output/result data
+                elif event_type == "output" or event_type == "result":
+                    result = data.get("output", data.get("result", {}))
+                    if not isinstance(result, dict):
+                        # Try to parse if it's a string
+                        if isinstance(result, str):
+                            try:
+                                result = json.loads(result)
+                            except:
+                                # If it's not JSON, treat as plain text
+                                pass
                     
-                    # Extract evaluations
-                    evals = result.get("evaluations", {})
-                    if evals:
-                        evaluations = evals
-                    
-                    # Update results in real-time
-                    if generated_names:
-                        display_results(generated_names, evaluations, container)
-                
-                # Extract any completion tokens from output event
-                if "metadata" in data and "completion_tokens" in data["metadata"]:
-                    token_counts["completion"] = data["metadata"]["completion_tokens"]
-                    token_counts["total"] = token_counts.get("prompt", 0) + token_counts["completion"]
-                    tokens_display.metric("Tokens", f"{token_counts['total']} ({token_counts['completion']} completion)")
-        
+                    # Extract generated names and evaluations
+                    if isinstance(result, dict):
+                        # Extract names
+                        names = result.get("generated_names", [])
+                        if names:
+                            generated_names = names
+                            logging.debug(f"Extracted {len(names)} generated names: {names}")
+                        
+                            # Extract evaluations
+                            evals = result.get("evaluations", {})
+                            if evals:
+                                evaluations = evals
+                                logging.debug(f"Extracted evaluations for {len(evals)} names")
+                        
+                            # Update results in real-time
+                            if generated_names:
+                                logging.debug(f"Displaying results with {len(generated_names)} names")
+                                display_results(generated_names, evaluations, container)
+            except json.JSONDecodeError:
+                # Skip lines that aren't valid JSON
+                continue
         except Exception as e:
-            with debug_container:
-                st.error(f"Error processing stream: {str(e)}")
+            # Handle any errors
+            st.error(f"Error processing stream line: {str(e)}")
     
     # Complete progress
     progress_bar.progress(1.0)
@@ -547,74 +522,18 @@ def process_stream_data(stream, container, status_container, progress_bar):
         with final_metrics[3]:
             if token_counts["total"] > 0 and total_time > 0:
                 st.metric("Tokens/Second", f"{token_counts['total']/total_time:.1f}")
-        
-        # Display LangGraph summary
-        if langgraph_data["nodes_visited"]:
-            st.markdown("### LangGraph Flow Summary")
-            summary_cols = st.columns(2)
-            
-            with summary_cols[0]:
-                st.markdown("**Nodes Visited:**")
-                for node in langgraph_data["nodes_visited"]:
-                    st.markdown(f"- {node}")
-            
-            with summary_cols[1]:
-                st.markdown("**Triggers:**")
-                for trigger in langgraph_data["triggers"]:
-                    st.markdown(f"- {trigger}")
-            
-            if langgraph_data["model_calls"]:
-                st.markdown("**Models Used:**")
-                model_table_data = []
-                for model in langgraph_data["model_calls"]:
-                    model_table_data.append({
-                        "Model": model["name"],
-                        "Type": model["type"],
-                        "Provider": model["provider"],
-                        "Temperature": model["temperature"]
-                    })
-                
-                if model_table_data:
-                    st.dataframe(pd.DataFrame(model_table_data))
-        
-        # Display step timing breakdown
-        if steps_completed:
-            st.subheader("Step Execution Breakdown")
-            
-            # Create a DataFrame for visualization
-            step_data = []
-            for idx, step in enumerate(steps_completed):
-                step_name = step["name"]
-                if step.get("node"):
-                    step_name = f"{step_name} ({step['node']})"
-                
-                step_data.append({
-                    "Step": f"{idx+1}. {step_name}",
-                    "Time (seconds)": step["time"],
-                    "Percentage": (step["time"] / total_time) * 100 if total_time > 0 else 0
-                })
-            
-            step_df = pd.DataFrame(step_data)
-            
-            # Display as a bar chart
-            chart = alt.Chart(step_df).mark_bar().encode(
-                x=alt.X('Time (seconds):Q', title='Time (seconds)'),
-                y=alt.Y('Step:N', sort=None, title=None),
-                tooltip=['Step', 'Time (seconds)', 'Percentage']
-            ).properties(
-                height=len(steps_completed) * 40 + 50
-            )
-            
-            st.altair_chart(chart, use_container_width=True)
     
     return generated_names, evaluations
 
 def display_results(generated_names, evaluations, container):
     """Helper function to display generated names and evaluations"""
+    logging.debug(f"In display_results with {len(generated_names) if generated_names else 0} names")
+    
     with container:
         st.empty().markdown("## Generated Names")
         
         if generated_names:
+            logging.debug(f"Displaying names: {generated_names}")
             for name in generated_names:
                 col1, col2 = st.columns([5, 1])
                 with col1:
@@ -623,11 +542,9 @@ def display_results(generated_names, evaluations, container):
                     if name in st.session_state.favorite_names:
                         if st.button("❤️", key=f"unfav_{name}"):
                             remove_from_favorites(name)
-                            st.rerun()
                     else:
                         if st.button("🤍", key=f"fav_{name}"):
                             add_to_favorites(name)
-                            st.rerun()
                 
                 if name in evaluations:
                     with st.expander("View analysis"):
@@ -640,6 +557,8 @@ def display_results(generated_names, evaluations, container):
                             if chart:
                                 st.altair_chart(chart)
                 st.markdown("---")
+        else:
+            logging.debug("No names to display")
 
 def display_run_details(thread_id, run_id):
     """Display detailed information about a run in a structured way"""
@@ -751,6 +670,7 @@ def display_thread_history(thread_id):
 
 # Main application layout
 st.title("MAE Brand Namer")
+st.caption("Multi-Agent Brand Generation & Strategic Analysis")
 
 # Sidebar for inputs
 with st.sidebar:
@@ -776,14 +696,69 @@ with st.sidebar:
         height=120
     )
     
+    # Create callback functions to maintain hierarchy
+    def on_industry_change():
+        """Reset sector and subsector when industry changes"""
+        st.session_state.industry_selection["sector"] = ""
+        st.session_state.industry_selection["subsector"] = ""
+
+    def on_sector_change():
+        """Reset subsector when sector changes"""
+        st.session_state.industry_selection["subsector"] = ""
+
     # Advanced parameters in expander
     with st.expander("Additional Parameters", expanded=False):
+        # Industry selection with 3-level hierarchy
+        st.markdown("#### Industry Classification")
+        
+        # Industry dropdown (top level)
         industry = st.selectbox(
             "Industry",
-            ["", "Enterprise Technology", "Professional Services", "Financial Services", 
-             "Healthcare", "Industrial", "Other"]
+            options=[""] + list(INDUSTRY_HIERARCHY.keys()),
+            key="industry_dropdown",
+            index=0,  # Start with empty selection
+            on_change=on_industry_change,
+            format_func=lambda x: x if x else "Select Industry (Optional)"
         )
         
+        # Store in session state
+        st.session_state.industry_selection["industry"] = industry
+        
+        # Sector dropdown (dependent on industry)
+        if industry:
+            sector_options = [""] + list(INDUSTRY_HIERARCHY.get(industry, {}).keys())
+            sector = st.selectbox(
+                "Sector",
+                options=sector_options,
+                key="sector_dropdown",
+                index=0,  # Start with empty selection
+                on_change=on_sector_change,
+                format_func=lambda x: x if x else "Select Sector (Optional)"
+            )
+            # Store in session state
+            st.session_state.industry_selection["sector"] = sector
+            
+            # Subsector dropdown (dependent on industry and sector)
+            if sector:
+                subsector_options = [""] + INDUSTRY_HIERARCHY.get(industry, {}).get(sector, [])
+                subsector = st.selectbox(
+                    "Subsector",
+                    options=subsector_options,
+                    key="subsector_dropdown",
+                    index=0,  # Start with empty selection
+                    format_func=lambda x: x if x else "Select Subsector (Optional)"
+                )
+                # Store in session state
+                st.session_state.industry_selection["subsector"] = subsector
+        
+        # Create an industry info dictionary to pass to the prompt builder
+        industry_info = {
+            "industry": st.session_state.industry_selection["industry"],
+            "sector": st.session_state.industry_selection["sector"],
+            "subsector": st.session_state.industry_selection["subsector"]
+        }
+        
+        st.markdown("#### Additional Brand Context")
         target_audience = st.text_input(
             "Target Market",
             placeholder="e.g., Enterprise manufacturing companies"
@@ -797,6 +772,15 @@ with st.sidebar:
         name_style = st.multiselect(
             "Brand Positioning",
             ["Enterprise", "Technical", "Professional", "Innovative", "Traditional"]
+        )
+        
+        # Build complete prompt with additional requirements
+        complete_prompt = build_complete_prompt(
+            user_input,
+            industry_info,
+            target_audience,
+            geographic_scope,
+            name_style
         )
     
     # Generate button
@@ -828,6 +812,16 @@ with tab1:
     with main_content:
         results_container = st.container()
     
+    # Debug section needs to be created BEFORE generation starts
+    debug_header = st.container()
+    with debug_header:
+        st.markdown("---")
+        st.subheader("LangGraph Execution Flow")
+        st.caption("This section shows detailed information about each step in the graph execution pipeline.")
+    
+    # Create a container for Streamlit callback
+    st_callback_container = st.container()
+    
     # Progress indicators
     progress_bar = st.progress(0)
     status_container = st.container()
@@ -838,13 +832,24 @@ with tab1:
             st.error("Please provide a description of your brand requirements.")
             st.stop()
             
+        # Clear debug data from previous runs
+        if "debug_data" not in st.session_state:
+            st.session_state.debug_data = []
+        else:
+            st.session_state.debug_data = []
+        
+        if "raw_debug_data" not in st.session_state:
+            st.session_state.raw_debug_data = []
+        else:
+            st.session_state.raw_debug_data = []
+        
         # Display initial status
         status_container.info("Initializing generation process...")
         
         # Build complete prompt with additional requirements
         complete_prompt = build_complete_prompt(
             user_input,
-            industry,
+            industry_info,
             target_audience,
             geographic_scope,
             name_style
@@ -861,9 +866,10 @@ with tab1:
         st.session_state.history.append(current_run)
         current_index = len(st.session_state.history) - 1
         
-        # Clear previous results
+        # Clear previous results - but only if we have new data
         with results_container:
-            st.empty()
+            if not st.session_state.generation_complete:
+                st.empty()
         
         try:
             # API headers
@@ -899,12 +905,16 @@ with tab1:
             )
             run_response.raise_for_status()
             
+            # Create Streamlit callback handler for real-time visualization
+            with st_callback_container:
+                st_callback = StreamlitCallbackHandler(st.container())
+
             # Process the stream
             generated_names, evaluations = process_stream_data(
                 run_response.iter_lines(),
                 results_container,
                 status_container,
-                progress_bar
+                progress_bar  # Pass the Streamlit callback handler
             )
             
             # Update session state
@@ -913,6 +923,47 @@ with tab1:
             current_run["evaluations"] = evaluations
             st.session_state.history[current_index] = current_run
             st.session_state.generation_complete = True
+
+            # Log the final results
+            logging.debug(f"Final generation results: {len(generated_names)} names")
+            for name in generated_names:
+                logging.debug(f"Generated name: {name}")
+
+            # Ensure results are displayed clearly
+            with results_container:
+                st.markdown("## Final Results")
+                if generated_names:
+                    st.success(f"Successfully generated {len(generated_names)} brand names")
+                    
+                    # Display each name with its evaluation
+                    for name in generated_names:
+                        st.markdown(f"### {name}")
+                        
+                        # Add favorite button
+                        if name in st.session_state.favorite_names:
+                            if st.button("❤️ Remove from Favorites", key=f"final_unfav_{name}"):
+                                remove_from_favorites(name)
+                        else:
+                            if st.button("🤍 Add to Favorites", key=f"final_fav_{name}"):
+                                add_to_favorites(name)
+                        
+                        # Display evaluation if available
+                        if name in evaluations:
+                            with st.expander("View Analysis", expanded=False):
+                                st.write(evaluations[name].get("analysis", "No analysis available"))
+                        
+                        st.markdown("---")
+                else:
+                    st.warning("No names were generated. Please check the debug information below.")
+
+            # Display debug data in case it wasn't shown
+            with debug_container:
+                st.write(f"Debug data count: {len(st.session_state.raw_debug_data)}")
+                if len(st.session_state.raw_debug_data) > 0:
+                    st.json(st.session_state.raw_debug_data[:10])  # Show first 10 entries to avoid overwhelming the UI
+
+            # Force refresh the history display
+            st.rerun()
 
         except requests.RequestException as e:
             st.error(f"Error connecting to the API: {str(e)}")
@@ -953,11 +1004,9 @@ with tab2:
                                 if name in st.session_state.favorite_names:
                                     if st.button("❤️", key=f"h_unfav_{i}_{name}"):
                                         remove_from_favorites(name)
-                                        st.rerun()
                                 else:
                                     if st.button("🤍", key=f"h_fav_{i}_{name}"):
                                         add_to_favorites(name)
-                                        st.rerun()
                     
                     if run.get("thread_id"):
                         if st.button("Load Full Results", key=f"load_{i}"):
@@ -1036,7 +1085,6 @@ with tab2:
                                 else:
                                     if st.button("🤍", key=f"api_fav_{name}"):
                                         add_to_favorites(name)
-                                        st.rerun()
                 
                 # Display thread details
                 with st.expander("Conversation History", expanded=not generated_names):

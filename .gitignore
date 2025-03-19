@@ -214,3 +214,5 @@ tmp/
 *.bak
 *.docx
 .cursor/rules/streamlite.mdc
+debug_log.txt
+debug_output.txt
