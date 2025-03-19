@@ -213,3 +213,4 @@ tmp/
 *.tmp
 *.bak
 *.docx
+.cursor/rules/streamlite.mdc
