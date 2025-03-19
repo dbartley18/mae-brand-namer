@@ -203,3 +203,13 @@ tmp/report_mae_20250318_213658_88c9c72e.docx
 tmp/report_mae_20250318_221347_21b23ff3.docx
 tmp/report_mae_20250318_224241_9bec034a.docx
 tmp/report_mae_20250318_234015_e7a1a33b.docx
+tmp/report_mae_20250319_001020_f79eb73d.docx
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Temporary files
+tmp/
+*.tmp
+*.bak
+*.docx
