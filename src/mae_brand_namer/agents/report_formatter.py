@@ -3551,195 +3551,88 @@ class ReportFormatter:
             logger.debug(f"Transformed domain analysis data: {len(str(transformed_data))} chars")
             
             # Check if we have analysis data
-            if transformed_data and isinstance(transformed_data, dict):
-                # Process methodology if available
-                if "methodology" in transformed_data and transformed_data["methodology"]:
-                    doc.add_heading("Methodology", level=2)
-                    doc.add_paragraph(transformed_data["methodology"])
+            if transformed_data and isinstance(transformed_data, dict) and "domain_analysis" in transformed_data:
+                domain_analyses = transformed_data["domain_analysis"]
                 
-                # Process brand name analyses
-                if "brand_names" in transformed_data and transformed_data["brand_names"]:
+                if domain_analyses:
                     doc.add_heading("Domain Analysis by Brand Name", level=2)
                     
-                    brand_analyses = transformed_data["brand_names"]
-                    
                     # Process each brand name analysis
-                    for brand_name, analysis in brand_analyses.items():
+                    for brand_name, analysis in domain_analyses.items():
                         # Add brand name as heading
                         doc.add_heading(brand_name, level=3)
                         
-                        # Process domain availability summary
-                        if "availability_summary" in analysis and analysis["availability_summary"]:
-                            p = doc.add_paragraph()
-                            p.add_run("Availability Summary: ").bold = True
-                            p.add_run(str(analysis["availability_summary"]))
+                        # Process notes
+                        if "notes" in analysis and analysis["notes"]:
+                            doc.add_paragraph(str(analysis["notes"]))
                         
-                        # Process domain extensions
-                        if "domain_extensions" in analysis and analysis["domain_extensions"]:
-                            doc.add_heading("Domain Extensions", level=4)
+                        # Create a table for metrics
+                        metrics_table = doc.add_table(rows=1, cols=2)
+                        metrics_table.style = 'Table Grid'
+                        
+                        # Add header row
+                        header_cells = metrics_table.rows[0].cells
+                        header_cells[0].text = "Metric"
+                        header_cells[1].text = "Value"
+                        
+                        # Add basic metrics
+                        metrics = [
+                            ("Acquisition Cost", analysis.get("acquisition_cost", "Unknown")),
+                            ("Domain Exact Match", "Yes" if analysis.get("domain_exact_match", False) else "No"),
+                            ("Hyphens/Numbers Present", "Yes" if analysis.get("hyphens_numbers_present", False) else "No"),
+                            ("Brand Name Clarity in URL", analysis.get("brand_name_clarity_in_url", "Unknown")),
+                            ("Domain Length/Readability", analysis.get("domain_length_readability", "Unknown")),
+                            ("Misspellings/Variations Available", "Yes" if analysis.get("misspellings_variations_available", False) else "No"),
+                        ]
+                        
+                        # Add metrics to table
+                        for metric, value in metrics:
+                            row = metrics_table.add_row()
+                            cells = row.cells
+                            cells[0].text = metric
+                            cells[1].text = str(value)
+                        
+                        # Add spacing after table
+                        doc.add_paragraph("")
+                        
+                        # Process alternative TLDs
+                        if "alternative_tlds" in analysis and analysis["alternative_tlds"]:
+                            doc.add_heading("Alternative TLDs", level=4)
                             
-                            extensions = analysis["domain_extensions"]
-                            if isinstance(extensions, dict):
-                                # Create a table for extensions
-                                ext_table = doc.add_table(rows=len(extensions)+1, cols=3)
-                                ext_table.style = 'Table Grid'
-                                
-                                # Add header row
-                                header_cells = ext_table.rows[0].cells
-                                header_cells[0].text = "Extension"
-                                header_cells[1].text = "Available"
-                                header_cells[2].text = "Estimated Price"
-                                
-                                # Add extension rows
-                                i = 1
-                                for extension, ext_data in extensions.items():
-                                    cells = ext_table.rows[i].cells
-                                    cells[0].text = extension
-                                    
-                                    if isinstance(ext_data, dict):
-                                        cells[1].text = "Yes" if ext_data.get("available", False) else "No"
-                                        cells[2].text = str(ext_data.get("price", "N/A"))
-                                    else:
-                                        cells[1].text = str(ext_data)
-                                        cells[2].text = "N/A"
-                                    
-                                    i += 1
-                                
-                                # Add spacing after table
-                                doc.add_paragraph("")
-                            elif isinstance(extensions, list):
-                                # Create a table for extensions
-                                ext_table = doc.add_table(rows=len(extensions)+1, cols=3)
-                                ext_table.style = 'Table Grid'
-                                
-                                # Add header row
-                                header_cells = ext_table.rows[0].cells
-                                header_cells[0].text = "Extension"
-                                header_cells[1].text = "Available"
-                                header_cells[2].text = "Estimated Price"
-                                
-                                # Add extension rows
-                                for i, ext in enumerate(extensions, 1):
-                                    cells = ext_table.rows[i].cells
-                                    
-                                    if isinstance(ext, dict):
-                                        cells[0].text = ext.get("extension", "")
-                                        cells[1].text = "Yes" if ext.get("available", False) else "No"
-                                        cells[2].text = str(ext.get("price", "N/A"))
-                                    else:
-                                        cells[0].text = str(ext)
-                                        cells[1].text = "N/A"
-                                        cells[2].text = "N/A"
-                                
-                                # Add spacing after table
-                                doc.add_paragraph("")
+                            alt_tlds = analysis["alternative_tlds"]
+                            if isinstance(alt_tlds, list):
+                                tlds_paragraph = doc.add_paragraph()
+                                tlds_text = ", ".join([f".{tld}" for tld in alt_tlds])
+                                tlds_paragraph.add_run(tlds_text)
                             else:
-                                doc.add_paragraph(str(extensions))
+                                doc.add_paragraph(str(alt_tlds))
                         
-                        # Process alternative domains
-                        if "alternative_domains" in analysis and analysis["alternative_domains"]:
-                            doc.add_heading("Alternative Domains", level=4)
+                        # Process social media availability
+                        if "social_media_availability" in analysis and analysis["social_media_availability"]:
+                            doc.add_heading("Social Media Availability", level=4)
                             
-                            alternatives = analysis["alternative_domains"]
-                            if isinstance(alternatives, list):
-                                for alt in alternatives:
-                                    if isinstance(alt, dict) and "domain" in alt:
-                                        p = doc.add_paragraph(style="List Bullet")
-                                        p.add_run(f"{alt['domain']}")
-                                        
-                                        if "available" in alt:
-                                            p.add_run(f" - {'Available' if alt['available'] else 'Not Available'}")
-                                        
-                                        if "price" in alt:
-                                            p.add_run(f" - Price: {alt['price']}")
-                                        
-                                        if "note" in alt:
-                                            p.add_run(f" - {alt['note']}")
-                                    else:
-                                        doc.add_paragraph(f"• {alt}", style="List Bullet")
-                            elif isinstance(alternatives, dict):
-                                for domain, details in alternatives.items():
-                                    p = doc.add_paragraph(style="List Bullet")
-                                    p.add_run(f"{domain}")
-                                    
-                                    if isinstance(details, dict):
-                                        if "available" in details:
-                                            p.add_run(f" - {'Available' if details['available'] else 'Not Available'}")
-                                        
-                                        if "price" in details:
-                                            p.add_run(f" - Price: {details['price']}")
-                                        
-                                        if "note" in details:
-                                            p.add_run(f" - {details['note']}")
-                                    else:
-                                        p.add_run(f" - {details}")
+                            social_media = analysis["social_media_availability"]
+                            if isinstance(social_media, list):
+                                for handle in social_media:
+                                    doc.add_paragraph(f"• {handle}", style="List Bullet")
                             else:
-                                doc.add_paragraph(str(alternatives))
+                                doc.add_paragraph(str(social_media))
                         
-                        # Process domain value assessment
-                        if "domain_value" in analysis and analysis["domain_value"]:
-                            doc.add_heading("Domain Value Assessment", level=4)
-                            
-                            value = analysis["domain_value"]
-                            if isinstance(value, str):
-                                doc.add_paragraph(value)
-                            elif isinstance(value, dict):
-                                for metric, assessment in value.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{metric.replace('_', ' ').title()}: ").bold = True
-                                    p.add_run(str(assessment))
-                            else:
-                                doc.add_paragraph(str(value))
-                        
-                        # Process domain security considerations
-                        if "security_considerations" in analysis and analysis["security_considerations"]:
-                            doc.add_heading("Security Considerations", level=4)
-                            
-                            security = analysis["security_considerations"]
-                            if isinstance(security, list):
-                                for consideration in security:
-                                    doc.add_paragraph(f"• {consideration}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(security))
-                        
-                        # Process domain branding implications
-                        if "branding_implications" in analysis and analysis["branding_implications"]:
-                            doc.add_heading("Branding Implications", level=4)
-                            
-                            implications = analysis["branding_implications"]
-                            if isinstance(implications, list):
-                                for implication in implications:
-                                    doc.add_paragraph(f"• {implication}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(implications))
-                        
-                        # Process domain registration recommendations
-                        if "registration_recommendations" in analysis and analysis["registration_recommendations"]:
-                            doc.add_heading("Registration Recommendations", level=4)
-                            
-                            recommendations = analysis["registration_recommendations"]
-                            if isinstance(recommendations, list):
-                                for recommendation in recommendations:
-                                    doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(recommendations))
-                        
-                        # Process overall domain rating
-                        if "overall_rating" in analysis and analysis["overall_rating"]:
-                            p = doc.add_paragraph()
-                            p.add_run("Overall Domain Rating: ").bold = True
-                            p.add_run(str(analysis["overall_rating"]))
+                        # Process scalability and future proofing
+                        if "scalability_future_proofing" in analysis and analysis["scalability_future_proofing"]:
+                            doc.add_heading("Scalability & Future-Proofing", level=4)
+                            doc.add_paragraph(str(analysis["scalability_future_proofing"]))
                         
                         # Add separator between brand analyses (except for the last one)
-                        if brand_name != list(brand_analyses.keys())[-1]:
+                        if brand_name != list(domain_analyses.keys())[-1]:
                             doc.add_paragraph("")
                 
-                # Process comparative analysis
+                # Process comparative analysis if available
                 if "comparative_analysis" in transformed_data and transformed_data["comparative_analysis"]:
                     doc.add_heading("Comparative Domain Analysis", level=2)
                     doc.add_paragraph(transformed_data["comparative_analysis"])
                 
-                # Process general recommendations
+                # Process general recommendations if available
                 if "general_recommendations" in transformed_data and transformed_data["general_recommendations"]:
                     doc.add_heading("General Domain Recommendations", level=2)
                     
@@ -3750,18 +3643,21 @@ class ReportFormatter:
                     else:
                         doc.add_paragraph(str(recommendations))
                 
-                # Process summary
+                # Process summary if available
                 if "summary" in transformed_data and transformed_data["summary"]:
                     doc.add_heading("Summary", level=2)
                     doc.add_paragraph(transformed_data["summary"])
             else:
                 # No domain analysis data available
                 doc.add_paragraph("No domain analysis data available for this brand naming project.")
+                if transformed_data:
+                    logger.warning(f"Domain analysis missing expected keys: {list(transformed_data.keys())}")
+                else:
+                    logger.warning("Domain analysis transformation returned empty data")
                 
         except Exception as e:
             logger.error(f"Error formatting domain analysis section: {str(e)}")
             logger.debug(f"Error details: {traceback.format_exc()}")
-            doc.add_paragraph(f"Error formatting domain analysis section: {str(e)}")
             # Add a generic error message to the document
             doc.add_paragraph("Unable to format the domain analysis section due to an error in processing the data.")
 
