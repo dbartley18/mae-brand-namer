@@ -936,7 +936,7 @@ class ReportFormatter:
         
         # Structure is either:
         # 1. Already has "brand_names" (from previous call)
-        # 2. Has "competitor_analysis" as a key with a list of analyses
+        # 2. Has "competitor_analysis" as a key with a list of analyses (each with brand_name and competitors)
         # 3. Is itself a list of brand analyses
         
         # Case 1: Already correctly structured
@@ -997,7 +997,7 @@ class ReportFormatter:
                         competitors_list.append(competitor_details)
                         logger.info(f"Processed competitor: {competitor_details['competitor_name']}")
             
-            # Extract strengths safely
+            # Extract strengths safely - first check if available in the brand analysis
             strengths = []
             if "strengths" in analysis:
                 strength_data = analysis.get("strengths", [])
