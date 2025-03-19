@@ -1371,11 +1371,92 @@ class ReportFormatter:
                 toc_style.paragraph_format.left_indent = Inches(0.25)
                 toc_style.paragraph_format.space_after = Pt(6)
                 
+            # Add styles for headings with consistent formatting
+            if 'Heading 1' in styles:
+                heading1 = styles['Heading 1']
+                heading1.font.size = Pt(16)
+                heading1.font.bold = True
+                heading1.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                
+            if 'Heading 2' in styles:
+                heading2 = styles['Heading 2']
+                heading2.font.size = Pt(14)
+                heading2.font.bold = True
+                heading2.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                
+            if 'Heading 3' in styles:
+                heading3 = styles['Heading 3']
+                heading3.font.size = Pt(12)
+                heading3.font.bold = True
+                heading3.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                
+            if 'Heading 4' in styles:
+                heading4 = styles['Heading 4']
+                heading4.font.size = Pt(11)
+                heading4.font.bold = True
+                heading4.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                
+            if 'Heading 5' in styles:
+                heading5 = styles['Heading 5']
+                heading5.font.size = Pt(10)
+                heading5.font.bold = True
+                heading5.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                
+            # Normal style for consistent paragraph formatting
+            if 'Normal' in styles:
+                normal = styles['Normal']
+                normal.font.size = Pt(11)
+                normal.font.name = 'Calibri'
+                normal.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                
         except Exception as e:
             logger.error(f"Error setting up document styles: {str(e)}")
             # Add a basic error message to the document
             doc.add_paragraph("Error setting up document styles. Some formatting may be incorrect.", style='Intense Quote')
     
+    def _apply_standard_table_style(self, table):
+        """Apply standard styling to tables for consistency across all sections."""
+        try:
+            # Set table style
+            table.style = 'Table Grid'
+            
+            # Style header row
+            if len(table.rows) > 0:
+                header_row = table.rows[0]
+                for cell in header_row.cells:
+                    for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            run.font.bold = True
+                            run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                            run.font.size = Pt(11)
+                    # Set header background color to light gray
+                    shading_elm = OxmlElement('w:shd')
+                    shading_elm.set(qn('w:fill'), "E0E0E0")
+                    shading_elm.set(qn('w:val'), "clear")
+                    cell._element.get_or_add_tcPr().append(shading_elm)
+            
+            # Style data rows
+            for i, row in enumerate(table.rows):
+                if i > 0:  # Skip header row
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for run in paragraph.runs:
+                                run.font.size = Pt(10)
+                                run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                                
+            # Add zebra striping for readability
+            for i, row in enumerate(table.rows):
+                if i > 0 and i % 2 == 0:  # Alternate rows starting from the second data row
+                    for cell in row.cells:
+                        shading_elm = OxmlElement('w:shd')
+                        shading_elm.set(qn('w:fill'), "F5F5F5")
+                        shading_elm.set(qn('w:val'), "clear")
+                        cell._element.get_or_add_tcPr().append(shading_elm)
+                            
+        except Exception as e:
+            logger.error(f"Error applying standard table style: {str(e)}")
+            logger.debug(f"Error details: {traceback.format_exc()}")
+
     def _format_generic_section_fallback(self, doc: Document, section_name: str, data: Dict[str, Any]) -> None:
         """Fallback method for formatting a section when LLM or other approaches fail."""
         try:
@@ -1601,6 +1682,9 @@ class ReportFormatter:
                     header_cells = scores_table.rows[0].cells
                     header_cells[0].text = "Metric"
                     header_cells[1].text = "Average Score (0-10)"
+                    
+                    # Apply standard table styling
+                    self._apply_standard_table_style(scores_table)
                     
                     # Add scores rows
                     metrics = [
@@ -1926,6 +2010,9 @@ class ReportFormatter:
                         header_cells[1].text = "Brand Name"
                         header_cells[2].text = "Score"
                         
+                        # Apply standard table styling
+                        self._apply_standard_table_style(table)
+                        
                         # Sort rankings by score (descending)
                         sorted_rankings = sorted(rankings.items(), key=lambda x: x[1], reverse=True)
                         
@@ -2011,6 +2098,9 @@ class ReportFormatter:
                             header_cells[0].text = "Metric"
                             header_cells[1].text = "Value"
                             
+                            # Apply standard table styling
+                            self._apply_standard_table_style(metrics_table)
+                            
                             # Add all SEO metrics to the table
                             metrics = [
                                 ("Search Volume", analysis.get("search_volume", "Unknown")),
@@ -2054,6 +2144,9 @@ class ReportFormatter:
                                     header_cells = metrics_table.rows[0].cells
                                     header_cells[0].text = "Metric"
                                     header_cells[1].text = "Value"
+                                    
+                                    # Apply standard table styling
+                                    self._apply_standard_table_style(metrics_table)
                                     
                                     # Add metrics rows
                                     for i, (metric, value) in enumerate(search_metrics.items(), 1):
@@ -2558,6 +2651,9 @@ class ReportFormatter:
                                 header_cells = metrics_table.rows[0].cells
                                 header_cells[0].text = "Metric"
                                 header_cells[1].text = "Value"
+                                
+                                # Apply standard table style
+                                self._apply_standard_table_style(metrics_table)
                                 
                                 # Add metrics to the table based on CompetitorDetails model
                                 metrics = [
@@ -3876,9 +3972,9 @@ class ReportFormatter:
         # Add table of contents - Required to be second!
         await self._add_table_of_contents(doc)
         
-        # Add executive summary - Required to be third!
-        if "exec_summary" in data:
-            await self._add_executive_summary(doc, data["exec_summary"])
+        # Always generate executive summary using LLM based on other sections' data
+        logger.info("Generating executive summary using LLM based on collected data")
+        await self._add_executive_summary(doc, {})
         
         # Process each section in order
         for section_name in self.SECTION_ORDER:
@@ -3932,6 +4028,16 @@ class ReportFormatter:
             logger.info("Skipping upload to storage as requested (upload_to_storage=False)")
         else:
             logger.warning("Supabase client not available - skipping upload to storage")
+        
+        # Apply consistent styling to all tables in the document
+        logger.info("Applying consistent styling to all tables in the document")
+        try:
+            for table in doc.tables:
+                self._apply_standard_table_style(table)
+            logger.info(f"Applied consistent styling to {len(doc.tables)} tables")
+        except Exception as e:
+            logger.error(f"Error applying consistent table styling: {str(e)}")
+            logger.debug(f"Error details: {traceback.format_exc()}")
         
         return str(file_path)
 
