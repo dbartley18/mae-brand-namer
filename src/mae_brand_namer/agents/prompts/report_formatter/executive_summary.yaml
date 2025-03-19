@@ -6,7 +6,7 @@ template: |
   Run ID: {run_id}
   Original User Request: "{user_prompt}"
   Total Brand Names Generated: {total_names}
-  Number of Shortlisted Names: {len(shortlisted_names) if shortlisted_names else 0}
+  Number of Shortlisted Names: {shortlisted_names | length}
   
   Brand Context:
   {brand_context}
@@ -25,14 +25,5 @@ template: |
   Focus on business impact and strategic value rather than technical details.
   Maintain a formal tone appropriate for business documentation.
 
-  Return your response in this JSON format:
-  {
-    "summary": "The full executive summary text (500-700 words)",
-    "key_points": [
-      "Key point 1 - important finding or recommendation",
-      "Key point 2 - important finding or recommendation",
-      "Key point 3 - important finding or recommendation",
-      "Key point 4 - important finding or recommendation",
-      "Key point 5 - important finding or recommendation"
-    ]
-  } 
+  Return your response as a JSON object with a "summary" field containing the full executive summary text (500-700 words) and 
+  a "key_points" array with 5 important findings or recommendations. 

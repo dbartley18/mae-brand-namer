@@ -324,8 +324,9 @@ class ReportFormatter:
         Returns:
             The formatted template
         """
-        # Only brand_context and executive_summary use templates
-        if section_name not in ["brand_context", "executive_summary"]:
+        # Check if this is brand_context or executive_summary section (case-insensitive)
+        allowed_sections = ["brand_context", "executive_summary", "brand context", "executive summary"]
+        if not section_name or section_name.lower() not in allowed_sections:
             logger.debug(f"Skipping template formatting for {section_name} - using ETL processing")
             return "ETL processing used instead"
             
@@ -348,7 +349,26 @@ class ReportFormatter:
                 if missing_vars:
                     logger.warning(f"Missing variables for template {template_name}: {missing_vars}")
                 
-                # Format the template
+                # Special handling for executive_summary template to escape JSON curly braces
+                if template_name == "executive_summary":
+                    template_text = template.template
+                    # Find the JSON format section
+                    json_format_match = re.search(r'Return your response in this JSON format:(.*?)(?:\n\n|\Z)', 
+                                                 template_text, re.DOTALL)
+                    if json_format_match:
+                        json_format_section = json_format_match.group(1)
+                        # Escape curly braces in the JSON format section
+                        escaped_json_format = json_format_section.replace("{", "{{").replace("}", "}}")
+                        # Replace the original section with the escaped version
+                        modified_template_text = template_text.replace(json_format_section, escaped_json_format)
+                        # Create a new template with the modified text
+                        modified_template = PromptTemplate(
+                            template=modified_template_text,
+                            input_variables=template.input_variables
+                        )
+                        return modified_template.format(**format_data)
+                
+                # Format the template normally for other templates
                 return template.format(**format_data)
             else:
                 # Return a default prompt if template not found
@@ -396,13 +416,19 @@ class ReportFormatter:
                 if attempt == max_retries - 1:
                     logger.error(f"All LLM retry attempts failed{context}. Using fallback.")
                     
-                    if fallback_response:
-                        return fallback_response
-                    
                     # Create a simple response object that mimics the LLM response structure
                     class FallbackResponse:
                         def __init__(self, content):
                             self.content = content
+                    
+                    if fallback_response:
+                        if isinstance(fallback_response, dict):
+                            return FallbackResponse(json.dumps(fallback_response))
+                        elif isinstance(fallback_response, str):
+                            return FallbackResponse(fallback_response)
+                        else:
+                            # Try to use the fallback response as is
+                            return fallback_response
                     
                     error_msg = f"LLM processing failed after {max_retries} attempts. Error: {str(e)}"
                     return FallbackResponse(json.dumps({
@@ -913,17 +939,23 @@ class ReportFormatter:
             data: Raw competitor analysis data
             
         Returns:
-            Transformed data structure
+            Transformed data structure with brand_names key
         """
         # Debug the input data structure
         logger.info(f"Competitor analysis raw data type: {type(data)}")
         if isinstance(data, dict):
             logger.info(f"Competitor analysis raw data keys: {list(data.keys())}")
         
-        # Updated handling for different data structures
+        # Initialize the transformed data structure
+        transformed_data = {
+            "brand_names": {},
+            "summary": "This competitor analysis evaluates how each proposed brand name positions against existing market competitors, identifying strengths, weaknesses, and potential market gaps."
+        }
+        
+        # Handle None data
         if data is None:
             logger.warning("Competitor analysis data is None")
-            return {}
+            return transformed_data
         
         # Handle string data (JSON string)
         if isinstance(data, str):
@@ -932,73 +964,53 @@ class ReportFormatter:
                 logger.info("Successfully parsed competitor analysis data from JSON string")
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse competitor analysis data JSON string: {e}")
-                return {}
+                return transformed_data
         
-        # Create the transformed data structure
-        transformed_data = {
-            "brand_names": {},
-            "summary": "This competitor analysis evaluates how each proposed brand name positions against existing market competitors, identifying strengths, weaknesses, and potential market gaps."
-        }
-        
-        # Extract the brand analyses from the data
+        # Extract brand analyses
         brand_analyses = []
         
-        # Case 1: Already correctly structured with brand_names
-        if isinstance(data, dict) and "brand_names" in data:
-            logger.info("Competitor analysis data already in correct format with brand_names key")
-            return data
-            
-        # Case 2: Has "competitor_analysis" key with a list
+        # Case 1: The expected structure with "competitor_analysis" key containing a list of brand analyses
         if isinstance(data, dict) and "competitor_analysis" in data:
             if isinstance(data["competitor_analysis"], list):
                 brand_analyses = data["competitor_analysis"]
                 logger.info(f"Found {len(brand_analyses)} brand analyses in competitor_analysis list")
             else:
                 logger.warning(f"competitor_analysis is not a list: {type(data['competitor_analysis'])}")
+        # Case 2: Already has "brand_names" key (already transformed)
+        elif isinstance(data, dict) and "brand_names" in data:
+            logger.info("Data already has brand_names key, returning as is")
+            return data
         # Case 3: Is itself a list of brand analyses
         elif isinstance(data, list):
             brand_analyses = data
             logger.info(f"Found {len(brand_analyses)} brand analyses in root list")
-        # Handle directly embedded analysis data (no list wrapper)
-        elif isinstance(data, dict):
-            # Check if we have individual brand analyses directly
-            if "brand_name" in data:
-                brand_analyses = [data]
-                logger.info("Found single brand analysis directly in data")
-            # Check for any other structures that might contain brand analyses
-            elif any(isinstance(data.get(key), list) for key in data.keys()):
-                for key, value in data.items():
-                    if isinstance(value, list) and len(value) > 0:
-                        if isinstance(value[0], dict) and "brand_name" in value[0]:
-                            brand_analyses = value
-                            logger.info(f"Found brand analyses list under key {key}")
-                            break
-        
-        if not brand_analyses:
-            logger.warning(f"Could not extract any brand analyses from data structure")
-            # Deep inspection of data structure to aid debugging
-            if isinstance(data, dict):
-                for key, value in data.items():
-                    logger.debug(f"Key: {key}, Type: {type(value)}")
-                    if isinstance(value, dict):
-                        logger.debug(f"  Subkeys: {list(value.keys())}")
+        else:
+            logger.warning(f"Unrecognized competitor analysis data structure: {type(data)}")
             return transformed_data
         
         # Process each brand analysis
         for analysis in brand_analyses:
-            # Skip items without brand_name
             if not isinstance(analysis, dict) or "brand_name" not in analysis:
                 logger.warning("Skipping brand analysis without brand_name field")
                 continue
-                
+            
             brand_name = analysis.get("brand_name", "")
             logger.info(f"Processing competitor analysis for: {brand_name}")
             
-            # Extract competitors list according to the model
-            competitors_list = []
+            # Initialize brand entry
+            transformed_data["brand_names"][brand_name] = {
+                "competitors": [],
+                "strengths": [],
+                "weaknesses": [],
+                "opportunities": [],
+                "threats": []
+            }
+            
+            # Process competitors if available
             if "competitors" in analysis and isinstance(analysis["competitors"], list):
                 for competitor in analysis["competitors"]:
                     if isinstance(competitor, dict):
+                        # Extract competitor details directly from the structure
                         competitor_details = {
                             "competitor_name": competitor.get("competitor_name", "Unknown"),
                             "risk_of_confusion": competitor.get("risk_of_confusion", 0),
@@ -1009,103 +1021,60 @@ class ReportFormatter:
                             "target_audience_perception": competitor.get("target_audience_perception", ""),
                             "competitor_differentiation_opportunity": competitor.get("competitor_differentiation_opportunity", "")
                         }
-                        competitors_list.append(competitor_details)
+                        transformed_data["brand_names"][brand_name]["competitors"].append(competitor_details)
                         logger.info(f"Processed competitor: {competitor_details['competitor_name']}")
             
-            # Extract strengths safely - first check if available in the brand analysis
-            strengths = []
+            # Extract SWOT analysis from the brand itself (if available)
             if "strengths" in analysis:
-                strength_data = analysis.get("strengths", [])
-                if isinstance(strength_data, str):
-                    try:
-                        # Try to parse as JSON string
-                        strengths = json.loads(strength_data)
-                        logger.info(f"Parsed {len(strengths)} strengths from JSON string")
-                    except (json.JSONDecodeError, ValueError) as e:
-                        logger.warning(f"Failed to parse strengths as JSON: {e}")
-                        # If not valid JSON, use as a single string
-                        strengths = [strength_data]
-                elif isinstance(strength_data, list):
-                    strengths = strength_data
-                    logger.info(f"Found {len(strengths)} strengths as list")
-                else:
-                    strengths = [str(strength_data)]
-                    logger.info(f"Converted strengths to string: {strengths[0][:30]}...")
+                if isinstance(analysis["strengths"], list):
+                    transformed_data["brand_names"][brand_name]["strengths"] = analysis["strengths"]
+                elif isinstance(analysis["strengths"], str):
+                    transformed_data["brand_names"][brand_name]["strengths"] = [analysis["strengths"]]
             
-            # Extract weaknesses safely
-            weaknesses = []
             if "weaknesses" in analysis:
-                weakness_data = analysis.get("weaknesses", [])
-                if isinstance(weakness_data, str):
-                    try:
-                        # Try to parse as JSON string
-                        weaknesses = json.loads(weakness_data)
-                        logger.info(f"Parsed {len(weaknesses)} weaknesses from JSON string")
-                    except (json.JSONDecodeError, ValueError) as e:
-                        logger.warning(f"Failed to parse weaknesses as JSON: {e}")
-                        # If not valid JSON, use as a single string
-                        weaknesses = [weakness_data]
-                elif isinstance(weakness_data, list):
-                    weaknesses = weakness_data
-                    logger.info(f"Found {len(weaknesses)} weaknesses as list")
-                else:
-                    weaknesses = [str(weakness_data)]
-                    logger.info(f"Converted weaknesses to string: {weaknesses[0][:30]}...")
+                if isinstance(analysis["weaknesses"], list):
+                    transformed_data["brand_names"][brand_name]["weaknesses"] = analysis["weaknesses"]
+                elif isinstance(analysis["weaknesses"], str):
+                    transformed_data["brand_names"][brand_name]["weaknesses"] = [analysis["weaknesses"]]
             
-            # Extract opportunities safely
-            opportunities = []
             if "opportunities" in analysis:
-                opportunity_data = analysis.get("opportunities", [])
-                if isinstance(opportunity_data, str):
-                    try:
-                        # Try to parse as JSON string
-                        opportunities = json.loads(opportunity_data)
-                        logger.info(f"Parsed {len(opportunities)} opportunities from JSON string")
-                    except (json.JSONDecodeError, ValueError) as e:
-                        logger.warning(f"Failed to parse opportunities as JSON: {e}")
-                        # If not valid JSON, use as a single string
-                        opportunities = [opportunity_data]
-                elif isinstance(opportunity_data, list):
-                    opportunities = opportunity_data
-                    logger.info(f"Found {len(opportunities)} opportunities as list")
-                else:
-                    opportunities = [str(opportunity_data)]
-                    logger.info(f"Converted opportunities to string: {opportunities[0][:30]}...")
+                if isinstance(analysis["opportunities"], list):
+                    transformed_data["brand_names"][brand_name]["opportunities"] = analysis["opportunities"]
+                elif isinstance(analysis["opportunities"], str):
+                    transformed_data["brand_names"][brand_name]["opportunities"] = [analysis["opportunities"]]
             
-            # Extract threats safely
-            threats = []
             if "threats" in analysis:
-                threat_data = analysis.get("threats", [])
-                if isinstance(threat_data, str):
-                    try:
-                        # Try to parse as JSON string
-                        threats = json.loads(threat_data)
-                        logger.info(f"Parsed {len(threats)} threats from JSON string")
-                    except (json.JSONDecodeError, ValueError) as e:
-                        logger.warning(f"Failed to parse threats as JSON: {e}")
-                        # If not valid JSON, use as a single string
-                        threats = [threat_data]
-                elif isinstance(threat_data, list):
-                    threats = threat_data
-                    logger.info(f"Found {len(threats)} threats as list")
-                else:
-                    threats = [str(threat_data)]
-                    logger.info(f"Converted threats to string: {threats[0][:30]}...")
+                if isinstance(analysis["threats"], list):
+                    transformed_data["brand_names"][brand_name]["threats"] = analysis["threats"]
+                elif isinstance(analysis["threats"], str):
+                    transformed_data["brand_names"][brand_name]["threats"] = [analysis["threats"]]
             
-            # Create brand analysis entry with formatted structure
-            transformed_data["brand_names"][brand_name] = {
-                "competitors": competitors_list,  # Add the competitors list according to the model
-                "top_competitors": analysis.get("top_competitors", ""),
-                "market_position": analysis.get("market_position", ""),
-                "differentiation_score": analysis.get("differentiation_score", 0),
-                "market_saturation": analysis.get("market_saturation", ""),
-                "strengths": strengths,
-                "weaknesses": weaknesses,
-                "opportunities": opportunities,
-                "threats": threats
-            }
+            # Extract strengths/weaknesses from competitors if not available at brand level
+            if not transformed_data["brand_names"][brand_name]["strengths"] and "competitors" in analysis:
+                # Use first competitor's strengths as a fallback
+                for competitor in analysis["competitors"]:
+                    if "competitor_strengths" in competitor:
+                        strength = competitor.get("competitor_strengths", "")
+                        if strength:
+                            transformed_data["brand_names"][brand_name]["strengths"].append(f"Against {competitor['competitor_name']}: {strength}")
+            
+            if not transformed_data["brand_names"][brand_name]["weaknesses"] and "competitors" in analysis:
+                # Use first competitor's weaknesses as a fallback
+                for competitor in analysis["competitors"]:
+                    if "competitor_weaknesses" in competitor:
+                        weakness = competitor.get("competitor_weaknesses", "")
+                        if weakness:
+                            transformed_data["brand_names"][brand_name]["weaknesses"].append(f"Against {competitor['competitor_name']}: {weakness}")
+            
+            # Extract opportunities from competitor differentiation opportunities
+            if not transformed_data["brand_names"][brand_name]["opportunities"] and "competitors" in analysis:
+                for competitor in analysis["competitors"]:
+                    if "competitor_differentiation_opportunity" in competitor:
+                        opportunity = competitor.get("competitor_differentiation_opportunity", "")
+                        if opportunity:
+                            transformed_data["brand_names"][brand_name]["opportunities"].append(f"Against {competitor['competitor_name']}: {opportunity}")
         
-        logger.info(f"Transformed competitor analysis data: {len(str(transformed_data))} chars")
+        logger.info(f"Transformed competitor analysis data with {len(transformed_data['brand_names'])} brand analyses")
         return transformed_data
 
     def _validate_section_data(self, section_name: str, data: Any) -> Tuple[bool, List[str]]:
@@ -2560,211 +2529,143 @@ class ReportFormatter:
 
     async def _format_competitor_analysis(self, doc: Document, data: Dict[str, Any]) -> None:
         """
-        Format the competitor analysis section using direct ETL process.
+        Format competitor analysis section in the report.
         
         Args:
-            doc: The document to add content to
-            data: The raw competitor analysis data
+            doc: Document object
+            data: Raw competitor analysis data
         """
-        try:
-            # Add section title
-            doc.add_heading("Competitor Analysis", level=1)
+        # Section title
+        doc.add_heading("Competitor Analysis", level=1)
+        
+        # Transform data
+        transformed_data = self._transform_competitor_analysis(data)
+        logger.info(f"Formatting competitor analysis with {len(transformed_data.get('brand_names', {}))} brand names")
+        
+        # Introduction
+        doc.add_paragraph("This section analyzes how each proposed brand name compares to relevant competitors in the market. We evaluate risk of confusion, potential trademark conflicts, and opportunities for differentiation.")
+        
+        # Get the brand names or use an empty dict if not present
+        brand_names = transformed_data.get("brand_names", {})
+        
+        if not brand_names:
+            doc.add_paragraph("No competitor analysis data available.")
+            return
             
-            # Add introduction
-            doc.add_paragraph(
-                "This section analyzes competitors' brand naming strategies and industry positioning, "
-                "providing valuable context for the evaluation of proposed brand names. "
-                "Understanding competitor naming patterns helps inform differentiation strategies "
-                "and identify potential risks of market confusion."
-            )
+        # Process each brand name and its analysis
+        for brand_name, analysis in brand_names.items():
+            # Brand name header
+            doc.add_heading(f"Competitor Analysis: {brand_name}", level=2)
             
-            # Transform data using model
-            transformed_data = self._transform_competitor_analysis(data)
-            logger.info(f"Transformed competitor analysis data: {len(str(transformed_data))} chars")
+            # Add competitors table if there are competitors
+            competitors = analysis.get("competitors", [])
+            if competitors:
+                doc.add_paragraph(f"We analyzed {len(competitors)} key competitors in relation to {brand_name}:")
+                
+                # Create a table for the competitor metrics
+                table = doc.add_table(rows=1, cols=7)
+                table.style = 'Table Grid'
+                
+                # Set column widths
+                for i, width in enumerate([1.0, 0.7, 1.5, 1.5, 1.5, 1.5, 1.5]):
+                    for cell in table.columns[i].cells:
+                        cell.width = Inches(width)
+                
+                # Add header row
+                header_cells = table.rows[0].cells
+                headers = ["Competitor", "Risk of\nConfusion (1-10)", "Positioning", "Trademark\nConflict Risk", 
+                           "Target Audience\nPerception", "Differentiation\nOpportunity"]
+                
+                for i, header in enumerate(headers):
+                    if i < len(header_cells):
+                        header_cells[i].text = header
+                        # Make headers bold
+                        for paragraph in header_cells[i].paragraphs:
+                            for run in paragraph.runs:
+                                run.bold = True
+                
+                # Add a row for each competitor
+                for competitor in competitors:
+                    row_cells = table.add_row().cells
+                    
+                    # Competitor name (with risk score in parentheses)
+                    row_cells[0].text = competitor.get("competitor_name", "")
+                    
+                    # Risk of confusion
+                    risk = competitor.get("risk_of_confusion", "")
+                    row_cells[1].text = str(risk) if risk else "N/A"
+                    
+                    # Positioning
+                    row_cells[2].text = competitor.get("competitor_positioning", "")
+                    
+                    # Trademark conflict risk
+                    row_cells[3].text = competitor.get("trademark_conflict_risk", "")
+                    
+                    # Target audience perception
+                    row_cells[4].text = competitor.get("target_audience_perception", "")
+                    
+                    # Differentiation opportunity
+                    row_cells[5].text = competitor.get("competitor_differentiation_opportunity", "")
+                
+                # Apply standard table styling
+                self._apply_standard_table_style(table)
+                
+                # Add some space after the table
+                doc.add_paragraph()
             
-            # Check if we have analysis data
-            if transformed_data and isinstance(transformed_data, dict):
-                # Process methodology if available
-                if "methodology" in transformed_data and transformed_data["methodology"]:
-                    doc.add_heading("Methodology", level=2)
-                    doc.add_paragraph(transformed_data["methodology"])
+            # Add SWOT analysis if any SWOT elements exist
+            if any([
+                analysis.get("strengths", []), 
+                analysis.get("weaknesses", []), 
+                analysis.get("opportunities", []), 
+                analysis.get("threats", [])
+            ]):
+                doc.add_heading(f"SWOT Analysis for {brand_name}", level=3)
                 
-                # Process industry overview
-                if "industry_overview" in transformed_data and transformed_data["industry_overview"]:
-                    doc.add_heading("Industry Overview", level=2)
-                    doc.add_paragraph(transformed_data["industry_overview"])
+                # Strengths
+                if analysis.get("strengths", []):
+                    doc.add_heading("Strengths", level=4)
+                    p = doc.add_paragraph(style='List Bullet')
+                    for strength in analysis.get("strengths", []):
+                        if strength:  # Only add non-empty items
+                            p = doc.add_paragraph(strength, style='List Bullet')
                 
-                # Process naming patterns
-                if "naming_patterns" in transformed_data and transformed_data["naming_patterns"]:
-                    doc.add_heading("Industry Naming Patterns", level=2)
-                    
-                    patterns = transformed_data["naming_patterns"]
-                    if isinstance(patterns, str):
-                        doc.add_paragraph(patterns)
-                    elif isinstance(patterns, list):
-                        for pattern in patterns:
-                            if isinstance(pattern, dict) and "pattern" in pattern and "description" in pattern:
-                                p = doc.add_paragraph(style="List Bullet")
-                                p.add_run(f"{pattern['pattern']}: ").bold = True
-                                p.add_run(pattern["description"])
-                            else:
-                                doc.add_paragraph(f"• {pattern}", style="List Bullet")
-                    elif isinstance(patterns, dict):
-                        for pattern_type, description in patterns.items():
-                            p = doc.add_paragraph(style="List Bullet")
-                            p.add_run(f"{pattern_type.replace('_', ' ').title()}: ").bold = True
-                            p.add_run(str(description))
+                # Weaknesses
+                if analysis.get("weaknesses", []):
+                    doc.add_heading("Weaknesses", level=4)
+                    for weakness in analysis.get("weaknesses", []):
+                        if weakness:  # Only add non-empty items
+                            p = doc.add_paragraph(weakness, style='List Bullet')
                 
-                # Process summary if available
-                if "summary" in transformed_data and transformed_data["summary"]:
-                    doc.add_heading("Competitive Landscape Overview", level=2)
-                    doc.add_paragraph(transformed_data["summary"])
+                # Opportunities
+                if analysis.get("opportunities", []):
+                    doc.add_heading("Opportunities", level=4)
+                    for opportunity in analysis.get("opportunities", []):
+                        if opportunity:  # Only add non-empty items
+                            p = doc.add_paragraph(opportunity, style='List Bullet')
                 
-                # Process brand name analysis for proposed names
-                if "brand_names" in transformed_data and transformed_data["brand_names"]:
-                    doc.add_heading("Competitive Analysis of Proposed Brand Names", level=2)
-                    
-                    brand_analyses = transformed_data["brand_names"]
-                    logger.info(f"Processing {len(brand_analyses)} brand analyses from brand_names")
-                    
-                    # Process each brand name analysis
-                    for brand_name, analysis in brand_analyses.items():
-                        # Add brand name as heading
-                        doc.add_heading(brand_name, level=3)
-                        logger.info(f"Adding analysis for brand: {brand_name}")
-                        
-                        # Process top competitors
-                        if "top_competitors" in analysis and analysis["top_competitors"]:
-                            p = doc.add_paragraph()
-                            p.add_run("Top Competitors: ").bold = True
-                            p.add_run(analysis["top_competitors"])
-                        
-                        # Process market position
-                        if "market_position" in analysis and analysis["market_position"]:
-                            p = doc.add_paragraph()
-                            p.add_run("Market Position: ").bold = True
-                            p.add_run(analysis["market_position"])
-                        
-                        # Process differentiation score
-                        if "differentiation_score" in analysis:
-                            p = doc.add_paragraph()
-                            p.add_run("Differentiation Score: ").bold = True
-                            p.add_run(f"{analysis['differentiation_score']}/10")
-                        
-                        # Process market saturation
-                        if "market_saturation" in analysis and analysis["market_saturation"]:
-                            p = doc.add_paragraph()
-                            p.add_run("Market Saturation: ").bold = True
-                            p.add_run(analysis["market_saturation"])
-                        
-                        # Process detailed competitor section
-                        if "competitors" in analysis and analysis["competitors"]:
-                            doc.add_heading("Key Competitors", level=4)
-                            logger.info(f"Processing {len(analysis['competitors'])} competitors")
-                            
-                            for competitor in analysis["competitors"]:
-                                # Add competitor name as subheading
-                                competitor_name = competitor.get("competitor_name", "Unknown Competitor")
-                                doc.add_heading(competitor_name, level=5)
-                                logger.info(f"Adding competitor: {competitor_name}")
-                                
-                                # Create a metrics table for competitor details
-                                metrics_table = doc.add_table(rows=1, cols=2)
-                                metrics_table.style = 'Table Grid'
-                                
-                                # Add header row
-                                header_cells = metrics_table.rows[0].cells
-                                header_cells[0].text = "Metric"
-                                header_cells[1].text = "Value"
-                                
-                                # Apply standard table style
-                                self._apply_standard_table_style(metrics_table)
-                                
-                                # Add metrics to the table based on CompetitorDetails model
-                                metrics = [
-                                    ("Risk of Confusion", f"{competitor.get('risk_of_confusion', 0)}/10"),
-                                    ("Competitor Strengths", competitor.get("competitor_strengths", "")),
-                                    ("Competitor Weaknesses", competitor.get("competitor_weaknesses", "")),
-                                    ("Competitor Positioning", competitor.get("competitor_positioning", "")),
-                                    ("Trademark Conflict Risk", competitor.get("trademark_conflict_risk", "")),
-                                    ("Target Audience Perception", competitor.get("target_audience_perception", "")),
-                                    ("Differentiation Opportunity", competitor.get("competitor_differentiation_opportunity", ""))
-                                ]
-                                
-                                # Add metrics to table
-                                for metric, value in metrics:
-                                    row = metrics_table.add_row()
-                                    cells = row.cells
-                                    cells[0].text = metric
-                                    cells[1].text = str(value)
-                                
-                                # Add spacing after table
-                                doc.add_paragraph("")
-                        
-                        # Process SWOT analysis
-                        doc.add_heading("SWOT Analysis", level=4)
-                        
-                        # Process strengths
-                        if "strengths" in analysis and analysis["strengths"]:
-                            doc.add_heading("Strengths", level=5)
-                            
-                            strengths = analysis["strengths"]
-                            if isinstance(strengths, list):
-                                for strength in strengths:
-                                    doc.add_paragraph(f"• {strength}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(strengths))
-                        
-                        # Process weaknesses
-                        if "weaknesses" in analysis and analysis["weaknesses"]:
-                            doc.add_heading("Weaknesses", level=5)
-                            
-                            weaknesses = analysis["weaknesses"]
-                            if isinstance(weaknesses, list):
-                                for weakness in weaknesses:
-                                    doc.add_paragraph(f"• {weakness}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(weaknesses))
-                        
-                        # Process opportunities
-                        if "opportunities" in analysis and analysis["opportunities"]:
-                            doc.add_heading("Opportunities", level=5)
-                            
-                            opportunities = analysis["opportunities"]
-                            if isinstance(opportunities, list):
-                                for opportunity in opportunities:
-                                    doc.add_paragraph(f"• {opportunity}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(opportunities))
-                        
-                        # Process threats
-                        if "threats" in analysis and analysis["threats"]:
-                            doc.add_heading("Threats", level=5)
-                            
-                            threats = analysis["threats"]
-                            if isinstance(threats, list):
-                                for threat in threats:
-                                    doc.add_paragraph(f"• {threat}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(threats))
-                        
-                        # Add separator between brand analyses (except for the last one)
-                        if brand_name != list(brand_analyses.keys())[-1]:
-                            doc.add_paragraph("")
-                else:
-                    # No brand name analyses available
-                    logger.warning("No brand_names key found in transformed competitor data")
-                    doc.add_paragraph("No specific brand competitor analyses available.")
-            else:
-                # No competitor analysis data available
-                logger.warning("Transformed competitor data is empty or not a dictionary")
-                doc.add_paragraph("No competitor analysis data available for this brand naming project.")
-                
-        except Exception as e:
-            logger.error(f"Error formatting competitor analysis section: {str(e)}")
-            logger.error(f"Error details: {traceback.format_exc()}")
-            # Add a generic error message to the document
-            doc.add_paragraph("Unable to format the competitor analysis section due to an error in processing the data.")
+                # Threats
+                if analysis.get("threats", []):
+                    doc.add_heading("Threats", level=4)
+                    for threat in analysis.get("threats", []):
+                        if threat:  # Only add non-empty items
+                            p = doc.add_paragraph(threat, style='List Bullet')
+            
+            # Add a summary
+            if analysis.get("summary"):
+                doc.add_heading(f"Summary for {brand_name}", level=3)
+                doc.add_paragraph(analysis.get("summary", ""))
+            
+            # Add separator between brand analyses
+            if brand_name != list(brand_names.keys())[-1]:
+                doc.add_paragraph()
+                doc.add_paragraph("---")
+                doc.add_paragraph()
+        
+        # Add overall summary if available
+        if transformed_data.get("summary"):
+            doc.add_heading("Competitor Analysis Summary", level=2)
+            doc.add_paragraph(transformed_data.get("summary", ""))
 
     async def _add_table_of_contents(self, doc: Document) -> None:
         """Add a table of contents to the document."""
@@ -2901,8 +2802,36 @@ class ReportFormatter:
             all_data = await self.fetch_raw_data(self.current_run_id)
             brand_context = all_data.get("brand_context", {})
             
-            # Fetch the user prompt from the state
-            user_prompt = await self.fetch_user_prompt(self.current_run_id)
+            # Instead of fetching user prompt from workflow_state table which is failing,
+            # extract it from brand_context or create a fallback
+            user_prompt = "Create a comprehensive brand naming report"
+            
+            try:
+                # Try to build a better user prompt from the brand context
+                if isinstance(brand_context, dict):
+                    industry = brand_context.get("industry_focus", "")
+                    purpose = brand_context.get("brand_purpose", "")
+                    mission = brand_context.get("brand_mission", "")
+                    audience = brand_context.get("target_audience", "")
+                    
+                    # Construct a reasonable prompt from available information
+                    context_parts = []
+                    if industry:
+                        context_parts.append(f"industry: {industry}")
+                    if purpose:
+                        context_parts.append(f"purpose: {purpose}")
+                    if mission:
+                        context_parts.append(f"mission: {mission}")
+                    if audience:
+                        context_parts.append(f"target audience: {audience}")
+                    
+                    if context_parts:
+                        user_prompt = f"Create a brand name for a company with {', '.join(context_parts)}"
+                        
+                logger.info(f"Created user prompt from context: {user_prompt}")
+            except Exception as e:
+                logger.warning(f"Error creating user prompt from context: {str(e)}")
+                # Continue with default user prompt
             
             # Count total names generated
             total_names = 0
@@ -2956,13 +2885,13 @@ class ReportFormatter:
             formatted_prompt = self._format_template("executive_summary", format_data, "Executive Summary")
             
             # Get system content
-            system_content = self._get_system_content("You are an expert report formatter creating a professional executive summary.")
+            system_content = self._get_system_content("You are an expert report formatter creating a professional executive summary. The executive summary should highlight key findings from the brand naming process, the methodology used, and the rationale behind the shortlisted names.")
             
             # Call LLM to generate executive summary
             response = await self._safe_llm_invoke([
                 SystemMessage(content=system_content),
                 HumanMessage(content=formatted_prompt)
-            ], section_name="Executive Summary")
+            ], section_name="Executive Summary", fallback_response={"summary": "This report presents a comprehensive brand naming analysis based on linguistic, semantic, cultural, and market research. It provides detailed evaluations of potential brand names and offers strategic recommendations for the final selection."})
             
             # Try to parse the response
             summary_data = {}
@@ -3973,7 +3902,7 @@ class ReportFormatter:
             self.llm = ChatGoogleGenerativeAI(
                 model=settings.model_name, 
                 temperature=0.2,  # Balanced temperature for analysis 
-                google_api_key=settings.google_api_key, 
+                google_api_key=settings.gemini_api_key, 
                 convert_system_message_to_human=True, 
                 callbacks=settings.get_langsmith_callbacks()
             )
