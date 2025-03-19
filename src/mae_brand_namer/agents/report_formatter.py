@@ -934,16 +934,6 @@ class ReportFormatter:
                 logger.error(f"Failed to parse competitor analysis data JSON string: {e}")
                 return {}
         
-        # Structure is either:
-        # 1. Already has "brand_names" (from previous call)
-        # 2. Has "competitor_analysis" as a key with a list of analyses (each with brand_name and competitors)
-        # 3. Is itself a list of brand analyses
-        
-        # Case 1: Already correctly structured
-        if isinstance(data, dict) and "brand_names" in data:
-            logger.info("Competitor analysis data already in correct format with brand_names key")
-            return data
-        
         # Create the transformed data structure
         transformed_data = {
             "brand_names": {},
@@ -953,6 +943,11 @@ class ReportFormatter:
         # Extract the brand analyses from the data
         brand_analyses = []
         
+        # Case 1: Already correctly structured with brand_names
+        if isinstance(data, dict) and "brand_names" in data:
+            logger.info("Competitor analysis data already in correct format with brand_names key")
+            return data
+            
         # Case 2: Has "competitor_analysis" key with a list
         if isinstance(data, dict) and "competitor_analysis" in data:
             if isinstance(data["competitor_analysis"], list):
@@ -960,13 +955,33 @@ class ReportFormatter:
                 logger.info(f"Found {len(brand_analyses)} brand analyses in competitor_analysis list")
             else:
                 logger.warning(f"competitor_analysis is not a list: {type(data['competitor_analysis'])}")
-                return transformed_data
         # Case 3: Is itself a list of brand analyses
         elif isinstance(data, list):
             brand_analyses = data
             logger.info(f"Found {len(brand_analyses)} brand analyses in root list")
-        else:
-            logger.warning(f"Unrecognized competitor analysis data structure: {type(data)}")
+        # Handle directly embedded analysis data (no list wrapper)
+        elif isinstance(data, dict):
+            # Check if we have individual brand analyses directly
+            if "brand_name" in data:
+                brand_analyses = [data]
+                logger.info("Found single brand analysis directly in data")
+            # Check for any other structures that might contain brand analyses
+            elif any(isinstance(data.get(key), list) for key in data.keys()):
+                for key, value in data.items():
+                    if isinstance(value, list) and len(value) > 0:
+                        if isinstance(value[0], dict) and "brand_name" in value[0]:
+                            brand_analyses = value
+                            logger.info(f"Found brand analyses list under key {key}")
+                            break
+        
+        if not brand_analyses:
+            logger.warning(f"Could not extract any brand analyses from data structure")
+            # Deep inspection of data structure to aid debugging
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    logger.debug(f"Key: {key}, Type: {type(value)}")
+                    if isinstance(value, dict):
+                        logger.debug(f"  Subkeys: {list(value.keys())}")
             return transformed_data
         
         # Process each brand analysis
@@ -1090,7 +1105,7 @@ class ReportFormatter:
                 "threats": threats
             }
         
-        logger.info(f"Transformed competitor analysis data with {len(transformed_data['brand_names'])} brand analyses")
+        logger.info(f"Transformed competitor analysis data: {len(str(transformed_data))} chars")
         return transformed_data
 
     def _validate_section_data(self, section_name: str, data: Any) -> Tuple[bool, List[str]]:
@@ -2600,16 +2615,23 @@ class ReportFormatter:
                             p.add_run(f"{pattern_type.replace('_', ' ').title()}: ").bold = True
                             p.add_run(str(description))
                 
+                # Process summary if available
+                if "summary" in transformed_data and transformed_data["summary"]:
+                    doc.add_heading("Competitive Landscape Overview", level=2)
+                    doc.add_paragraph(transformed_data["summary"])
+                
                 # Process brand name analysis for proposed names
                 if "brand_names" in transformed_data and transformed_data["brand_names"]:
                     doc.add_heading("Competitive Analysis of Proposed Brand Names", level=2)
                     
                     brand_analyses = transformed_data["brand_names"]
+                    logger.info(f"Processing {len(brand_analyses)} brand analyses from brand_names")
                     
                     # Process each brand name analysis
                     for brand_name, analysis in brand_analyses.items():
                         # Add brand name as heading
                         doc.add_heading(brand_name, level=3)
+                        logger.info(f"Adding analysis for brand: {brand_name}")
                         
                         # Process top competitors
                         if "top_competitors" in analysis and analysis["top_competitors"]:
@@ -2638,10 +2660,13 @@ class ReportFormatter:
                         # Process detailed competitor section
                         if "competitors" in analysis and analysis["competitors"]:
                             doc.add_heading("Key Competitors", level=4)
+                            logger.info(f"Processing {len(analysis['competitors'])} competitors")
                             
                             for competitor in analysis["competitors"]:
                                 # Add competitor name as subheading
-                                doc.add_heading(competitor["competitor_name"], level=5)
+                                competitor_name = competitor.get("competitor_name", "Unknown Competitor")
+                                doc.add_heading(competitor_name, level=5)
+                                logger.info(f"Adding competitor: {competitor_name}")
                                 
                                 # Create a metrics table for competitor details
                                 metrics_table = doc.add_table(rows=1, cols=2)
@@ -2726,18 +2751,18 @@ class ReportFormatter:
                         # Add separator between brand analyses (except for the last one)
                         if brand_name != list(brand_analyses.keys())[-1]:
                             doc.add_paragraph("")
-                
-                # Process summary
-                if "summary" in transformed_data and transformed_data["summary"]:
-                    doc.add_heading("Summary", level=2)
-                    doc.add_paragraph(transformed_data["summary"])
+                else:
+                    # No brand name analyses available
+                    logger.warning("No brand_names key found in transformed competitor data")
+                    doc.add_paragraph("No specific brand competitor analyses available.")
             else:
                 # No competitor analysis data available
+                logger.warning("Transformed competitor data is empty or not a dictionary")
                 doc.add_paragraph("No competitor analysis data available for this brand naming project.")
                 
         except Exception as e:
             logger.error(f"Error formatting competitor analysis section: {str(e)}")
-            logger.debug(f"Error details: {traceback.format_exc()}")
+            logger.error(f"Error details: {traceback.format_exc()}")
             # Add a generic error message to the document
             doc.add_paragraph("Unable to format the competitor analysis section due to an error in processing the data.")
 
