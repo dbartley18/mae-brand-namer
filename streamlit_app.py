@@ -1393,22 +1393,19 @@ def render_thread_data(thread_data):
         with research_tabs[0]:
             st.subheader("Market Research")
             market_research = find_value_in_data(thread_data, ["market_research_results"])
-            if market_research and isinstance(market_research, list):
-                for analysis in market_research:
-                    if isinstance(analysis, dict):
-                        name = analysis.get("brand_name", "")
+            if market_research:
+                if isinstance(market_research, dict):
+                    # Handle dictionary format
+                    for name, analysis in market_research.items():
                         with st.expander(f"Market Analysis for: {name}", expanded=True):
-                            cols = st.columns(2)
-                            with cols[0]:
-                                st.write("**Industry Name:**", analysis.get("industry_name"))
-                                st.write("**Market Size:**", analysis.get("market_size"))
-                                st.write("**Market Growth Rate:**", analysis.get("market_growth_rate"))
-                                st.write("**Market Opportunity:**", analysis.get("market_opportunity"))
-                            with cols[1]:
-                                st.write("**Target Audience Fit:**", analysis.get("target_audience_fit"))
-                                st.write("**Customer Pain Points:**", analysis.get("customer_pain_points"))
-                                st.write("**Potential Risks:**", analysis.get("potential_risks"))
-                                st.write("**Market Entry Barriers:**", analysis.get("market_entry_barriers"))
+                            _render_market_research(analysis)
+                elif isinstance(market_research, list):
+                    # Handle list format
+                    for analysis in market_research:
+                        if isinstance(analysis, dict):
+                            name = analysis.get("brand_name", "") or analysis.get("name", "Unknown")
+                            with st.expander(f"Market Analysis for: {name}", expanded=True):
+                                _render_market_research(analysis)
             else:
                 st.info("No market research data found.")
         
@@ -2012,6 +2009,69 @@ def _render_survey_persona(persona):
             except:
                 st.write("**Barriers to Adoption:**", barriers)
 
+    st.divider()
+
+def _render_market_research(analysis):
+    """Helper function to render market research consistently"""
+    # Market Overview section
+    st.subheader("Market Overview")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("**Industry Name:**", analysis.get("industry_name", ""))
+        st.write("**Market Size:**", analysis.get("market_size", ""))
+        st.write("**Market Growth Rate:**", analysis.get("market_growth_rate", ""))
+        st.write("**Market Opportunity:**", analysis.get("market_opportunity", ""))
+    with col2:
+        st.write("**Market Viability:**", analysis.get("market_viability", ""))
+        st.write("**Target Audience Fit:**", analysis.get("target_audience_fit", ""))
+        st.write("**Competitive Analysis:**", analysis.get("competitive_analysis", ""))
+    
+    # Create tabs for detailed sections
+    detail_tabs = st.tabs([
+        "Market Details",
+        "Customer Insights",
+        "Risks & Recommendations"
+    ])
+    
+    # Market Details tab
+    with detail_tabs[0]:
+        # Emerging Trends
+        st.write("**Emerging Trends:**")
+        trends = analysis.get("emerging_trends", [])
+        if isinstance(trends, list):
+            for trend in trends:
+                st.write(f"- {trend}")
+        else:
+            st.write(trends)
+            
+        # Key Competitors
+        st.write("**Key Competitors:**")
+        competitors = analysis.get("key_competitors", [])
+        if isinstance(competitors, list):
+            for competitor in competitors:
+                st.write(f"- {competitor}")
+        else:
+            st.write(competitors)
+            
+        # Market Entry Barriers
+        st.write("**Market Entry Barriers:**", analysis.get("market_entry_barriers", ""))
+    
+    # Customer Insights tab
+    with detail_tabs[1]:
+        # Customer Pain Points
+        st.write("**Customer Pain Points:**")
+        pain_points = analysis.get("customer_pain_points", [])
+        if isinstance(pain_points, list):
+            for point in pain_points:
+                st.write(f"- {point}")
+        else:
+            st.write(pain_points)
+    
+    # Risks & Recommendations tab
+    with detail_tabs[2]:
+        st.write("**Potential Risks:**", analysis.get("potential_risks", ""))
+        st.write("**Recommendations:**", analysis.get("recommendations", ""))
+    
     st.divider()
 
 # Main application layout
