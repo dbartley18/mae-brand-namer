@@ -1186,21 +1186,36 @@ def render_thread_data(thread_data):
             if survey_results:
                 # Handle both list and dictionary formats
                 if isinstance(survey_results, list):
-                    individual_personas = survey_results[0].get("individual_personas", []) if survey_results else []
+                    # Process each brand's survey results
+                    for brand_survey in survey_results:
+                        brand_name = brand_survey.get("brand_name", "Unknown Brand")
+                        st.markdown(f"### {brand_name}")
+                        
+                        individual_personas = brand_survey.get("individual_personas", [])
+                        if individual_personas:
+                            st.markdown("#### Individual Persona Responses")
+                            for persona in individual_personas:
+                                company_name = persona.get('company_name', 'Unknown Company')
+                                job_title = persona.get('job_title', 'Unknown Role')
+                                persona_title = f"Persona: {job_title} at {company_name}"
+                                with st.expander(persona_title, expanded=False):
+                                    _render_survey_persona(persona)
+                        else:
+                            st.info(f"No survey responses found for {brand_name}")
+                        st.markdown("---")
                 else:
+                    # Handle single brand survey results
                     individual_personas = survey_results.get("individual_personas", [])
-                
-                if individual_personas:
-                    st.markdown("### Individual Persona Responses")
-                    # Display each persona without filtering
-                    for persona in individual_personas:
-                        company_name = persona.get('company_name', 'Unknown Company')
-                        job_title = persona.get('job_title', 'Unknown Role')
-                        persona_title = f"Persona: {job_title} at {company_name}"
-                        with st.expander(persona_title, expanded=False):
-                            _render_survey_persona(persona)
-                else:
-                    st.info("No survey responses found.")
+                    if individual_personas:
+                        st.markdown("#### Individual Persona Responses")
+                        for persona in individual_personas:
+                            company_name = persona.get('company_name', 'Unknown Company')
+                            job_title = persona.get('job_title', 'Unknown Role')
+                            persona_title = f"Persona: {job_title} at {company_name}"
+                            with st.expander(persona_title, expanded=False):
+                                _render_survey_persona(persona)
+                    else:
+                        st.info("No survey responses found.")
             else:
                 st.info("No survey simulation results found.")
 
