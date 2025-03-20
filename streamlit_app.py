@@ -1118,64 +1118,116 @@ def render_thread_data(thread_data):
             st.subheader("SEO Analysis")
             seo_analysis = find_value_in_data(thread_data, ["seo_analysis_results"])
             if seo_analysis:
-                if isinstance(seo_analysis, dict):
-                    for name, analysis in seo_analysis.items():
-                        st.markdown(f"### SEO Analysis for: {name}")
-                        cols = st.columns(2)
-                        with cols[0]:
-                            st.write("**Keyword Alignment:**", analysis.get("keyword_alignment"))
-                            st.write("**Search Volume:**", analysis.get("search_volume"))
-                            st.write("**Keyword Competition:**", analysis.get("keyword_competition"))
-                            st.write("**Branded Keyword Potential:**", analysis.get("branded_keyword_potential"))
-                            st.write("**Non-Branded Keyword Potential:**", analysis.get("non_branded_keyword_potential"))
-                        with cols[1]:
-                            st.write("**Social Media Availability:**", analysis.get("social_media_availability"))
-                            st.write("**Social Media Discoverability:**", analysis.get("social_media_discoverability"))
-                            st.metric("SEO Viability Score", analysis.get("seo_viability_score"))
+                # Handle both list and dictionary formats
+                if isinstance(seo_analysis, list):
+                    # Process each brand's SEO analysis
+                    for brand_analysis in seo_analysis:
+                        brand_name = brand_analysis.get("brand_name", "Unknown Brand")
+                        st.markdown(f"### {brand_name}")
+                        
+                        with st.expander("SEO Analysis Details", expanded=True):
+                            # Overview metrics in columns
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write("**Keyword Alignment:**", brand_analysis.get("keyword_alignment"))
+                                st.write("**Search Volume:**", brand_analysis.get("search_volume"))
+                                st.write("**Keyword Competition:**", brand_analysis.get("keyword_competition"))
+                                st.write("**Branded Keyword Potential:**", brand_analysis.get("branded_keyword_potential"))
+                                st.write("**Non-Branded Keyword Potential:**", brand_analysis.get("non_branded_keyword_potential"))
+                                st.write("**Exact Match Search Results:**", brand_analysis.get("exact_match_search_results"))
+                            with col2:
+                                st.write("**Social Media Availability:**", brand_analysis.get("social_media_availability"))
+                                st.write("**Social Media Discoverability:**", brand_analysis.get("social_media_discoverability"))
+                                st.write("**Name Length Searchability:**", brand_analysis.get("name_length_searchability"))
+                                st.write("**Unusual Spelling Impact:**", brand_analysis.get("unusual_spelling_impact"))
+                                st.metric("SEO Viability Score", brand_analysis.get("seo_viability_score"))
                             
-                        # Display recommendations
-                        seo_recs = analysis.get("seo_recommendations", [])
-                        if seo_recs:
-                            st.subheader("SEO Recommendations")
-                            if isinstance(seo_recs, list):
-                                for rec in seo_recs:
-                                    st.write(f"- {rec}")
-                            elif isinstance(seo_recs, dict):
-                                for key, rec in seo_recs.items():
-                                    st.write(f"- **{key}:** {rec}")
-                            else:
-                                st.write(seo_recs)
+                            # Create detail tabs
+                            detail_tabs = st.tabs([
+                                "Content Strategy",
+                                "Technical Analysis",
+                                "Recommendations"
+                            ])
+                            
+                            # Content Strategy tab
+                            with detail_tabs[0]:
+                                st.write("**Content Marketing Opportunities:**", brand_analysis.get("content_marketing_opportunities"))
+                                st.write("**Negative Keyword Associations:**", brand_analysis.get("negative_keyword_associations"))
+                                st.write("**Negative Search Results:**", brand_analysis.get("negative_search_results"))
+                            
+                            # Technical Analysis tab
+                            with detail_tabs[1]:
+                                st.write("**Competitor Domain Strength:**", brand_analysis.get("competitor_domain_strength"))
+                                st.write("**Domain Status:**", brand_analysis.get("domain_status"))
+                                st.write("**Technical Issues:**", brand_analysis.get("technical_issues"))
+                            
+                            # Recommendations tab
+                            with detail_tabs[2]:
+                                seo_recs = brand_analysis.get("seo_recommendations", [])
+                                if seo_recs:
+                                    if isinstance(seo_recs, list):
+                                        for rec in seo_recs:
+                                            st.write(f"- {rec}")
+                                    elif isinstance(seo_recs, dict):
+                                        for key, rec in seo_recs.items():
+                                            st.write(f"- **{key}:** {rec}")
+                                    else:
+                                        st.write(seo_recs)
                         st.divider()
-                elif isinstance(seo_analysis, list):
-                    for analysis in seo_analysis:
-                        if isinstance(analysis, dict):
-                            name = analysis.get("brand_name", "")
-                            st.markdown(f"### SEO Analysis for: {name}")
-                            cols = st.columns(2)
-                            with cols[0]:
+                elif isinstance(seo_analysis, dict):
+                    # Handle dictionary format (single brand or name-keyed analyses)
+                    for name, analysis in seo_analysis.items():
+                        st.markdown(f"### {name}")
+                        
+                        with st.expander("SEO Analysis Details", expanded=True):
+                            # Overview metrics in columns
+                            col1, col2 = st.columns(2)
+                            with col1:
                                 st.write("**Keyword Alignment:**", analysis.get("keyword_alignment"))
                                 st.write("**Search Volume:**", analysis.get("search_volume"))
                                 st.write("**Keyword Competition:**", analysis.get("keyword_competition"))
                                 st.write("**Branded Keyword Potential:**", analysis.get("branded_keyword_potential"))
                                 st.write("**Non-Branded Keyword Potential:**", analysis.get("non_branded_keyword_potential"))
-                            with cols[1]:
+                                st.write("**Exact Match Search Results:**", analysis.get("exact_match_search_results"))
+                            with col2:
                                 st.write("**Social Media Availability:**", analysis.get("social_media_availability"))
                                 st.write("**Social Media Discoverability:**", analysis.get("social_media_discoverability"))
+                                st.write("**Name Length Searchability:**", analysis.get("name_length_searchability"))
+                                st.write("**Unusual Spelling Impact:**", analysis.get("unusual_spelling_impact"))
                                 st.metric("SEO Viability Score", analysis.get("seo_viability_score"))
-                                
-                            # Display recommendations
-                            seo_recs = analysis.get("seo_recommendations", [])
-                            if seo_recs:
-                                st.subheader("SEO Recommendations")
-                                if isinstance(seo_recs, list):
-                                    for rec in seo_recs:
-                                        st.write(f"- {rec}")
-                                elif isinstance(seo_recs, dict):
-                                    for key, rec in seo_recs.items():
-                                        st.write(f"- **{key}:** {rec}")
-                                else:
-                                    st.write(seo_recs)
-                            st.divider()
+                            
+                            # Create detail tabs
+                            detail_tabs = st.tabs([
+                                "Content Strategy",
+                                "Technical Analysis",
+                                "Recommendations"
+                            ])
+                            
+                            # Content Strategy tab
+                            with detail_tabs[0]:
+                                st.write("**Content Marketing Opportunities:**", analysis.get("content_marketing_opportunities"))
+                                st.write("**Negative Keyword Associations:**", analysis.get("negative_keyword_associations"))
+                                st.write("**Negative Search Results:**", analysis.get("negative_search_results"))
+                            
+                            # Technical Analysis tab
+                            with detail_tabs[1]:
+                                st.write("**Competitor Domain Strength:**", analysis.get("competitor_domain_strength"))
+                                st.write("**Domain Status:**", analysis.get("domain_status"))
+                                st.write("**Technical Issues:**", analysis.get("technical_issues"))
+                            
+                            # Recommendations tab
+                            with detail_tabs[2]:
+                                seo_recs = analysis.get("seo_recommendations", [])
+                                if seo_recs:
+                                    if isinstance(seo_recs, list):
+                                        for rec in seo_recs:
+                                            st.write(f"- {rec}")
+                                    elif isinstance(seo_recs, dict):
+                                        for key, rec in seo_recs.items():
+                                            st.write(f"- **{key}:** {rec}")
+                                    else:
+                                        st.write(seo_recs)
+                        st.divider()
             else:
                 st.info("No SEO analysis data found.")
 
