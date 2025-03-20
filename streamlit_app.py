@@ -77,7 +77,7 @@ if "industry_selection" not in st.session_state:
 
 # Example prompts
 example_prompts = {
-    "Leadership Conference": "Senior executive focused event where influential executives and decision-makers converge to collaboratively develop innovative solutions. Through interactive workshops and focused discussions addressing critical business hurdles, participants forge actionable strategies designed to propel organizational growth. This environment enables those shaping the future of their industries to exchange insights and drive tangible results",
+    "Agentic Software": "A B2B enterprise software company providing AI-powered software solutions for Fortune 500 companies",
     "Professional Services": "A global management consulting firm specializing in digital transformation and operational excellence",
     "Financial Services": "An institutional investment management firm focusing on sustainable infrastructure investments",
     "B2B HealthTech Company": "A healthcare technology company providing enterprise solutions for hospital resource management"
@@ -2243,7 +2243,7 @@ tab1, tab2 = st.tabs(["Generator", "History"])
 with tab1:
     # Message area
     if not user_input.strip():
-        st.info("Enter your brand requirements in the sidebar to get started.")
+        st.info("👈 Enter your brand requirements in the sidebar to get started.")
     
     # Results area - modify the order and structure
     main_content = st.container()
@@ -2254,8 +2254,8 @@ with tab1:
     debug_header = st.container()
     with debug_header:
         st.markdown("---")
-        st.subheader("Brand Naming Agent Flow")
-        st.caption("This section shows detailed information about each step in the brand naming agent flow.")
+        st.subheader("LangGraph Execution Flow")
+        st.caption("This section shows detailed information about each step in the graph execution pipeline.")
     
     # Create a container for Streamlit callback and place it before the progress indicators
     st_callback_container = st.container()
