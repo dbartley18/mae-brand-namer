@@ -1372,15 +1372,15 @@ def render_thread_data(thread_data):
             if isinstance(domain_analysis, dict):
                 # Handle dictionary format
                 for name, analysis in domain_analysis.items():
-                    st.markdown(f"### Domain Analysis for: {name}")
-                    _render_domain_analysis(analysis)
+                    with st.expander(f"Analysis for: {name}", expanded=True):
+                        _render_domain_analysis(analysis)
             elif isinstance(domain_analysis, list):
                 # Handle list format
                 for analysis in domain_analysis:
                     if isinstance(analysis, dict):
                         name = analysis.get("brand_name", "") or analysis.get("name", "Unknown")
-                        st.markdown(f"### Domain Analysis for: {name}")
-                        _render_domain_analysis(analysis)
+                        with st.expander(f"Analysis for: {name}", expanded=True):
+                            _render_domain_analysis(analysis)
         else:
             st.info("No domain analysis data found.")
     
@@ -1811,61 +1811,53 @@ def find_names_in_data(data, max_depth=10, current_depth=0):
 
 def _render_domain_analysis(analysis):
     """Helper function to render domain analysis consistently"""
-    # Get brand name if available
-    brand_name = analysis.get("brand_name", "Unknown Brand")
+    # Domain Overview section
+    st.subheader("Domain Overview")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("**Domain Exact Match:**", "Available" if analysis.get("domain_exact_match") else "Not Available")
+        st.write("**Domain Length & Readability:**", analysis.get("domain_length_readability", ""))
+        st.write("**Brand Name Clarity in URL:**", analysis.get("brand_name_clarity_in_url", ""))
+    with col2:
+        st.write("**Hyphens/Numbers Present:**", "Yes" if analysis.get("hyphens_numbers_present") else "No")
+        st.write("**Misspellings/Variations Available:**", "Yes" if analysis.get("misspellings_variations_available") else "No")
+        st.write("**Acquisition Cost:**", analysis.get("acquisition_cost", "Unknown"))
     
-    # Create main header
-    st.markdown(f"### {brand_name}")
+    # Create tabs for detailed sections
+    detail_tabs = st.tabs([
+        "Domain Details",
+        "Social Media & Future",
+        "Additional Notes"
+    ])
     
-    # Create expandable section for domain analysis
-    with st.expander("Domain Analysis Details", expanded=False):
-        # Domain Overview section
-        st.subheader("Domain Overview")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("**Domain Exact Match:**", "Available" if analysis.get("domain_exact_match") else "Not Available")
-            st.write("**Domain Length & Readability:**", analysis.get("domain_length_readability", ""))
-            st.write("**Brand Name Clarity in URL:**", analysis.get("brand_name_clarity_in_url", ""))
-        with col2:
-            st.write("**Hyphens/Numbers Present:**", "Yes" if analysis.get("hyphens_numbers_present") else "No")
-            st.write("**Misspellings/Variations Available:**", "Yes" if analysis.get("misspellings_variations_available") else "No")
-            st.write("**Acquisition Cost:**", analysis.get("acquisition_cost", "Unknown"))
+    # Domain Details tab
+    with detail_tabs[0]:
+        st.write("**Alternative TLDs:**")
+        tlds = analysis.get("alternative_tlds", [])
+        if isinstance(tlds, list):
+            for tld in tlds:
+                st.write(f"- {tld}")
+        else:
+            st.write(tlds)
+    
+    # Social Media & Future tab
+    with detail_tabs[1]:
+        st.write("**Social Media Availability:**")
+        handles = analysis.get("social_media_availability", [])
+        if isinstance(handles, list):
+            for handle in handles:
+                st.write(f"- {handle}")
+        else:
+            st.write(handles)
         
-        # Create tabs for detailed sections
-        detail_tabs = st.tabs([
-            "Domain Details",
-            "Social Media & Future",
-            "Additional Notes"
-        ])
-        
-        # Domain Details tab
-        with detail_tabs[0]:
-            st.write("**Alternative TLDs:**")
-            tlds = analysis.get("alternative_tlds", [])
-            if isinstance(tlds, list):
-                for tld in tlds:
-                    st.write(f"- {tld}")
-            else:
-                st.write(tlds)
-        
-        # Social Media & Future tab
-        with detail_tabs[1]:
-            st.write("**Social Media Availability:**")
-            handles = analysis.get("social_media_availability", [])
-            if isinstance(handles, list):
-                for handle in handles:
-                    st.write(f"- {handle}")
-            else:
-                st.write(handles)
-            
-            st.write("**Scalability & Future-Proofing:**", analysis.get("scalability_future_proofing", ""))
-        
-        # Additional Notes tab
-        with detail_tabs[2]:
-            if analysis.get("notes"):
-                st.write(analysis.get("notes"))
-            else:
-                st.info("No additional notes available")
+        st.write("**Scalability & Future-Proofing:**", analysis.get("scalability_future_proofing", ""))
+    
+    # Additional Notes tab
+    with detail_tabs[2]:
+        if analysis.get("notes"):
+            st.write(analysis.get("notes"))
+        else:
+            st.info("No additional notes available")
     
     st.divider()
 
