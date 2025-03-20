@@ -216,3 +216,4 @@ tmp/
 .cursor/rules/streamlite.mdc
 debug_log.txt
 debug_output.txt
+docs/streamlitjson.md
