@@ -1902,7 +1902,7 @@ async def process_report(state: BrandNameGenerationState, agent: ReportCompiler)
             return {
                 "compiled_report": report,
                 "run_id": state.run_id,
-                "report_url": report.get("report_url", ""),
+                # Remove report_url - this should only be set in process_report_formatting
                 "version": report.get("version", 1),
                 "created_at": current_time,
                 "last_updated": current_time,
@@ -1927,38 +1927,27 @@ async def process_report_formatting(state: BrandNameGenerationState, agent: Repo
     """Format the compiled report into a polished document."""
     try:
         # Generate the formatted report
-        formatted_report_path = await agent.generate_report(
+        formatted_report_path, _ = await agent.generate_report(
             run_id=state.run_id,
             upload_to_storage=True  # Ensure we upload to Supabase storage
         )
-        
-        # We need to query the metadata table to get the report URL
-        # This is a workaround since generate_report doesn't return the URL directly
-        report_url = ""
-        try:
-            if agent.supabase:
-                query = f"""
-                SELECT report_url FROM report_metadata 
-                WHERE run_id = '{state.run_id}' 
-                ORDER BY version DESC LIMIT 1
-                """
-                result = await agent.supabase.execute_with_retry(query, {})
-                if result and len(result) > 0 and 'report_url' in result[0]:
-                    report_url = result[0]['report_url']
-                    logger.info(f"Retrieved report URL from metadata: {report_url}")
-        except Exception as e:
-            logger.warning(f"Failed to retrieve report URL from metadata: {str(e)}")
-        
-        # Return the formatted report and metadata
-        current_time = datetime.now().isoformat()
         
         # Get file size in KB if path exists
         file_size_kb = 0
         if formatted_report_path and os.path.exists(formatted_report_path):
             file_size_kb = os.path.getsize(formatted_report_path) // 1024
         
+        # Directly construct the URL using the known pattern
+        report_url = f"https://defmqwiwuqartogutosx.supabase.co/storage/v1/object/public/agent_reports/{state.run_id}/report_{state.run_id}.docx"
+        
+        # Return the formatted report and metadata
+        current_time = datetime.now().isoformat()
+        
+        logger.info(f"Completed report formatting. URL: {report_url}")
+        
         return {
-            "formatted_report_path": formatted_report_path,
+            # Use the constructed URL for both fields
+            "formatted_report_path": report_url,
             "run_id": state.run_id,
             "report_url": report_url,
             "created_at": current_time,

@@ -374,6 +374,19 @@ class SupabaseManager:
                 
             # Get the public URL from Supabase
             public_url = self.client.storage.from_(bucket).get_public_url(path)
+            
+            # Check if URL is correct format
+            if not public_url.startswith('http'):
+                # Fix the URL by adding the proper prefix
+                # The expected format is: https://defmqwiwuqartogutosx.supabase.co/storage/v1/object/public/{bucket}/{path}
+                supabase_base_url = settings.supabase_url
+                if supabase_base_url.endswith('/'):
+                    supabase_base_url = supabase_base_url[:-1]
+                    
+                complete_url = f"{supabase_base_url}/storage/v1/object/public/{bucket}/{path}"
+                logger.info(f"URL format corrected: {complete_url}")
+                return complete_url
+            
             return public_url
         except Exception as e:
             logger.error(f"Failed to get public URL: {str(e)}")

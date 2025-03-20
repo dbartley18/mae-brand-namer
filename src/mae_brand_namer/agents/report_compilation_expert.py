@@ -354,7 +354,7 @@ class ReportCompilationExpert:
 
     async def _store_in_supabase(self, run_id: str, report_data: Dict[str, Any], markdown_content: str) -> Dict[str, Any]:
         """
-        Store the report data in Supabase.
+        Store only the report data in Supabase database.
         
         Args:
             run_id (str): Unique identifier for this workflow run
@@ -362,7 +362,7 @@ class ReportCompilationExpert:
             markdown_content (str): Markdown formatted report content
             
         Returns:
-            Dict[str, Any]: Report metadata including URL and version
+            Dict[str, Any]: Report metadata
         """
         # Setup event loop if not available
         try:
@@ -377,54 +377,26 @@ class ReportCompilationExpert:
             file_size = len(markdown_content.encode('utf-8')) // 1024  # Size in KB
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
-            # Create a proper URL with timestamp for uniqueness
-            report_path = f"reports/{run_id}/{timestamp}_report.md"
-            report_url = f"{settings.supabase_url}/storage/v1/object/public/{report_path}"
-            
-            # Upload the markdown file to Supabase Storage
-            try:
-                # Create a bucket for reports if it doesn't exist
-                try:
-                    await self.supabase.storage().create_bucket("reports")
-                except Exception as bucket_error:
-                    # Bucket likely already exists
-                    logger.debug(f"Bucket creation note: {str(bucket_error)}")
-                    
-                # Upload the file to Supabase Storage
-                encoded_content = markdown_content.encode('utf-8')
-                await self.supabase.storage().from_("reports").upload(
-                    f"{run_id}/{timestamp}_report.md",
-                    encoded_content,
-                    {"content-type": "text/markdown"}
-                )
-                
-                logger.info(f"Report uploaded to Supabase Storage: {report_path}")
-                
-            except Exception as storage_error:
-                logger.warning(f"Error uploading to Storage: {str(storage_error)}")
-                # Fallback to database-only storage if Storage upload fails
-                report_url = f"database-only://{run_id}"
-            
-            # Prepare report metadata
+            # Prepare report metadata - no file storage info
             report_metadata = {
                 "run_id": run_id,
-                "report_url": report_url,
                 "version": 1,
                 "created_at": now,
                 "last_updated": now,
                 "format": "markdown",
                 "file_size_kb": file_size,
-                "notes": "Report generated with complete LLM recommendations",
+                "notes": "Report generated with LLM recommendations - storage handled separately",
                 "report_data": report_data,
                 "markdown_content": markdown_content
             }
             
-            # Insert into report_compilation table
+            # Insert into report_compilation table (database only)
             await self.supabase.table("report_compilation").insert(report_metadata).execute()
+            logger.info(f"Report data stored in database for run_id: {run_id}")
             
             return report_metadata
             
         except Exception as e:
-            error_msg = f"Error storing report in Supabase: {str(e)}"
+            error_msg = f"Error storing report data in Supabase: {str(e)}"
             logger.error(error_msg)
             raise ValueError(error_msg) 
