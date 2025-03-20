@@ -1281,23 +1281,52 @@ def render_thread_data(thread_data):
                         brand_name = brand_analysis.get("brand_name", "Unknown Brand")
                         competitors = brand_analysis.get("competitors", [])
                         
-                        with st.expander(f"Competitor Analysis for: {brand_name}", expanded=True):
+                        st.markdown(f"### {brand_name}")
+                        if competitors:
                             for competitor in competitors:
-                                st.markdown(f"### {competitor.get('competitor_name', 'Unknown Competitor')}")
-                                
-                                cols = st.columns(2)
-                                with cols[0]:
-                                    st.metric("Risk of Confusion", competitor.get("risk_of_confusion", 0))
-                                    st.write("**Positioning:**", competitor.get("competitor_positioning", ""))
-                                    st.write("**Strengths:**", competitor.get("competitor_strengths", ""))
-                                    st.write("**Weaknesses:**", competitor.get("competitor_weaknesses", ""))
-                                
-                                with cols[1]:
-                                    st.write("**Target Audience Perception:**", competitor.get("target_audience_perception", ""))
-                                    st.write("**Differentiation Opportunity:**", competitor.get("competitor_differentiation_opportunity", ""))
-                                    st.write("**Trademark Conflict Risk:**", competitor.get("trademark_conflict_risk", ""))
-                                
-                                st.divider()
+                                with st.expander(f"Analysis for: {competitor.get('competitor_name', 'Unknown Competitor')}", expanded=True):
+                                    # Overview metrics in three columns
+                                    col1, col2, col3 = st.columns(3)
+                                    
+                                    with col1:
+                                        st.metric("Risk of Confusion", competitor.get("risk_of_confusion", 0))
+                                        st.metric("Differentiation Score", competitor.get("differentiation_score", 0))
+                                    
+                                    with col2:
+                                        st.write("**Competitor Name:**", competitor.get("competitor_name", ""))
+                                        st.write("**Naming Style:**", competitor.get("competitor_naming_style", ""))
+                                        st.write("**Keywords:**", competitor.get("competitor_keywords", ""))
+                                    
+                                    with col3:
+                                        st.write("**Trademark Risk:**", competitor.get("trademark_conflict_risk", ""))
+                                        st.write("**Target Audience:**", competitor.get("target_audience_perception", ""))
+                                    
+                                    # Create detail tabs for organized information
+                                    detail_tabs = st.tabs([
+                                        "Market Position",
+                                        "Strengths & Weaknesses",
+                                        "Differentiation Strategy"
+                                    ])
+                                    
+                                    # Market Position tab
+                                    with detail_tabs[0]:
+                                        st.write("**Market Positioning:**", competitor.get("competitor_positioning", ""))
+                                        st.write("**Target Audience Perception:**", competitor.get("target_audience_perception", ""))
+                                        st.write("**Competitive Advantage Notes:**", competitor.get("competitive_advantage_notes", ""))
+                                    
+                                    # Strengths & Weaknesses tab
+                                    with detail_tabs[1]:
+                                        st.write("**Strengths:**", competitor.get("competitor_strengths", ""))
+                                        st.write("**Weaknesses:**", competitor.get("competitor_weaknesses", ""))
+                                    
+                                    # Differentiation Strategy tab
+                                    with detail_tabs[2]:
+                                        st.write("**Differentiation Opportunities:**", competitor.get("competitor_differentiation_opportunity", ""))
+                                        st.write("**Trademark Conflict Risk:**", competitor.get("trademark_conflict_risk", ""))
+                                    
+                                    st.divider()
+                        else:
+                            st.info(f"No competitor analysis data found for {brand_name}")
             else:
                 st.info("No competitor analysis data found.")
     
