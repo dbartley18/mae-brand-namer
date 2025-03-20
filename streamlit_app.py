@@ -77,7 +77,7 @@ if "industry_selection" not in st.session_state:
 
 # Example prompts
 example_prompts = {
-    "Agentic Software": "A B2B enterprise software company providing AI-powered software solutions for Fortune 500 companies",
+    "Leadership Conference": "Senior executive focused event where influential executives and decision-makers converge to collaboratively develop innovative solutions. Through interactive workshops and focused discussions addressing critical business hurdles, participants forge actionable strategies designed to propel organizational growth. This environment enables those shaping the future of their industries to exchange insights and drive tangible results",
     "Professional Services": "A global management consulting firm specializing in digital transformation and operational excellence",
     "Financial Services": "An institutional investment management firm focusing on sustainable infrastructure investments",
     "B2B HealthTech Company": "A healthcare technology company providing enterprise solutions for hospital resource management"
@@ -869,14 +869,13 @@ def render_thread_data(thread_data):
     tabs = st.tabs([
         "Brand Context",
         "Name Generation",
-        "Pre Analyses",
+        "Name Analysis",
         "Name Evaluation",
         "Post Processing",
         "Translation Analysis",
         "Domain Analysis",
         "Research",
-        "Metadata",
-        "Raw JSON"
+        "Dowloadable Report"
     ])
 
     def _render_translation_analysis(analysis):
@@ -906,7 +905,7 @@ def render_thread_data(thread_data):
 
     # 1. Brand Context
     with tabs[0]:
-        st.header("Brand Context")
+        st.markdown("**Detailed Brand Identity Results**")
         brand_context = {}
         
         # Extract brand context fields
@@ -944,7 +943,7 @@ def render_thread_data(thread_data):
     
     # 2. Name Generation
     with tabs[1]:
-        st.header("Generated Brand Names")
+        st.markdown("**Preliminary Brand Name Generation Results**")
         generated_names = find_value_in_data(thread_data, ["generated_names"])
         
         if generated_names:
@@ -996,7 +995,7 @@ def render_thread_data(thread_data):
     
     # 3. Pre Analyses with child tabs
     with tabs[2]:
-        st.header("Pre-Generation Analyses")
+        st.markdown("**Generated Brand Name Analysis**")
         pre_analysis_tabs = st.tabs(["Linguistic Analysis", "Semantic Analysis", "Cultural Sensitivity"])
         
         # Linguistic Analysis
@@ -1082,7 +1081,7 @@ def render_thread_data(thread_data):
     
     # 4. Name Evaluation
     with tabs[3]:
-        st.header("Name Evaluation")
+        st.markdown("**Name Evaluation Results**")
         evaluation_results = find_value_in_data(thread_data, ["evaluation_results"])
         if evaluation_results:
             if isinstance(evaluation_results, dict):
@@ -1110,7 +1109,7 @@ def render_thread_data(thread_data):
     
     # 5. Post Processing with child tabs
     with tabs[4]:
-        st.header("Post-Processing Analyses")
+        st.markdown("**Post-Processing Analyses**")
         post_processing_tabs = st.tabs(["SEO Analysis", "Survey Results", "Competitor Analysis"])
         
         # SEO Analysis
@@ -1250,7 +1249,7 @@ def render_thread_data(thread_data):
                                 company_name = persona.get('company_name', 'Unknown Company')
                                 job_title = persona.get('job_title', 'Unknown Role')
                                 persona_title = f"Persona: {job_title} at {company_name}"
-                                with st.expander(persona_title, expanded=False):
+                                with st.expander(persona_title, expanded=True):
                                     _render_survey_persona(persona)
                         else:
                             st.info(f"No survey responses found for {brand_name}")
@@ -1264,7 +1263,7 @@ def render_thread_data(thread_data):
                             company_name = persona.get('company_name', 'Unknown Company')
                             job_title = persona.get('job_title', 'Unknown Role')
                             persona_title = f"Persona: {job_title} at {company_name}"
-                            with st.expander(persona_title, expanded=False):
+                            with st.expander(persona_title, expanded=True):
                                 _render_survey_persona(persona)
                     else:
                         st.info("No survey responses found.")
@@ -1332,7 +1331,7 @@ def render_thread_data(thread_data):
     
     # 6. Translation Analysis (now a parent tab)
     with tabs[5]:
-        st.header("Translation Analysis")
+        st.markdown("**Translation Analysis Results**")
         translation_analysis = find_value_in_data(thread_data, ["translation_analysis_results"])
         if translation_analysis:
             # Handle both list and dictionary formats
@@ -1366,7 +1365,7 @@ def render_thread_data(thread_data):
 
     # 7. Domain Analysis (now a parent tab)
     with tabs[6]:
-        st.header("Domain Analysis")
+        st.markdown("**Domain Analysis Results**")
         domain_analysis = find_value_in_data(thread_data, ["domain_analysis_results"])
         if domain_analysis:
             if isinstance(domain_analysis, dict):
@@ -1386,7 +1385,7 @@ def render_thread_data(thread_data):
     
     # 8. Research with child tabs
     with tabs[7]:
-        st.header("Market & Competitor Research")
+        st.markdown("**Market & Competitor Research**")
         research_tabs = st.tabs(["Market Research", "Competitor Research"])
         
         # Market Research
@@ -1397,14 +1396,14 @@ def render_thread_data(thread_data):
                 if isinstance(market_research, dict):
                     # Handle dictionary format
                     for name, analysis in market_research.items():
-                        with st.expander(f"Market Analysis for: {name}", expanded=True):
+                        with st.expander(f"Market Analysis for: {name}", expanded=False):
                             _render_market_research(analysis)
                 elif isinstance(market_research, list):
                     # Handle list format
                     for analysis in market_research:
                         if isinstance(analysis, dict):
                             name = analysis.get("brand_name", "") or analysis.get("name", "Unknown")
-                            with st.expander(f"Market Analysis for: {name}", expanded=True):
+                            with st.expander(f"Market Analysis for: {name}", expanded=False):
                                 _render_market_research(analysis)
             else:
                 st.info("No market research data found.")
@@ -1435,20 +1434,53 @@ def render_thread_data(thread_data):
             else:
                 st.info("No competitor analysis data found.")
     
-    # 9. Metadata
+    # 9. Report Details
     with tabs[8]:
-        st.header("Thread Metadata")
-        if isinstance(thread_data, dict):
-            metadata = thread_data.get("metadata", {})
-            if metadata:
-                st.json(metadata)
-            else:
-                st.info("No metadata available")
-    
-    # 10. Raw JSON
-    with tabs[9]:
-        st.header("Raw JSON Data")
-        st.json(thread_data)
+        
+        # Display input prompt
+        user_prompt = find_value_in_data(thread_data, ["user_prompt"])
+        if user_prompt:
+            st.markdown("**Brand Prompt**")
+            st.write(user_prompt)
+        
+        # Display creation date
+        created_at = find_value_in_data(thread_data, ["created_at"])
+        if created_at:
+            st.markdown("**Date Generated**")
+            # Remove time component from ISO date
+            if isinstance(created_at, str) and "T" in created_at:
+                created_at = created_at.split("T")[0]
+            st.write(created_at)
+        
+        # Display shortlisted names
+        shortlisted_names = find_value_in_data(thread_data, ["shortlisted_names"])
+        if shortlisted_names:
+            st.markdown("**Shortlisted Names**")
+            if isinstance(shortlisted_names, list):
+                for name in shortlisted_names:
+                    st.write(f"- {name}")
+            elif isinstance(shortlisted_names, dict):
+                for name, details in shortlisted_names.items():
+                    with st.expander(name):
+                        st.write(details)
+        
+        # Display report download and file size
+        report_url = find_value_in_data(thread_data, ["report_url"])
+        file_size_kb = find_value_in_data(thread_data, ["file_size_kb"])
+        
+        if report_url:
+            st.markdown("**Report Download**")
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown(
+                    f"[Download Report]({report_url})",
+                    unsafe_allow_html=True
+                )
+            with col2:
+                if file_size_kb:
+                    # Convert KB to MB with one decimal place
+                    file_size_mb = round(float(file_size_kb) / 1024, 1)
+                    st.caption(f"Size: {file_size_mb} MB")
 
 def _render_analysis_section(data, section_type):
     """Helper function to render an analysis section based on its type"""
@@ -1875,7 +1907,7 @@ def _render_survey_persona(persona):
         st.write("**Company Revenue:**", persona.get("company_revenue", "N/A"))
         st.write("**Location:**", persona.get("geographic_location", "N/A"))
         st.write("**Reports To:**", persona.get("reports_to", "N/A"))
-        st.write("**Decision Maker:**", "Yes" if str(persona.get("decision_maker")).lower() == "true" else "No")
+        st.write("**Decision Maker:**", "Yes" if str(persona.get("decision_maker")).lower() == "True" else "No")
         st.write("**Budget Authority:**", persona.get("budget_authority", "N/A"))
 
     # Scores and Metrics
@@ -2211,7 +2243,7 @@ tab1, tab2 = st.tabs(["Generator", "History"])
 with tab1:
     # Message area
     if not user_input.strip():
-        st.info("👈 Enter your brand requirements in the sidebar to get started.")
+        st.info("Enter your brand requirements in the sidebar to get started.")
     
     # Results area - modify the order and structure
     main_content = st.container()
@@ -2222,8 +2254,8 @@ with tab1:
     debug_header = st.container()
     with debug_header:
         st.markdown("---")
-        st.subheader("LangGraph Execution Flow")
-        st.caption("This section shows detailed information about each step in the graph execution pipeline.")
+        st.subheader("Brand Naming Agent Flow")
+        st.caption("This section shows detailed information about each step in the brand naming agent flow.")
     
     # Create a container for Streamlit callback and place it before the progress indicators
     st_callback_container = st.container()
@@ -2651,7 +2683,7 @@ with tab2:
     st.subheader("Generation History")
     
     # Add refresh button
-    if st.button("🔄 Refresh History"):
+    if st.button("Refresh History"):
         # Clear the cache to force fresh data fetch
         st.cache_data.clear()
         st.toast("Refreshing data...", icon="🔄")
@@ -2667,7 +2699,7 @@ with tab2:
                     st.session_state.history[i]["status"] = "completed"
     
     # Create tabs for local and API history
-    history_tabs = st.tabs(["Current Session", "All API Generations"])
+    history_tabs = st.tabs(["Current Session", "All Brand Name Generations"])
     
     # Current session history
     with history_tabs[0]:
@@ -2735,14 +2767,14 @@ with tab2:
             
             # Add selection functionality
             selected_thread = st.selectbox(
-                "Select a thread to view details:",
+                "Filter by thread id below:",
                 options=df["Full Thread ID"].tolist(),
                 format_func=lambda x: f"Thread {x[:8]}... - {df[df['Full Thread ID']==x]['Created'].iloc[0]}"
             )
             
             # Show thread details when selected
             if selected_thread:
-                st.markdown("### Thread Details")
+                st.markdown("**Brand Name Generation Report Details:**")
                 
                 # Get thread history
                 thread_history = get_thread_history(selected_thread)
