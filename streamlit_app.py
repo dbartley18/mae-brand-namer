@@ -1184,99 +1184,23 @@ def render_thread_data(thread_data):
             st.subheader("Survey Simulation Results")
             survey_results = find_value_in_data(thread_data, ["survey_simulation_results"])
             if survey_results:
-                # Handle individual personas
-                if isinstance(survey_results, dict):
+                # Handle both list and dictionary formats
+                if isinstance(survey_results, list):
+                    individual_personas = survey_results[0].get("individual_personas", []) if survey_results else []
+                else:
                     individual_personas = survey_results.get("individual_personas", [])
-                    brand_names = survey_results.get("brand_names", {})
-                    
-                    # Display brand names summary if available
-                    if brand_names:
-                        st.markdown("### Brand Names Analysis")
-                        for name, analysis in brand_names.items():
-                            with st.expander(f"Analysis for: {name}", expanded=True):
-                                cols = st.columns(2)
-                                with cols[0]:
-                                    st.metric("Overall Score", analysis.get("overall_score", 0))
-                                    st.metric("Brand Fit", analysis.get("brand_fit_score", 0))
-                                    st.metric("Market Appeal", analysis.get("market_appeal_score", 0))
-                                with cols[1]:
-                                    st.write("**Key Strengths:**", analysis.get("key_strengths", ""))
-                                    st.write("**Areas of Concern:**", analysis.get("areas_of_concern", ""))
-                                    st.write("**Recommendations:**", analysis.get("recommendations", ""))
-                    
-                    # Display individual personas
-                    if individual_personas:
-                        st.markdown("### Individual Persona Responses")
-                        for persona in individual_personas:
-                            with st.expander(f"Persona: {persona.get('role', 'Unknown Role')} at {persona.get('company_name', 'Unknown Company')}", expanded=True):
-                                # Persona Profile
-                                st.subheader("Respondent Profile")
-                                cols = st.columns(2)
-                                with cols[0]:
-                                    st.write("**Company:**", persona.get("company_name"))
-                                    st.write("**Industry:**", persona.get("industry"))
-                                    st.write("**Company Size:**", persona.get("company_size_employees"))
-                                    st.write("**Revenue:**", persona.get("company_revenue"))
-                                with cols[1]:
-                                    st.write("**Role:**", persona.get("role"))
-                                    st.write("**Department:**", persona.get("department"))
-                                    st.write("**Seniority:**", persona.get("seniority"))
-                                    st.write("**Decision Maker:**", "Yes" if persona.get("decision_maker") else "No")
-                                
-                                # Brand Perception
-                                st.subheader("Brand Perception")
-                                perception_cols = st.columns(3)
-                                with perception_cols[0]:
-                                    st.metric("Brand Appeal", persona.get("brand_appeal_score", 0))
-                                with perception_cols[1]:
-                                    st.metric("Relevance", persona.get("relevance_score", 0))
-                                with perception_cols[2]:
-                                    st.metric("Purchase Intent", persona.get("purchase_intent_score", 0))
-                                
-                                # Feedback
-                                st.subheader("Feedback")
-                                st.write("**Initial Impression:**", persona.get("initial_impression"))
-                                st.write("**Key Concerns:**", persona.get("key_concerns"))
-                                st.write("**Suggestions:**", persona.get("suggestions"))
-                                
-                                # Brand Name Preferences
-                                if "brand_name_preferences" in persona:
-                                    st.subheader("Brand Name Preferences")
-                                    prefs = persona.get("brand_name_preferences", {})
-                                    for name, rating in prefs.items():
-                                        st.metric(f"Rating for {name}", rating)
-                elif isinstance(survey_results, list):
-                    for result in survey_results:
-                        if isinstance(result, dict):
-                            with st.expander(f"Survey Response: {result.get('role', 'Unknown Role')}", expanded=True):
-                                # Display the same fields as above for each result
-                                cols = st.columns(2)
-                                with cols[0]:
-                                    st.write("**Company:**", result.get("company_name"))
-                                    st.write("**Industry:**", result.get("industry"))
-                                    st.write("**Role:**", result.get("role"))
-                                    st.write("**Department:**", result.get("department"))
-                                with cols[1]:
-                                    st.write("**Decision Maker:**", "Yes" if result.get("decision_maker") else "No")
-                                    st.write("**Seniority:**", result.get("seniority"))
-                                    st.write("**Experience:**", result.get("years_of_experience"))
-                                
-                                # Brand Perception Scores
-                                score_cols = st.columns(4)
-                                with score_cols[0]:
-                                    st.metric("Brand Appeal", result.get("brand_appeal_score", 0))
-                                with score_cols[1]:
-                                    st.metric("Relevance", result.get("relevance_score", 0))
-                                with score_cols[2]:
-                                    st.metric("Purchase Intent", result.get("purchase_intent_score", 0))
-                                with score_cols[3]:
-                                    st.metric("Overall Score", result.get("overall_score", 0))
-                                
-                                # Feedback
-                                st.subheader("Feedback")
-                                st.write("**Initial Impression:**", result.get("initial_impression"))
-                                st.write("**Key Concerns:**", result.get("key_concerns"))
-                                st.write("**Suggestions:**", result.get("suggestions"))
+                
+                if individual_personas:
+                    st.markdown("### Individual Persona Responses")
+                    # Display each persona without filtering
+                    for persona in individual_personas:
+                        company_name = persona.get('company_name', 'Unknown Company')
+                        job_title = persona.get('job_title', 'Unknown Role')
+                        persona_title = f"Persona: {job_title} at {company_name}"
+                        with st.expander(persona_title, expanded=False):
+                            _render_survey_persona(persona)
+                else:
+                    st.info("No survey responses found.")
             else:
                 st.info("No survey simulation results found.")
 
@@ -1670,6 +1594,11 @@ def find_value_in_data(data, possible_keys, max_depth=10, current_depth=0):
         # Direct check at thread root level
         for key in possible_keys:
             if key in data:
+                # Special handling for survey simulation results
+                if key == "survey_simulation_results" and isinstance(data[key], list):
+                    # If it's a list with one item that has individual_personas, return that
+                    if len(data[key]) > 0 and isinstance(data[key][0], dict) and "individual_personas" in data[key][0]:
+                        return data[key][0]
                 return data[key]
                 
         # Check in thread metadata
@@ -1678,203 +1607,30 @@ def find_value_in_data(data, possible_keys, max_depth=10, current_depth=0):
                 if key in data["metadata"]:
                     return data["metadata"][key]
                     
-        # Check in thread values section
-        if "values" in data and isinstance(data["values"], dict):
+        # Check in state data
+        if "state" in data and isinstance(data["state"], dict):
             for key in possible_keys:
-                if key in data["values"]:
-                    return data["values"][key]
-    
-    # Define mappings from possible keys to actual JSON keys based on BrandNameGenerationState from state.py
-    key_mappings = {
-        # Core fields from BrandNameGenerationState
-        "run_id": ["run_id"],
-        "user_prompt": ["user_prompt", "prompt"],
-        "errors": ["errors"],
-        "start_time": ["start_time", "timestamp", "created_at"],
-        "status": ["status"],
-        "messages": ["messages"],
-        
-        # Brand context fields from BrandNameGenerationState
-        "brand_identity_brief": ["brand_identity_brief"],
-        "brand_promise": ["brand_promise"],
-        "brand_values": ["brand_values"],
-        "brand_personality": ["brand_personality"],
-        "brand_tone_of_voice": ["brand_tone_of_voice"],
-        "brand_purpose": ["brand_purpose"],
-        "brand_mission": ["brand_mission"],
-        "target_audience": ["target_audience"],
-        "customer_needs": ["customer_needs"],
-        "market_positioning": ["market_positioning"],
-        "competitive_landscape": ["competitive_landscape"],
-        "industry_focus": ["industry_focus"],
-        "industry_trends": ["industry_trends"],
-        
-        # Brand name generation fields from BrandNameGenerationState
-        "generated_names": ["generated_names"],
-        "brand_name": ["brand_name"],
-        "naming_category": ["naming_category"],
-        "brand_personality_alignment": ["brand_personality_alignment"],
-        "brand_promise_alignment": ["brand_promise_alignment"],
-        "target_audience_relevance": ["target_audience_relevance"],
-        "market_differentiation": ["market_differentiation"],
-        "visual_branding_potential": ["visual_branding_potential"],
-        "memorability_score": ["memorability_score"],
-        "pronounceability_score": ["pronounceability_score"],
-        
-        # Details fields for brand name generation
-        "target_audience_relevance_details": ["target_audience_relevance_details"],
-        "market_differentiation_details": ["market_differentiation_details"],
-        "visual_branding_potential_details": ["visual_branding_potential_details"],
-        "memorability_score_details": ["memorability_score_details"],
-        "pronounceability_score_details": ["pronounceability_score_details"],
-        
-        # Name generation fields
-        "name_generation_methodology": ["name_generation_methodology"],
-        "timestamp": ["timestamp"],
-        "rank": ["rank"],
-        
-        # Lists for multiple brand names
-        "naming_categories": ["naming_categories"],
-        "brand_personality_alignments": ["brand_personality_alignments"],
-        "brand_promise_alignments": ["brand_promise_alignments"],
-        "target_audience_relevance_list": ["target_audience_relevance_list"],
-        "market_differentiation_list": ["market_differentiation_list"],
-        "memorability_scores": ["memorability_scores"],
-        "pronounceability_scores": ["pronounceability_scores"],
-        "visual_branding_potential_list": ["visual_branding_potential_list"],
-        "name_rankings": ["name_rankings"],
-        
-        # Evaluation fields
-        "strategic_alignment_score": ["strategic_alignment_score"],
-        "distinctiveness_score": ["distinctiveness_score"],
-        "competitive_advantage": ["competitive_advantage"],
-        "brand_fit_score": ["brand_fit_score"],
-        "positioning_strength": ["positioning_strength"],
-        "meaningfulness_score": ["meaningfulness_score"],
-        "phonetic_harmony": ["phonetic_harmony"],
-        "storytelling_potential": ["storytelling_potential"],
-        "domain_viability_score": ["domain_viability_score"],
-        "overall_score": ["overall_score"],
-        "shortlist_status": ["shortlist_status"],
-        "evaluation_comments": ["evaluation_comments"],
-        
-        # Process monitoring
-        "task_statuses": ["task_statuses"],
-        "current_task": ["current_task"],
-        
-        # Analysis results fields
-        "linguistic_analysis_results": ["linguistic_analysis_results"],
-        "semantic_analysis_results": ["semantic_analysis_results"],
-        "cultural_analysis_results": ["cultural_analysis_results"],
-        "translation_analysis_results": ["translation_analysis_results"],
-        "analysis_results": ["analysis_results"],
-        "evaluation_results": ["evaluation_results"],
-        "shortlisted_names": ["shortlisted_names"],
-        
-        # SEO Analysis Fields - exact from state.py
-        "keyword_alignment": ["keyword_alignment"],
-        "search_volume": ["search_volume"],
-        "keyword_competition": ["keyword_competition"],
-        "branded_keyword_potential": ["branded_keyword_potential"],
-        "non_branded_keyword_potential": ["non_branded_keyword_potential"],
-        "exact_match_search_results": ["exact_match_search_results"],
-        "competitor_domain_strength": ["competitor_domain_strength"],
-        "name_length_searchability": ["name_length_searchability"],
-        "unusual_spelling_impact": ["unusual_spelling_impact"],
-        "content_marketing_opportunities": ["content_marketing_opportunities"],
-        "social_media_availability": ["social_media_availability"],
-        "social_media_discoverability": ["social_media_discoverability"],
-        "negative_keyword_associations": ["negative_keyword_associations"],
-        "negative_search_results": ["negative_search_results"],
-        "seo_viability_score": ["seo_viability_score"],
-        "seo_recommendations": ["seo_recommendations"],
-        "seo_analysis_results": ["seo_analysis_results"],
-        
-        # Competitor Analysis Fields
-        "competitor_analysis_results": ["competitor_analysis_results"],
-        
-        # Market Research Analysis Fields - exact from state.py
-        "market_research": ["market_research_results"],
-        "market_research_results": ["market_research_results"],
-        
-        # Domain Analysis Fields - exact from state.py
-        "domain_analysis": ["domain_analysis_results"],
-        "domain_analysis_results": ["domain_analysis_results"],
-        
-        # Brand evaluation fields
-        "brand_name_data": ["brand_name_data"],
-        
-        # Survey simulation fields
-        "survey_simulation_results": ["survey_simulation_results"],
-        
-        # Report fields
-        "report": ["report"],
-        "compiled_report": ["compiled_report"],
-        "report_url": ["report_url"],
-        "formatted_report_path": ["formatted_report_path"],
-        "version": ["version"],
-        "created_at": ["created_at"],
-        "last_updated": ["last_updated"],
-        "format": ["format"],
-        "file_size_kb": ["file_size_kb"],
-        "notes": ["notes"],
-        "token_count": ["token_count"],
-    }
-    
-    # Try exact key match first
+                if key in data["state"]:
+                    return data["state"][key]
+                    
+    # If data is a dictionary, check all values recursively
     if isinstance(data, dict):
-        for key in possible_keys:
-            if key in data:
-                return data[key]
-    
-    # Expand possible keys with their mappings
-    expanded_keys = []
-    for key in possible_keys:
-        if key in key_mappings:
-            expanded_keys.extend(key_mappings[key])
-        else:
-            expanded_keys.append(key)
-            
-    # Make the expanded keys unique
-    expanded_keys = list(set(expanded_keys))
-        
-    # If data is a dictionary, check if any of the possible keys exist
-    if isinstance(data, dict):
-        # First, check if any of the provided keys exist at this level
-        for key in expanded_keys:
-            if key in data:
-                return data[key]
-        
-        # If not found at this level, check nested dictionaries
-        # Skip metadata and config keys that are unlikely to contain target values
-        skip_keys = ["created_at", "updated_at", "timestamp", "id", "thread_id", 
-                     "run_id", "status", "metadata", "config", "messages", "interrupts"]
-                     
         for key, value in data.items():
-            if key in skip_keys:
-                continue
-                
+            # Direct key match
+            if key in possible_keys:
+                return value
+            # Recurse into value
             result = find_value_in_data(value, possible_keys, max_depth, current_depth + 1)
             if result is not None:
                 return result
                 
-    # If data is a list, check each item
-    elif isinstance(data, list):
+    # If data is a list, check all elements recursively
+    if isinstance(data, list):
         for item in data:
             result = find_value_in_data(item, possible_keys, max_depth, current_depth + 1)
             if result is not None:
                 return result
                 
-    # If we're looking for complex nested keys like 'linguistics.phonetic'
-    for key in possible_keys:
-        if '.' in key:
-            parts = key.split('.', 1)  # Split only on the first dot
-            if isinstance(data, dict) and parts[0] in data:
-                result = find_value_in_data(data[parts[0]], [parts[1]], max_depth, current_depth + 1)
-                if result is not None:
-                    return result
-    
-    # If nothing is found, return None
     return None
 
 def find_names_in_data(data, max_depth=10, current_depth=0):
@@ -1975,6 +1731,159 @@ def _render_domain_analysis(analysis):
     # Additional Notes
     if analysis.get("notes"):
         st.write("**Additional Notes:**", analysis.get("notes"))
+    st.divider()
+
+def _render_survey_persona(persona):
+    """Helper function to render a detailed survey persona"""
+    # Profile Overview
+    st.subheader("Profile Overview")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("**Job Title:**", persona.get("job_title", "N/A"))
+        st.write("**Department:**", persona.get("department", "N/A"))
+        st.write("**Seniority:**", persona.get("seniority", "N/A"))
+        st.write("**Industry:**", persona.get("industry", "N/A"))
+        st.write("**Sub-vertical:**", persona.get("industry_sub_vertical", "N/A"))
+        st.write("**Experience:**", f"{persona.get('years_of_experience', 'N/A')} years")
+    with col2:
+        st.write("**Company Size:**", persona.get("company_size_employees", "N/A"))
+        st.write("**Company Revenue:**", persona.get("company_revenue", "N/A"))
+        st.write("**Location:**", persona.get("geographic_location", "N/A"))
+        st.write("**Reports To:**", persona.get("reports_to", "N/A"))
+        st.write("**Decision Maker:**", "Yes" if str(persona.get("decision_maker")).lower() == "true" else "No")
+        st.write("**Budget Authority:**", persona.get("budget_authority", "N/A"))
+
+    # Scores and Metrics
+    st.subheader("Brand Perception Scores")
+    score_cols = st.columns(3)
+    scores = {
+        "Strategic Ranking": persona.get("strategic_ranking"),
+        "Brand Promise": persona.get("brand_promise_perception_score"),
+        "Personality Fit": persona.get("personality_fit_score"),
+        "Competitive Differentiation": persona.get("competitive_differentiation_score"),
+        "Competitor Benchmarking": persona.get("competitor_benchmarking_score"),
+        "Market Adoption": persona.get("simulated_market_adoption_score")
+    }
+    
+    for i, (metric, score) in enumerate(scores.items()):
+        with score_cols[i % 3]:
+            if score:
+                try:
+                    # Handle string values that might be quoted
+                    if isinstance(score, str):
+                        score = score.strip('"')
+                    score_val = float(score)
+                    st.metric(metric, f"{score_val:.1f}/10")
+                except (ValueError, TypeError):
+                    st.metric(metric, "N/A")
+
+    # Create tabs for detailed sections
+    detail_tabs = st.tabs([
+        "Company Context",
+        "Professional Profile",
+        "Brand Relationships",
+        "Success Metrics"
+    ])
+
+    # Company Context tab
+    with detail_tabs[0]:
+        st.write("**Market Share:**", persona.get("market_share", "N/A"))
+        st.write("**Company Structure:**", persona.get("company_structure", "N/A"))
+        st.write("**Growth Stage:**", persona.get("company_growth_stage", "N/A"))
+        st.write("**Technology Stack:**", persona.get("technology_stack", "N/A"))
+        
+        # Parse and display company focus
+        company_focus = persona.get("company_focus")
+        if company_focus:
+            try:
+                focus_list = eval(company_focus)
+                st.write("**Company Focus Areas:**")
+                for focus in focus_list:
+                    st.write(f"- {focus}")
+            except:
+                st.write("**Company Focus:**", company_focus)
+
+    # Professional Profile tab
+    with detail_tabs[1]:
+        # Parse and display goals and challenges
+        goals_challenges = persona.get("goals_and_challenges")
+        if goals_challenges:
+            try:
+                gc_dict = eval(goals_challenges)
+                if "Goals" in gc_dict:
+                    st.write("**Goals:**")
+                    for goal in gc_dict["Goals"]:
+                        st.write(f"- {goal}")
+                if "Challenges" in gc_dict:
+                    st.write("**Challenges:**")
+                    for challenge in gc_dict["Challenges"]:
+                        st.write(f"- {challenge}")
+            except:
+                st.write("**Goals and Challenges:**", goals_challenges)
+
+        # Parse and display pain points
+        pain_points = persona.get("pain_points")
+        if pain_points:
+            try:
+                points = eval(pain_points)
+                st.write("**Pain Points:**")
+                for point in points:
+                    st.write(f"- {point}")
+            except:
+                st.write("**Pain Points:**", pain_points)
+
+    # Brand Relationships tab
+    with detail_tabs[2]:
+        # Parse and display current brand relationships
+        relationships = persona.get("current_brand_relationships")
+        if relationships:
+            try:
+                rel_dict = eval(relationships)
+                st.write("**Current Brand Relationships:**")
+                for brand, relationship in rel_dict.items():
+                    st.write(f"- **{brand}:** {relationship}")
+            except:
+                st.write("**Brand Relationships:**", relationships)
+
+        st.write("**Event Attendance:**", persona.get("event_attendance", "N/A"))
+        st.write("**Networking Habits:**", persona.get("networking_habits", "N/A"))
+        st.write("**Social Media Usage:**", persona.get("social_media_usage", "N/A"))
+
+    # Success Metrics tab
+    with detail_tabs[3]:
+        # Parse and display success metrics
+        metrics = persona.get("success_metrics_product_service")
+        if metrics:
+            try:
+                metric_list = eval(metrics)
+                st.write("**Success Metrics:**")
+                for metric in metric_list:
+                    st.write(f"- {metric}")
+            except:
+                st.write("**Success Metrics:**", metrics)
+
+        # Parse and display channel preferences
+        channels = persona.get("channel_preferences_brand_interaction")
+        if channels:
+            try:
+                channel_list = eval(channels)
+                st.write("**Preferred Communication Channels:**")
+                for channel in channel_list:
+                    st.write(f"- {channel}")
+            except:
+                st.write("**Channel Preferences:**", channels)
+
+        # Parse and display barriers to adoption
+        barriers = persona.get("barriers_to_adoption")
+        if barriers:
+            try:
+                barrier_list = eval(barriers)
+                st.write("**Barriers to Adoption:**")
+                for barrier in barrier_list:
+                    st.write(f"- {barrier}")
+            except:
+                st.write("**Barriers to Adoption:**", barriers)
+
     st.divider()
 
 # Main application layout
