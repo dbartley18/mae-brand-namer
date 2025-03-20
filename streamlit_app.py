@@ -856,671 +856,1126 @@ def display_thread_history(thread_id):
 
 def render_thread_data(thread_data):
     """
-    Renders thread data in a structured format with tabs for different report sections.
+    Renders thread data in a structured format with tabs for different sections.
     
     Args:
-        thread_data: Can be either:
-            - A dictionary containing thread details with 'values' field that has report sections and metadata
-            - A list of thread messages (from get_thread_history)
-    
-    Returns:
-        None (displays content via Streamlit)
+        thread_data: A dictionary containing thread data from the LangSmith API
     """
     if not thread_data:
-        return st.error("No thread data available")
-    
-    # Determine the type of thread_data
-    if isinstance(thread_data, dict) and 'values' in thread_data:
-        # This is thread details from get_thread_details()
-        has_report_data = True
-        values = thread_data.get('values', {})
-        thread_id = thread_data.get('thread_id')
-    elif isinstance(thread_data, list):
-        # This is thread history from get_thread_history()
-        has_report_data = False
-        values = {}
-        thread_id = None
-        if thread_data and isinstance(thread_data[0], dict) and 'thread_id' in thread_data[0]:
-            thread_id = thread_data[0]['thread_id']
-    else:
-        return st.error(f"Unrecognized thread data format: {type(thread_data).__name__}")
-    
-    # Create tabs for different groups of data
-    display_tabs = ["Name Generation", "Analysis", "Market & Competition", "Metadata"]
-    if thread_id:
-        display_tabs.append("Thread Messages")
-    display_tabs.append("Raw JSON")
-    
-    tabs = st.tabs(display_tabs)
-    
-    # Name generation tab
+        st.error("No thread data available. Please check the thread ID and try again.")
+        return
+        
+    # Create main tabs for different sections in the specified order
+    tabs = st.tabs([
+        "Brand Context",
+        "Name Generation",
+        "Pre Analyses",
+        "Name Evaluation",
+        "Post Processing",
+        "Translation Analysis",
+        "Domain Analysis",
+        "Research",
+        "Metadata",
+        "Raw JSON"
+    ])
+
+    def _render_translation_analysis(analysis):
+        """Helper function to render translation analysis consistently"""
+        cols = st.columns(2)
+        with cols[0]:
+            st.write("**Direct Translation:**", analysis.get("direct_translation", ""))
+            st.write("**Semantic Shift:**", analysis.get("semantic_shift", ""))
+            st.write("**Pronunciation Difficulty:**", analysis.get("pronunciation_difficulty", ""))
+            st.write("**Phonetic Retention:**", analysis.get("phonetic_retention", ""))
+            st.write("**Cultural Acceptability:**", analysis.get("cultural_acceptability", ""))
+            st.write("**Brand Essence Preserved:**", analysis.get("brand_essence_preserved", ""))
+        with cols[1]:
+            st.write("**Global vs Local Balance:**", analysis.get("global_consistency_vs_localization", ""))
+            st.write("**Adaptation Needed:**", "Yes" if analysis.get("adaptation_needed") else "No")
+            if analysis.get("adaptation_needed"):
+                st.write("**Proposed Adaptation:**", analysis.get("proposed_adaptation", ""))
+            if analysis.get("phonetic_similarity_undesirable"):
+                st.warning("⚠️ Potential undesirable phonetic similarity detected")
+            if analysis.get("rank"):
+                st.metric("Translation Viability Score", analysis.get("rank"))
+        
+        # Additional Notes
+        if analysis.get("notes"):
+            st.write("**Additional Notes:**", analysis.get("notes"))
+        st.divider()
+
+    # 1. Brand Context
     with tabs[0]:
-        if has_report_data:
-            st.header("Generated Names")
-            
-            # Using the actual key "generated_names" that exists in the data
-            name_generation_data = values.get("generated_names", {})
-            
-            if name_generation_data:
-                # Process name categories if categorized
-                if isinstance(name_generation_data, dict):
-                    for category, brand_names in name_generation_data.items():
-                        st.subheader(f"Category: {category}")
-                        
-                        # Create a table for names in this category
-                        table_data = []
-                        for brand in brand_names:
-                            if isinstance(brand, dict):
-                                name_data = {
-                                    "Brand Name": brand.get("brand_name", ""),
-                                    "Category": brand.get("naming_category", ""),
-                                    "Rationale": brand.get("rationale", ""),
-                                    "Brand Promise Alignment": brand.get("brand_promise_alignment", ""),
-                                    "Brand Personality Alignment": brand.get("brand_personality_alignment", "")
-                                }
-                                table_data.append(name_data)
-                            elif isinstance(brand, str):
-                                # Simple string names
-                                table_data.append({"Brand Name": brand})
-                        
-                        if table_data:
-                            df = pd.DataFrame(table_data)
-                            st.dataframe(df, use_container_width=True)
-                        else:
-                            st.info(f"No names found in category: {category}")
-                # Handle list of names
-                elif isinstance(name_generation_data, list):
-                    st.subheader("Generated Names")
-                    table_data = []
-                    for brand in name_generation_data:
-                        if isinstance(brand, dict):
-                            name_data = {
-                                "Brand Name": brand.get("brand_name", ""),
-                                "Category": brand.get("naming_category", ""),
-                                "Rationale": brand.get("rationale", ""),
-                                "Notes": brand.get("notes", "")
-                            }
-                            table_data.append(name_data)
-                        elif isinstance(brand, str):
-                            # Simple string names
-                            table_data.append({"Brand Name": brand})
-                    
-                    if table_data:
-                        df = pd.DataFrame(table_data)
-                        st.dataframe(df, use_container_width=True)
-                
-                # Name evaluation data
-                evaluation_data = values.get("evaluation_results", {})
-                if evaluation_data:
-                    st.header("Name Evaluation")
-                    
-                    # Check if there are shortlisted names
-                    shortlisted = values.get("shortlisted_names", [])
-                    if shortlisted:
-                        st.subheader("Shortlisted Names")
-                        shortlist_data = []
-                        for name in shortlisted:
-                            if isinstance(name, dict):
-                                shortlist_data.append({
-                                    "Brand Name": name.get("brand_name", ""),
-                                    "Overall Score": name.get("overall_score", 0),
-                                    "Comments": name.get("evaluation_comments", "")
-                                })
-                            elif isinstance(name, str):
-                                shortlist_data.append({"Brand Name": name})
-                        st.dataframe(pd.DataFrame(shortlist_data), use_container_width=True)
-                    
-                    # Present evaluation results in a structured format
-                    if isinstance(evaluation_data, dict):
-                        st.subheader("Evaluation Details")
-                        for name, evaluation in evaluation_data.items():
-                            with st.expander(f"{name}"):
-                                if isinstance(evaluation, dict):
-                                    st.markdown(f"**Overall Score:** {evaluation.get('overall_score', 'N/A')}")
-                                    st.markdown(f"**Comments:** {evaluation.get('evaluation_comments', 'N/A')}")
-                                else:
-                                    st.write(evaluation)
-                    elif isinstance(evaluation_data, list):
-                        eval_data = []
-                        for item in evaluation_data:
-                            if isinstance(item, dict):
-                                eval_data.append({
-                                    "Brand Name": item.get("brand_name", ""),
-                                    "Score": item.get("overall_score", "N/A"),
-                                    "Comments": item.get("evaluation_comments", "")
-                                })
-                        
-                        if eval_data:
-                            st.dataframe(pd.DataFrame(eval_data), use_container_width=True)
-            else:
-                st.info("No name generation data available.")
-        elif not has_report_data:
-            st.info("Name generation data is not available in thread message history. Please view the thread details for full report data.")
+        st.header("Brand Context")
+        brand_context = {}
+        
+        # Extract brand context fields
+        context_fields = [
+            ("Brand Identity Brief", "brand_identity_brief"),
+            ("Brand Promise", "brand_promise"),
+            ("Brand Values", "brand_values"),
+            ("Brand Personality", "brand_personality"),
+            ("Brand Tone of Voice", "brand_tone_of_voice"),
+            ("Brand Purpose", "brand_purpose"),
+            ("Brand Mission", "brand_mission"),
+            ("Target Audience", "target_audience"),
+            ("Customer Needs", "customer_needs"),
+            ("Market Positioning", "market_positioning"),
+            ("Competitive Landscape", "competitive_landscape"),
+            ("Industry Focus", "industry_focus"),
+            ("Industry Trends", "industry_trends")
+        ]
+        
+        # Populate brand_context dictionary
+        for display_name, field_name in context_fields:
+            value = find_value_in_data(thread_data, [field_name])
+            if value:
+                with st.expander(display_name, expanded=True):
+                    if isinstance(value, str):
+                        st.write(value)
+                    elif isinstance(value, list):
+                        for item in value:
+                            st.write(f"- {item}")
+                    elif isinstance(value, dict):
+                        _render_analysis_section(value, display_name.lower())
+        
+        if not any(brand_context.values()):
+            st.info("No brand context data found.")
     
-    # Analysis tab
+    # 2. Name Generation
     with tabs[1]:
-        if has_report_data:
-            analysis_tabs = st.tabs([
-                "Linguistic", "Semantic", "Cultural Sensitivity", 
-                "Translation"
-            ])
-            
-            # Linguistic analysis - using actual key "linguistic_analysis_results"
-            with analysis_tabs[0]:
-                ling_data = values.get("linguistic_analysis_results", {})
-                if ling_data:
-                    st.header("Linguistic Analysis")
-                    
-                    # Display each brand's linguistic analysis
-                    for brand_name, analysis in ling_data.items() if isinstance(ling_data, dict) else []:
-                        with st.expander(f"Linguistic Analysis: {brand_name}"):
-                            st.markdown(f"**Notes:** {analysis.get('notes', 'N/A')}")
-                            
-                            cols = st.columns(2)
-                            with cols[0]:
-                                st.markdown(f"**Word Class:** {analysis.get('word_class', 'N/A')}")
-                                st.markdown(f"**Sound Symbolism:** {analysis.get('sound_symbolism', 'N/A')}")
-                                st.markdown(f"**Rhythm and Meter:** {analysis.get('rhythm_and_meter', 'N/A')}")
-                                st.markdown(f"**Pronunciation Ease:** {analysis.get('pronunciation_ease', 'N/A')}")
-                                st.markdown(f"**Euphony vs Cacophony:** {analysis.get('euphony_vs_cacophony', 'N/A')}")
-                                st.markdown(f"**Inflectional Properties:** {analysis.get('inflectional_properties', 'N/A')}")
-                                
-                            with cols[1]:
-                                st.markdown(f"**Neologism Appropriateness:** {analysis.get('neologism_appropriateness', 'N/A')}")
-                                st.markdown(f"**Overall Readability Score:** {analysis.get('overall_readability_score', 'N/A')}")
-                                st.markdown(f"**Morphological Transparency:** {analysis.get('morphological_transparency', 'N/A')}")
-                                st.markdown(f"**Naturalness in Collocations:** {analysis.get('naturalness_in_collocations', 'N/A')}")
-                                st.markdown(f"**Ease of Marketing Integration:** {analysis.get('ease_of_marketing_integration', 'N/A')}")
-                                st.markdown(f"**Phoneme Frequency Distribution:** {analysis.get('phoneme_frequency_distribution', 'N/A')}")
-                                st.markdown(f"**Semantic Distance from Competitors:** {analysis.get('semantic_distance_from_competitors', 'N/A')}")
-                    
-                    # If ling_data is a list or another format
-                    if not isinstance(ling_data, dict):
-                        st.json(ling_data)
+        st.header("Generated Brand Names")
+        generated_names = find_value_in_data(thread_data, ["generated_names"])
+        
+        if generated_names:
+            # Convert to list if it's not already
+            if not isinstance(generated_names, list):
+                if isinstance(generated_names, dict) and "names" in generated_names:
+                    generated_names = generated_names.get("names", [])
                 else:
-                    st.info("No linguistic analysis data available.")
+                    generated_names = [generated_names]
             
-            # Semantic analysis - using actual key "semantic_analysis_results"
-            with analysis_tabs[1]:
-                semantic_data = values.get("semantic_analysis_results", {})
-                if semantic_data:
-                    st.header("Semantic Analysis")
-                    
-                    for brand_name, analysis in semantic_data.items() if isinstance(semantic_data, dict) else []:
-                        with st.expander(f"Semantic Analysis: {brand_name}"):
-                            cols = st.columns(2)
-                            with cols[0]:
-                                st.markdown(f"**Etymology:** {analysis.get('etymology', 'N/A')}")
-                                st.markdown(f"**Sound Symbolism:** {analysis.get('sound_symbolism', 'N/A')}")
-                                st.markdown(f"**Brand Personality:** {analysis.get('brand_personality', 'N/A')}")
-                                st.markdown(f"**Emotional Valence:** {analysis.get('emotional_valence', 'N/A')}")
-                                st.markdown(f"**Denotative Meaning:** {analysis.get('denotative_meaning', 'N/A')}")
-                                st.markdown(f"**Figurative Language:** {analysis.get('figurative_language', 'N/A')}")
-                            
-                            with cols[1]:
-                                st.markdown(f"**Phoneme Combinations:** {analysis.get('phoneme_combinations', 'N/A')}")
-                                st.markdown(f"**Sensory Associations:** {analysis.get('sensory_associations', 'N/A')}")
-                                st.markdown(f"**Word Length/Syllables:** {analysis.get('word_length_syllables', 'N/A')}")
-                                st.markdown(f"**Alliteration/Assonance:** {'Yes' if analysis.get('alliteration_assonance', False) else 'No'}")
-                                st.markdown(f"**Compounding/Derivation:** {analysis.get('compounding_derivation', 'N/A')}")
-                                st.markdown(f"**Semantic Trademark Risk:** {analysis.get('semantic_trademark_risk', 'N/A')}")
-                    
-                    # If semantic_data is a list or another format
-                    if not isinstance(semantic_data, dict):
-                        st.json(semantic_data)
-                else:
-                    st.info("No semantic analysis data available.")
+            # Sort names by rank if available
+            sorted_names = []
+            for name_data in generated_names:
+                if isinstance(name_data, dict):
+                    rank = name_data.get("rank", 999)
+                    sorted_names.append((rank, name_data))
             
-            # Cultural sensitivity analysis - using actual key "cultural_analysis_results"
-            with analysis_tabs[2]:
-                cultural_data = values.get("cultural_analysis_results", {})
-                if cultural_data:
-                    st.header("Cultural Sensitivity Analysis")
-                    
-                    for brand_name, analysis in cultural_data.items() if isinstance(cultural_data, dict) else []:
-                        with st.expander(f"Cultural Sensitivity Analysis: {brand_name}"):
-                            st.markdown(f"**Notes:** {analysis.get('notes', 'N/A')}")
-                            st.markdown(f"**Overall Risk Rating:** {analysis.get('overall_risk_rating', 'N/A')}")
-                            
-                            cols = st.columns(2)
-                            with cols[0]:
-                                st.markdown(f"**Symbolic Meanings:** {analysis.get('symbolic_meanings', 'N/A')}")
-                                st.markdown(f"**Historical Meaning:** {analysis.get('historical_meaning', 'N/A')}")
-                                st.markdown(f"**Regional Variations:** {analysis.get('regional_variations', 'N/A')}")
-                                st.markdown(f"**Cultural Connotations:** {analysis.get('cultural_connotations', 'N/A')}")
-                            
-                            with cols[1]:
-                                st.markdown(f"**Current Event Relevance:** {analysis.get('current_event_relevance', 'N/A')}")
-                                st.markdown(f"**Religious Sensitivities:** {analysis.get('religious_sensitivities', 'N/A')}")
-                                st.markdown(f"**Social/Political Taboos:** {analysis.get('social_political_taboos', 'N/A')}")
-                                st.markdown(f"**Age-related Connotations:** {analysis.get('age_related_connotations', 'N/A')}")
-                                st.markdown(f"**Alignment with Cultural Values:** {analysis.get('alignment_with_cultural_values', 'N/A')}")
-                    
-                    # If cultural_data is a list or another format
-                    if not isinstance(cultural_data, dict):
-                        st.json(cultural_data)
-                else:
-                    st.info("No cultural sensitivity analysis data available.")
+            sorted_names.sort(key=lambda x: x[0])
             
-            # Translation analysis - using actual key "translation_analysis_results"
-            with analysis_tabs[3]:
-                translation_data = values.get("translation_analysis_results", {})
-                if translation_data:
-                    st.header("Translation Analysis")
-                    
-                    if isinstance(translation_data, dict):
-                        for brand_name, languages in translation_data.items():
-                            st.subheader(f"Translation Analysis for {brand_name}")
-                            
-                            if isinstance(languages, dict):
-                                for language, analysis in languages.items():
-                                    with st.expander(f"Language: {language}"):
-                                        st.markdown(f"**Target Language:** {analysis.get('target_language', 'N/A')}")
-                                        st.markdown(f"**Direct Translation:** {analysis.get('direct_translation', 'N/A')}")
-                                        st.markdown(f"**Notes:** {analysis.get('notes', 'N/A')}")
-                                        
-                                        cols = st.columns(2)
-                                        with cols[0]:
-                                            st.markdown(f"**Semantic Shift:** {analysis.get('semantic_shift', 'N/A')}")
-                                            st.markdown(f"**Adaptation Needed:** {'Yes' if analysis.get('adaptation_needed', False) else 'No'}")
-                                            st.markdown(f"**Phonetic Retention:** {analysis.get('phonetic_retention', 'N/A')}")
-                                            st.markdown(f"**Proposed Adaptation:** {analysis.get('proposed_adaptation', 'N/A')}")
-                                        
-                                        with cols[1]:
-                                            st.markdown(f"**Cultural Acceptability:** {analysis.get('cultural_acceptability', 'N/A')}")
-                                            st.markdown(f"**Brand Essence Preserved:** {analysis.get('brand_essence_preserved', 'N/A')}")
-                                            st.markdown(f"**Pronunciation Difficulty:** {analysis.get('pronunciation_difficulty', 'N/A')}")
-                                            st.markdown(f"**Global Consistency vs Localization:** {analysis.get('global_consistency_vs_localization', 'N/A')}")
-                    else:
-                        # Display raw data for non-dict format
-                        st.json(translation_data)
-                else:
-                    st.info("No translation analysis data available.")
-        else:
-            st.info("Analysis data is not available in thread message history.")
-    
-    # Market & Competition tab
-    with tabs[2]:
-        if has_report_data:
-            market_tabs = st.tabs([
-                "Domain Analysis", "SEO & Discoverability", 
-                "Market Research", "Competitor Analysis", "Survey Simulation"
-            ])
-            
-            # Domain analysis - using actual key "domain_analysis_results"
-            with market_tabs[0]:
-                domain_data = values.get("domain_analysis_results", {})
-                if domain_data:
-                    st.header("Domain Analysis")
-                    
-                    if isinstance(domain_data, dict):
-                        for brand_name, analysis in domain_data.items():
-                            with st.expander(f"Domain Analysis: {brand_name}"):
-                                st.markdown(f"**Notes:** {analysis.get('notes', 'N/A')}")
-                                st.markdown(f"**Acquisition Cost:** {analysis.get('acquisition_cost', 'N/A')}")
-                                
-                                cols = st.columns(2)
-                                with cols[0]:
-                                    st.markdown(f"**Domain Exact Match:** {'Yes' if analysis.get('domain_exact_match', False) else 'No'}")
-                                    st.markdown(f"**Hyphens/Numbers Present:** {'Yes' if analysis.get('hyphens_numbers_present', False) else 'No'}")
-                                    st.markdown(f"**Brand Name Clarity in URL:** {analysis.get('brand_name_clarity_in_url', 'N/A')}")
-                                    st.markdown(f"**Domain Length/Readability:** {analysis.get('domain_length_readability', 'N/A')}")
-                                
-                                with cols[1]:
-                                    st.markdown(f"**Scalability/Future-proofing:** {analysis.get('scalability_future_proofing', 'N/A')}")
-                                    st.markdown(f"**Misspellings/Variations Available:** {'Yes' if analysis.get('misspellings_variations_available', False) else 'No'}")
-                                
-                                # Alternative TLDs
-                                alt_tlds = analysis.get('alternative_tlds', [])
-                                if alt_tlds:
-                                    st.markdown("**Alternative TLDs:**")
-                                    st.markdown(", ".join(alt_tlds))
-                                
-                                # Social media availability
-                                social_handles = analysis.get('social_media_availability', [])
-                                if social_handles:
-                                    st.markdown("**Available Social Media Handles:**")
-                                    st.markdown(", ".join(social_handles))
-                    else:
-                        # Display raw data for non-dict format
-                        st.json(domain_data)
-                else:
-                    st.info("No domain analysis data available.")
-            
-            # SEO analysis - using actual key "seo_analysis_results"
-            with market_tabs[1]:
-                seo_data = values.get("seo_analysis_results", [])
-                if seo_data:
-                    st.header("SEO & Online Discoverability")
-                    
-                    if isinstance(seo_data, list):
-                        for analysis in seo_data:
-                            brand_name = analysis.get("brand_name", "Unnamed")
-                            with st.expander(f"SEO Analysis: {brand_name}"):
-                                st.markdown(f"**Search Volume:** {analysis.get('search_volume', 'N/A')}")
-                                st.markdown(f"**SEO Viability Score:** {analysis.get('seo_viability_score', 'N/A')}")
-                                
-                                cols = st.columns(2)
-                                with cols[0]:
-                                    st.markdown(f"**Keyword Alignment:** {analysis.get('keyword_alignment', 'N/A')}")
-                                    st.markdown(f"**Keyword Competition:** {analysis.get('keyword_competition', 'N/A')}")
-                                    st.markdown(f"**Negative Search Results:** {'Yes' if analysis.get('negative_search_results', False) else 'No'}")
-                                    st.markdown(f"**Unusual Spelling Impact:** {'Yes' if analysis.get('unusual_spelling_impact', False) else 'No'}")
-                                    st.markdown(f"**Branded Keyword Potential:** {analysis.get('branded_keyword_potential', 'N/A')}")
-                                
-                                with cols[1]:
-                                    st.markdown(f"**Name Length/Searchability:** {analysis.get('name_length_searchability', 'N/A')}")
-                                    st.markdown(f"**Social Media Availability:** {'Yes' if analysis.get('social_media_availability', False) else 'No'}")
-                                    st.markdown(f"**Competitor Domain Strength:** {analysis.get('competitor_domain_strength', 'N/A')}")
-                                    st.markdown(f"**Exact Match Search Results:** {analysis.get('exact_match_search_results', 'N/A')}")
-                                    st.markdown(f"**Social Media Discoverability:** {analysis.get('social_media_discoverability', 'N/A')}")
-                                    st.markdown(f"**Non-branded Keyword Potential:** {analysis.get('non_branded_keyword_potential', 'N/A')}")
-                                
-                                # SEO Recommendations
-                                recs = analysis.get('seo_recommendations', {}).get('recommendations', [])
-                                if recs:
-                                    st.markdown("**SEO Recommendations:**")
-                                    for rec in recs:
-                                        st.markdown(f"- {rec}")
-                    elif isinstance(seo_data, dict):
-                        for brand_name, analysis in seo_data.items():
-                            with st.expander(f"SEO Analysis: {brand_name}"):
-                                for key, value in analysis.items():
-                                    st.markdown(f"**{key.replace('_', ' ').title()}:** {value}")
-                    else:
-                        # Display raw data for other formats
-                        st.json(seo_data)
-                else:
-                    st.info("No SEO analysis data available.")
-            
-            # Market research - using actual key "market_research_results"
-            with market_tabs[2]:
-                market_data = values.get("market_research_results", {})
-                if market_data:
-                    st.header("Market Research")
-                    
-                    if isinstance(market_data, dict):
-                        for brand_name, analysis in market_data.items():
-                            with st.expander(f"Market Research: {brand_name}"):
-                                cols = st.columns(2)
-                                with cols[0]:
-                                    st.markdown(f"**Industry Name:** {analysis.get('industry_name', 'N/A')}")
-                                    st.markdown(f"**Market Size:** {analysis.get('market_size', 'N/A')}")
-                                    st.markdown(f"**Market Growth Rate:** {analysis.get('market_growth_rate', 'N/A')}")
-                                    st.markdown(f"**Market Viability:** {analysis.get('market_viability', 'N/A')}")
-                                    st.markdown(f"**Market Opportunity:** {analysis.get('market_opportunity', 'N/A')}")
-                                    st.markdown(f"**Target Audience Fit:** {analysis.get('target_audience_fit', 'N/A')}")
-                                
-                                with cols[1]:
-                                    st.markdown(f"**Emerging Trends:** {analysis.get('emerging_trends', 'N/A')}")
-                                    st.markdown(f"**Potential Risks:** {analysis.get('potential_risks', 'N/A')}")
-                                    st.markdown(f"**Competitive Analysis:** {analysis.get('competitive_analysis', 'N/A')}")
-                                    st.markdown(f"**Market Entry Barriers:** {analysis.get('market_entry_barriers', 'N/A')}")
-                                    st.markdown(f"**Recommendations:** {analysis.get('recommendations', 'N/A')}")
-                                
-                                # Key competitors
-                                competitors = analysis.get('key_competitors', [])
-                                if competitors:
-                                    st.markdown("**Key Competitors:**")
-                                    for comp in competitors:
-                                        st.markdown(f"- {comp}")
-                                
-                                # Customer pain points
-                                pain_points = analysis.get('customer_pain_points', [])
-                                if pain_points:
-                                    st.markdown("**Customer Pain Points:**")
-                                    for point in pain_points:
-                                        st.markdown(f"- {point}")
-                    else:
-                        # Display raw data for non-dict format
-                        st.json(market_data)
-                else:
-                    st.info("No market research data available.")
-            
-            # Competitor analysis - using actual key "competitor_analysis_results"
-            with market_tabs[3]:
-                competitor_data = values.get("competitor_analysis_results", [])
-                if competitor_data:
-                    st.header("Competitor Analysis")
-                    
-                    if isinstance(competitor_data, list):
-                        for brand_comp in competitor_data:
-                            brand_name = brand_comp.get("brand_name", "Unnamed")
-                            st.subheader(f"Competitors for {brand_name}")
-                            
-                            competitors = brand_comp.get("competitors", [])
-                            for comp in competitors:
-                                with st.expander(f"Competitor: {comp.get('competitor_name', 'Unnamed')}"):
-                                    st.markdown(f"**Risk of Confusion:** {comp.get('risk_of_confusion', 'N/A')}/10")
-                                    st.markdown(f"**Trademark Conflict Risk:** {comp.get('trademark_conflict_risk', 'N/A')}")
-                                    
-                                    cols = st.columns(2)
-                                    with cols[0]:
-                                        st.markdown(f"**Strengths:** {comp.get('competitor_strengths', 'N/A')}")
-                                        st.markdown(f"**Weaknesses:** {comp.get('competitor_weaknesses', 'N/A')}")
-                                    
-                                    with cols[1]:
-                                        st.markdown(f"**Positioning:** {comp.get('competitor_positioning', 'N/A')}")
-                                        st.markdown(f"**Target Audience Perception:** {comp.get('target_audience_perception', 'N/A')}")
-                                        st.markdown(f"**Differentiation Opportunity:** {comp.get('competitor_differentiation_opportunity', 'N/A')}")
-                    elif isinstance(competitor_data, dict):
-                        for brand_name, competitors in competitor_data.items():
-                            st.subheader(f"Competitors for {brand_name}")
-                            for comp_name, comp_details in competitors.items():
-                                with st.expander(f"Competitor: {comp_name}"):
-                                    for key, value in comp_details.items():
-                                        st.markdown(f"**{key.replace('_', ' ').title()}:** {value}")
-                    else:
-                        # Display raw data for other formats
-                        st.json(competitor_data)
-                else:
-                    st.info("No competitor analysis data available.")
-            
-            # Survey simulation - using actual key "survey_simulation_results"
-            with market_tabs[4]:
-                survey_data = values.get("survey_simulation_results", [])
-                if survey_data:
-                    st.header("Survey Simulation")
-                    
-                    if isinstance(survey_data, list):
-                        for survey in survey_data:
-                            brand_name = survey.get("brand_name", "Unnamed")
-                            with st.expander(f"Survey Results: {brand_name}"):
-                                company = survey.get("company_name", "Unknown Company")
-                                st.markdown(f"**Company:** {company}")
-                                
-                                cols = st.columns(2)
-                                with cols[0]:
-                                    st.markdown(f"**Emotional Association:** {survey.get('emotional_association', 'N/A')}")
-                                    st.markdown(f"**Personality Fit Score:** {survey.get('personality_fit_score', 'N/A')}/10")
-                                    st.markdown(f"**Competitor Benchmarking Score:** {survey.get('competitor_benchmarking_score', 'N/A')}/10")
-                                    st.markdown(f"**Brand Promise Perception:** {survey.get('brand_promise_perception_score', 'N/A')}/10")
-                                
-                                with cols[1]:
-                                    st.markdown(f"**Market Adoption Score:** {survey.get('simulated_market_adoption_score', 'N/A')}/10")
-                                    st.markdown(f"**Competitive Differentiation:** {survey.get('competitive_differentiation_score', 'N/A')}/10")
-                                    st.markdown(f"**Industry:** {survey.get('industry', 'N/A')}")
-                                    st.markdown(f"**Company Size:** {survey.get('company_size_employees', 'N/A')}")
-                                
-                                st.markdown("**Qualitative Feedback Summary:**")
-                                st.write(survey.get('qualitative_feedback_summary', 'No feedback summary available.'))
-                                
-                                st.markdown("**Final Recommendation:**")
-                                st.write(survey.get('final_survey_recommendation', 'No recommendation available.'))
-                                
-                                # Raw qualitative feedback
-                                raw_feedback = survey.get('raw_qualitative_feedback', {})
-                                if raw_feedback:
-                                    with st.expander("Raw Qualitative Feedback"):
-                                        st.json(raw_feedback)
-                    elif isinstance(survey_data, dict):
-                        for brand_name, survey_results in survey_data.items():
-                            with st.expander(f"Survey Results: {brand_name}"):
-                                for key, value in survey_results.items():
-                                    if isinstance(value, (dict, list)):
-                                        with st.expander(f"**{key.replace('_', ' ').title()}**"):
-                                            st.json(value)
-                                    else:
-                                        st.markdown(f"**{key.replace('_', ' ').title()}:** {value}")
-                    else:
-                        # Display raw data for other formats
-                        st.json(survey_data)
-                else:
-                    st.info("No survey simulation data available.")
-        else:
-            st.info("Market and competition data is not available in thread message history.")
-    
-    # Metadata tab
-    with tabs[3]:
-        if has_report_data:
-            # Brand context
-            brand_context_data = {}
-            
-            # Extract brand context fields from values
-            brand_fields = [
-                "brand_values", "brand_mission", "brand_promise", "brand_purpose",
-                "customer_needs", "industry_focus", "industry_trends", "target_audience",
-                "brand_personality", "market_positioning", "brand_tone_of_voice",
-                "brand_identity_brief", "competitive_landscape"
-            ]
-            
-            for field in brand_fields:
-                if field in values:
-                    brand_context_data[field] = values[field]
-            
-            if brand_context_data:
-                st.header("Brand Context")
-                cols = st.columns(2)
-                with cols[0]:
-                    if "brand_mission" in brand_context_data:
-                        st.markdown(f"**Brand Mission:** {brand_context_data.get('brand_mission', 'N/A')}")
-                    if "brand_promise" in brand_context_data:
-                        st.markdown(f"**Brand Promise:** {brand_context_data.get('brand_promise', 'N/A')}")
-                    if "brand_purpose" in brand_context_data:
-                        st.markdown(f"**Brand Purpose:** {brand_context_data.get('brand_purpose', 'N/A')}")
-                    if "industry_focus" in brand_context_data:
-                        st.markdown(f"**Industry Focus:** {brand_context_data.get('industry_focus', 'N/A')}")
-                    if "target_audience" in brand_context_data:
-                        st.markdown(f"**Target Audience:** {brand_context_data.get('target_audience', 'N/A')}")
-                    if "market_positioning" in brand_context_data:
-                        st.markdown(f"**Market Positioning:** {brand_context_data.get('market_positioning', 'N/A')}")
-                
-                with cols[1]:
-                    if "brand_tone_of_voice" in brand_context_data:
-                        st.markdown(f"**Brand Tone of Voice:** {brand_context_data.get('brand_tone_of_voice', 'N/A')}")
-                    if "brand_identity_brief" in brand_context_data:
-                        st.markdown(f"**Brand Identity Brief:** {brand_context_data.get('brand_identity_brief', 'N/A')}")
-                    if "competitive_landscape" in brand_context_data:
-                        st.markdown(f"**Competitive Landscape:** {brand_context_data.get('competitive_landscape', 'N/A')}")
-                
-                # Brand values
-                values_list = brand_context_data.get('brand_values', [])
-                if values_list:
-                    st.markdown("**Brand Values:**")
-                    if isinstance(values_list, list):
-                        st.write(", ".join(values_list))
-                    else:
-                        st.write(values_list)
-                
-                # Brand personality
-                personality = brand_context_data.get('brand_personality', [])
-                if personality:
-                    st.markdown("**Brand Personality:**")
-                    if isinstance(personality, list):
-                        st.write(", ".join(personality))
-                    else:
-                        st.write(personality)
-                
-                # Industry trends
-                trends = brand_context_data.get('industry_trends', [])
-                if trends:
-                    st.markdown("**Industry Trends:**")
-                    if isinstance(trends, list):
-                        for trend in trends:
-                            st.markdown(f"- {trend}")
-                    else:
-                        st.write(trends)
-                
-                # Customer needs
-                needs = brand_context_data.get('customer_needs', [])
-                if needs:
-                    st.markdown("**Customer Needs:**")
-                    if isinstance(needs, list):
-                        for need in needs:
-                            st.markdown(f"- {need}")
-                    else:
-                        st.write(needs)
-            else:
-                st.info("No brand context data available.")
-            
-            # Thread metadata
-            st.header("Thread Metadata")
-            metadata_cols = st.columns(2)
-            with metadata_cols[0]:
-                st.markdown(f"**Thread ID:** {thread_id or 'N/A'}")
-                st.markdown(f"**Created At:** {thread_data.get('created_at', 'N/A')}")
-                st.markdown(f"**Status:** {thread_data.get('status', 'N/A')}")
-                
-                # User prompt if available
-                if 'user_prompt' in values:
-                    st.markdown("**User Prompt:**")
-                    st.markdown(values['user_prompt'])
-            
-            with metadata_cols[1]:
-                st.markdown(f"**Run ID:** {thread_data.get('run_id', 'N/A')}")
-                st.markdown(f"**Updated At:** {thread_data.get('updated_at', 'N/A')}")
-                st.markdown(f"**Last Updated:** {values.get('last_updated', 'N/A')}")
-                
-                # Timestamp
-                if 'timestamp' in values:
-                    st.markdown(f"**Timestamp:** {values['timestamp']}")
-                
-                # Configuration
-                config = thread_data.get('config', {})
-                if config:
-                    with st.expander("Configuration"):
-                        st.json(config)
-                
-                # Task statuses
-                task_statuses = values.get('task_statuses', {})
-                if task_statuses:
-                    with st.expander("Task Statuses"):
-                        st.json(task_statuses)
-        else:
-            st.info("Metadata is not available in thread message history.")
-    
-    # Thread messages tab (if applicable)
-    if thread_id and "Thread Messages" in display_tabs:
-        with tabs[display_tabs.index("Thread Messages")]:
-            st.header("Thread Messages")
-            
-            # Try to get messages from thread_data directly or fetch them
-            messages = values.get("messages", [])
-            if not messages and isinstance(thread_data, list):
-                messages = thread_data
-            
-            if messages:
-                for msg in messages:
-                    role = msg.get("role", "Unknown")
-                    role_emoji = "👤" if role == "user" else "🤖" if role == "assistant" else "🔄"
-                    
-                    with st.container():
-                        st.markdown(f"##### {role_emoji} {role.title()}")
+            # Display each name with its details
+            for rank, name_data in sorted_names:
+                brand_name = name_data.get("brand_name", "") or name_data.get("name", "")
+                if brand_name:
+                    with st.expander(f"{brand_name}", expanded=True):
+                        col1, col2 = st.columns(2)
                         
-                        if "content" in msg and msg["content"]:
-                            st.markdown(msg.get("content", ""))
+                        with col1:
+                            st.subheader("Name Details")
+                            metrics = {
+                                "Rank": rank if rank != 999 else None,
+                                "Category": name_data.get("naming_category", ""),
+                                "Brand Personality Alignment": name_data.get("brand_personality_alignment", ""),
+                                "Brand Promise Alignment": name_data.get("brand_promise_alignment", ""),
+                                "Target Audience Relevance": name_data.get("target_audience_relevance", ""),
+                                "Market Differentiation": name_data.get("market_differentiation", "")
+                            }
                             
-                        if "data" in msg and msg["data"]:
-                            with st.expander("Message Data"):
-                                st.json(msg.get("data", {}))
-            else:
-                st.info(f"No messages found for thread {thread_id}. You may need to fetch them separately.")
+                            for metric, value in metrics.items():
+                                if value:
+                                    st.metric(metric, value)
+                        
+                        with col2:
+                            st.subheader("Rationale")
+                            rationale = name_data.get("rationale", "") or name_data.get("name_generation_methodology", "")
+                            if rationale:
+                                st.write(rationale)
+        else:
+            st.info("No generated names found in the thread data.")
     
-    # Raw JSON tab (always last)
-    with tabs[-1]:
-        st.header("Raw Thread Data")
-        with st.expander("Expand to view raw JSON data", expanded=False):
-            st.json(thread_data)
+    # 3. Pre Analyses with child tabs
+    with tabs[2]:
+        st.header("Pre-Generation Analyses")
+        pre_analysis_tabs = st.tabs(["Linguistic Analysis", "Semantic Analysis", "Cultural Sensitivity"])
+        
+        # Linguistic Analysis
+        with pre_analysis_tabs[0]:
+            st.subheader("Linguistic Analysis")
+            linguistic_analysis = find_value_in_data(thread_data, ["linguistic_analysis_results"])
+            if linguistic_analysis:
+                if isinstance(linguistic_analysis, dict):
+                    for name, analysis in linguistic_analysis.items():
+                        with st.expander(f"Analysis for: {name}", expanded=True):
+                            cols = st.columns(2)
+                            with cols[0]:
+                                st.metric("Pronunciation Ease", analysis.get("pronunciation_ease"))
+                                st.metric("Sound Symbolism", analysis.get("sound_symbolism"))
+                                st.metric("Overall Readability", analysis.get("overall_readability_score"))
+                                st.metric("Rank", analysis.get("rank"))
+                            with cols[1]:
+                                st.write("**Euphony vs Cacophony:**", analysis.get("euphony_vs_cacophony"))
+                                st.write("**Rhythm and Meter:**", analysis.get("rhythm_and_meter"))
+                                st.write("**Word Class:**", analysis.get("word_class"))
+                            
+                            st.write("**Notes:**", analysis.get("notes"))
+                            
+                            if analysis.get("homophones_homographs"):
+                                st.warning("⚠️ This name has similar sounding or looking words")
+            else:
+                st.info("No linguistic analysis data found.")
+        
+        # Semantic Analysis
+        with pre_analysis_tabs[1]:
+            st.subheader("Semantic Analysis")
+            semantic_analysis = find_value_in_data(thread_data, ["semantic_analysis_results"])
+            if semantic_analysis and isinstance(semantic_analysis, list):
+                for analysis in semantic_analysis:
+                    if isinstance(analysis, dict):
+                        name = analysis.get("brand_name", "")
+                        with st.expander(f"Analysis for: {name}", expanded=True):
+                            cols = st.columns(2)
+                            with cols[0]:
+                                st.write("**Denotative Meaning:**", analysis.get("denotative_meaning"))
+                                st.write("**Etymology:**", analysis.get("etymology"))
+                                st.metric("Descriptiveness", analysis.get("descriptiveness"))
+                                st.metric("Concreteness", analysis.get("concreteness"))
+                            with cols[1]:
+                                st.write("**Brand Name Type:**", analysis.get("brand_name_type"))
+                                st.write("**Emotional Valence:**", analysis.get("emotional_valence"))
+                                st.write("**Sensory Associations:**", analysis.get("sensory_associations"))
+                                st.metric("Brand Fit/Relevance", analysis.get("brand_fit_relevance"))
+                            
+                            # Additional semantic details
+                            st.write("**Figurative Language:**", analysis.get("figurative_language"))
+                            if analysis.get("irony_or_paradox"):
+                                st.info("Contains irony or paradox")
+                            if analysis.get("humor_playfulness"):
+                                st.info("Contains humor/playfulness")
+                            st.metric("Memorability Score", analysis.get("memorability_score"))
+            else:
+                st.info("No semantic analysis data found.")
+        
+        # Cultural Sensitivity Analysis
+        with pre_analysis_tabs[2]:
+            st.subheader("Cultural Sensitivity Analysis")
+            cultural_analysis = find_value_in_data(thread_data, ["cultural_analysis_results"])
+            if cultural_analysis:
+                if isinstance(cultural_analysis, dict):
+                    for name, analysis in cultural_analysis.items():
+                        with st.expander(f"Analysis for: {name}", expanded=True):
+                            cols = st.columns(2)
+                            with cols[0]:
+                                st.write("**Cultural Connotations:**", analysis.get("cultural_connotations"))
+                                st.write("**Symbolic Meanings:**", analysis.get("symbolic_meanings"))
+                                st.write("**Overall Risk Rating:**", analysis.get("overall_risk_rating"))
+                                st.metric("Rank", analysis.get("rank"))
+                            with cols[1]:
+                                st.write("**Religious Sensitivities:**", analysis.get("religious_sensitivities"))
+                                st.write("**Social/Political Taboos:**", analysis.get("social_political_taboos"))
+                                if analysis.get("body_part_bodily_function_connotations"):
+                                    st.warning("⚠️ Contains potentially sensitive anatomical/physiological references")
+                            
+                            st.write("**Notes:**", analysis.get("notes"))
+            else:
+                st.info("No cultural sensitivity analysis data found.")
+    
+    # 4. Name Evaluation
+    with tabs[3]:
+        st.header("Name Evaluation")
+        evaluation_results = find_value_in_data(thread_data, ["evaluation_results"])
+        if evaluation_results:
+            if isinstance(evaluation_results, dict):
+                for name, eval_data in evaluation_results.items():
+                    with st.expander(f"Evaluation for: {name}", expanded=True):
+                        cols = st.columns(3)
+                        with cols[0]:
+                            st.metric("Overall Score", eval_data.get("overall_score"))
+                            st.metric("Brand Fit", eval_data.get("brand_fit_score"))
+                            st.metric("Strategic Alignment", eval_data.get("strategic_alignment_score"))
+                        with cols[1]:
+                            st.metric("Memorability", eval_data.get("memorability_score"))
+                            st.metric("Pronounceability", eval_data.get("pronounceability_score"))
+                            st.metric("Domain Viability", eval_data.get("domain_viability_score"))
+                        with cols[2]:
+                            st.write("**Positioning Strength:**", eval_data.get("positioning_strength"))
+                            st.write("**Visual Branding Potential:**", eval_data.get("visual_branding_potential"))
+                            st.write("**Storytelling Potential:**", eval_data.get("storytelling_potential"))
+                        
+                        st.write("**Evaluation Comments:**", eval_data.get("evaluation_comments"))
+                        if eval_data.get("shortlist_status") == "Yes":
+                            st.success("✅ Selected for shortlist")
+        else:
+            st.info("No evaluation results found.")
+    
+    # 5. Post Processing with child tabs
+    with tabs[4]:
+        st.header("Post-Processing Analyses")
+        post_processing_tabs = st.tabs(["SEO Analysis", "Survey Results", "Competitor Analysis"])
+        
+        # SEO Analysis
+        with post_processing_tabs[0]:
+            st.subheader("SEO Analysis")
+            seo_analysis = find_value_in_data(thread_data, ["seo_analysis_results"])
+            if seo_analysis:
+                if isinstance(seo_analysis, dict):
+                    for name, analysis in seo_analysis.items():
+                        st.markdown(f"### SEO Analysis for: {name}")
+                        cols = st.columns(2)
+                        with cols[0]:
+                            st.write("**Keyword Alignment:**", analysis.get("keyword_alignment"))
+                            st.write("**Search Volume:**", analysis.get("search_volume"))
+                            st.write("**Keyword Competition:**", analysis.get("keyword_competition"))
+                            st.write("**Branded Keyword Potential:**", analysis.get("branded_keyword_potential"))
+                            st.write("**Non-Branded Keyword Potential:**", analysis.get("non_branded_keyword_potential"))
+                        with cols[1]:
+                            st.write("**Social Media Availability:**", analysis.get("social_media_availability"))
+                            st.write("**Social Media Discoverability:**", analysis.get("social_media_discoverability"))
+                            st.metric("SEO Viability Score", analysis.get("seo_viability_score"))
+                            
+                        # Display recommendations
+                        seo_recs = analysis.get("seo_recommendations", [])
+                        if seo_recs:
+                            st.subheader("SEO Recommendations")
+                            if isinstance(seo_recs, list):
+                                for rec in seo_recs:
+                                    st.write(f"- {rec}")
+                            elif isinstance(seo_recs, dict):
+                                for key, rec in seo_recs.items():
+                                    st.write(f"- **{key}:** {rec}")
+                            else:
+                                st.write(seo_recs)
+                        st.divider()
+                elif isinstance(seo_analysis, list):
+                    for analysis in seo_analysis:
+                        if isinstance(analysis, dict):
+                            name = analysis.get("brand_name", "")
+                            st.markdown(f"### SEO Analysis for: {name}")
+                            cols = st.columns(2)
+                            with cols[0]:
+                                st.write("**Keyword Alignment:**", analysis.get("keyword_alignment"))
+                                st.write("**Search Volume:**", analysis.get("search_volume"))
+                                st.write("**Keyword Competition:**", analysis.get("keyword_competition"))
+                                st.write("**Branded Keyword Potential:**", analysis.get("branded_keyword_potential"))
+                                st.write("**Non-Branded Keyword Potential:**", analysis.get("non_branded_keyword_potential"))
+                            with cols[1]:
+                                st.write("**Social Media Availability:**", analysis.get("social_media_availability"))
+                                st.write("**Social Media Discoverability:**", analysis.get("social_media_discoverability"))
+                                st.metric("SEO Viability Score", analysis.get("seo_viability_score"))
+                                
+                            # Display recommendations
+                            seo_recs = analysis.get("seo_recommendations", [])
+                            if seo_recs:
+                                st.subheader("SEO Recommendations")
+                                if isinstance(seo_recs, list):
+                                    for rec in seo_recs:
+                                        st.write(f"- {rec}")
+                                elif isinstance(seo_recs, dict):
+                                    for key, rec in seo_recs.items():
+                                        st.write(f"- **{key}:** {rec}")
+                                else:
+                                    st.write(seo_recs)
+                            st.divider()
+            else:
+                st.info("No SEO analysis data found.")
+
+        # Survey Results
+        with post_processing_tabs[1]:
+            st.subheader("Survey Simulation Results")
+            survey_results = find_value_in_data(thread_data, ["survey_simulation_results"])
+            if survey_results:
+                # Handle individual personas
+                if isinstance(survey_results, dict):
+                    individual_personas = survey_results.get("individual_personas", [])
+                    brand_names = survey_results.get("brand_names", {})
+                    
+                    # Display brand names summary if available
+                    if brand_names:
+                        st.markdown("### Brand Names Analysis")
+                        for name, analysis in brand_names.items():
+                            with st.expander(f"Analysis for: {name}", expanded=True):
+                                cols = st.columns(2)
+                                with cols[0]:
+                                    st.metric("Overall Score", analysis.get("overall_score", 0))
+                                    st.metric("Brand Fit", analysis.get("brand_fit_score", 0))
+                                    st.metric("Market Appeal", analysis.get("market_appeal_score", 0))
+                                with cols[1]:
+                                    st.write("**Key Strengths:**", analysis.get("key_strengths", ""))
+                                    st.write("**Areas of Concern:**", analysis.get("areas_of_concern", ""))
+                                    st.write("**Recommendations:**", analysis.get("recommendations", ""))
+                    
+                    # Display individual personas
+                    if individual_personas:
+                        st.markdown("### Individual Persona Responses")
+                        for persona in individual_personas:
+                            with st.expander(f"Persona: {persona.get('role', 'Unknown Role')} at {persona.get('company_name', 'Unknown Company')}", expanded=True):
+                                # Persona Profile
+                                st.subheader("Respondent Profile")
+                                cols = st.columns(2)
+                                with cols[0]:
+                                    st.write("**Company:**", persona.get("company_name"))
+                                    st.write("**Industry:**", persona.get("industry"))
+                                    st.write("**Company Size:**", persona.get("company_size_employees"))
+                                    st.write("**Revenue:**", persona.get("company_revenue"))
+                                with cols[1]:
+                                    st.write("**Role:**", persona.get("role"))
+                                    st.write("**Department:**", persona.get("department"))
+                                    st.write("**Seniority:**", persona.get("seniority"))
+                                    st.write("**Decision Maker:**", "Yes" if persona.get("decision_maker") else "No")
+                                
+                                # Brand Perception
+                                st.subheader("Brand Perception")
+                                perception_cols = st.columns(3)
+                                with perception_cols[0]:
+                                    st.metric("Brand Appeal", persona.get("brand_appeal_score", 0))
+                                with perception_cols[1]:
+                                    st.metric("Relevance", persona.get("relevance_score", 0))
+                                with perception_cols[2]:
+                                    st.metric("Purchase Intent", persona.get("purchase_intent_score", 0))
+                                
+                                # Feedback
+                                st.subheader("Feedback")
+                                st.write("**Initial Impression:**", persona.get("initial_impression"))
+                                st.write("**Key Concerns:**", persona.get("key_concerns"))
+                                st.write("**Suggestions:**", persona.get("suggestions"))
+                                
+                                # Brand Name Preferences
+                                if "brand_name_preferences" in persona:
+                                    st.subheader("Brand Name Preferences")
+                                    prefs = persona.get("brand_name_preferences", {})
+                                    for name, rating in prefs.items():
+                                        st.metric(f"Rating for {name}", rating)
+                elif isinstance(survey_results, list):
+                    for result in survey_results:
+                        if isinstance(result, dict):
+                            with st.expander(f"Survey Response: {result.get('role', 'Unknown Role')}", expanded=True):
+                                # Display the same fields as above for each result
+                                cols = st.columns(2)
+                                with cols[0]:
+                                    st.write("**Company:**", result.get("company_name"))
+                                    st.write("**Industry:**", result.get("industry"))
+                                    st.write("**Role:**", result.get("role"))
+                                    st.write("**Department:**", result.get("department"))
+                                with cols[1]:
+                                    st.write("**Decision Maker:**", "Yes" if result.get("decision_maker") else "No")
+                                    st.write("**Seniority:**", result.get("seniority"))
+                                    st.write("**Experience:**", result.get("years_of_experience"))
+                                
+                                # Brand Perception Scores
+                                score_cols = st.columns(4)
+                                with score_cols[0]:
+                                    st.metric("Brand Appeal", result.get("brand_appeal_score", 0))
+                                with score_cols[1]:
+                                    st.metric("Relevance", result.get("relevance_score", 0))
+                                with score_cols[2]:
+                                    st.metric("Purchase Intent", result.get("purchase_intent_score", 0))
+                                with score_cols[3]:
+                                    st.metric("Overall Score", result.get("overall_score", 0))
+                                
+                                # Feedback
+                                st.subheader("Feedback")
+                                st.write("**Initial Impression:**", result.get("initial_impression"))
+                                st.write("**Key Concerns:**", result.get("key_concerns"))
+                                st.write("**Suggestions:**", result.get("suggestions"))
+            else:
+                st.info("No survey simulation results found.")
+
+        # Competitor Analysis
+        with post_processing_tabs[2]:
+            st.subheader("Competitor Analysis")
+            competitor_analysis = find_value_in_data(thread_data, ["competitor_analysis_results"])
+            if competitor_analysis:
+                if isinstance(competitor_analysis, list):
+                    for brand_analysis in competitor_analysis:
+                        brand_name = brand_analysis.get("brand_name", "Unknown Brand")
+                        competitors = brand_analysis.get("competitors", [])
+                        
+                        with st.expander(f"Competitor Analysis for: {brand_name}", expanded=True):
+                            for competitor in competitors:
+                                st.markdown(f"### {competitor.get('competitor_name', 'Unknown Competitor')}")
+                                
+                                cols = st.columns(2)
+                                with cols[0]:
+                                    st.metric("Risk of Confusion", competitor.get("risk_of_confusion", 0))
+                                    st.write("**Positioning:**", competitor.get("competitor_positioning", ""))
+                                    st.write("**Strengths:**", competitor.get("competitor_strengths", ""))
+                                    st.write("**Weaknesses:**", competitor.get("competitor_weaknesses", ""))
+                                
+                                with cols[1]:
+                                    st.write("**Target Audience Perception:**", competitor.get("target_audience_perception", ""))
+                                    st.write("**Differentiation Opportunity:**", competitor.get("competitor_differentiation_opportunity", ""))
+                                    st.write("**Trademark Conflict Risk:**", competitor.get("trademark_conflict_risk", ""))
+                                
+                                st.divider()
+            else:
+                st.info("No competitor analysis data found.")
+    
+    # 6. Translation Analysis (now a parent tab)
+    with tabs[5]:
+        st.header("Translation Analysis")
+        translation_analysis = find_value_in_data(thread_data, ["translation_analysis_results"])
+        if translation_analysis:
+            # Handle both list and dictionary formats
+            if isinstance(translation_analysis, dict):
+                # If it's already organized by brand name and language
+                for brand_name, languages in translation_analysis.items():
+                    st.markdown(f"### {brand_name}")
+                    for lang, analysis in languages.items():
+                        with st.expander(f"{lang} Analysis", expanded=True):
+                            _render_translation_analysis(analysis)
+            elif isinstance(translation_analysis, list):
+                # Organize list data by brand name and language
+                organized_data = {}
+                for analysis in translation_analysis:
+                    if isinstance(analysis, dict):
+                        brand_name = analysis.get("brand_name", "Unknown Brand")
+                        target_lang = analysis.get("target_language", "Unknown Language")
+                        
+                        if brand_name not in organized_data:
+                            organized_data[brand_name] = {}
+                        organized_data[brand_name][target_lang] = analysis
+                
+                # Display organized data
+                for brand_name, languages in organized_data.items():
+                    st.markdown(f"### {brand_name}")
+                    for lang, analysis in languages.items():
+                        with st.expander(f"{lang} Analysis", expanded=True):
+                            _render_translation_analysis(analysis)
+        else:
+            st.info("No translation analysis data found.")
+
+    # 7. Domain Analysis (now a parent tab)
+    with tabs[6]:
+        st.header("Domain Analysis")
+        domain_analysis = find_value_in_data(thread_data, ["domain_analysis_results"])
+        if domain_analysis:
+            if isinstance(domain_analysis, dict):
+                # Handle dictionary format
+                for name, analysis in domain_analysis.items():
+                    st.markdown(f"### Domain Analysis for: {name}")
+                    _render_domain_analysis(analysis)
+            elif isinstance(domain_analysis, list):
+                # Handle list format
+                for analysis in domain_analysis:
+                    if isinstance(analysis, dict):
+                        name = analysis.get("brand_name", "") or analysis.get("name", "Unknown")
+                        st.markdown(f"### Domain Analysis for: {name}")
+                        _render_domain_analysis(analysis)
+        else:
+            st.info("No domain analysis data found.")
+    
+    # 8. Research with child tabs
+    with tabs[7]:
+        st.header("Market & Competitor Research")
+        research_tabs = st.tabs(["Market Research", "Competitor Research"])
+        
+        # Market Research
+        with research_tabs[0]:
+            st.subheader("Market Research")
+            market_research = find_value_in_data(thread_data, ["market_research_results"])
+            if market_research and isinstance(market_research, list):
+                for analysis in market_research:
+                    if isinstance(analysis, dict):
+                        name = analysis.get("brand_name", "")
+                        with st.expander(f"Market Analysis for: {name}", expanded=True):
+                            cols = st.columns(2)
+                            with cols[0]:
+                                st.write("**Industry Name:**", analysis.get("industry_name"))
+                                st.write("**Market Size:**", analysis.get("market_size"))
+                                st.write("**Market Growth Rate:**", analysis.get("market_growth_rate"))
+                                st.write("**Market Opportunity:**", analysis.get("market_opportunity"))
+                            with cols[1]:
+                                st.write("**Target Audience Fit:**", analysis.get("target_audience_fit"))
+                                st.write("**Customer Pain Points:**", analysis.get("customer_pain_points"))
+                                st.write("**Potential Risks:**", analysis.get("potential_risks"))
+                                st.write("**Market Entry Barriers:**", analysis.get("market_entry_barriers"))
+            else:
+                st.info("No market research data found.")
+        
+        # Competitor Research
+        with research_tabs[1]:
+            st.subheader("Competitor Research")
+            competitor_analysis = find_value_in_data(thread_data, ["competitor_analysis_results"])
+            if competitor_analysis and isinstance(competitor_analysis, list):
+                for analysis in competitor_analysis:
+                    if isinstance(analysis, dict):
+                        name = analysis.get("competitor_name", "")
+                        with st.expander(f"Analysis for: {name}", expanded=True):
+                            cols = st.columns(2)
+                            with cols[0]:
+                                st.write("**Competitor Name:**", name)
+                                st.write("**Positioning:**", analysis.get("competitor_positioning"))
+                                st.write("**Naming Style:**", analysis.get("competitor_naming_style"))
+                                st.write("**Keywords:**", analysis.get("competitor_keywords"))
+                            with cols[1]:
+                                st.write("**Strengths:**", analysis.get("competitor_strengths"))
+                                st.write("**Weaknesses:**", analysis.get("competitor_weaknesses"))
+                                st.write("**Risk of Confusion:**", analysis.get("risk_of_confusion"))
+                                st.write("**Trademark Risk:**", analysis.get("trademark_conflict_risk"))
+                            
+                            if analysis.get("differentiation_score"):
+                                st.metric("Differentiation Score", analysis.get("differentiation_score"))
+            else:
+                st.info("No competitor analysis data found.")
+    
+    # 9. Metadata
+    with tabs[8]:
+        st.header("Thread Metadata")
+        if isinstance(thread_data, dict):
+            metadata = thread_data.get("metadata", {})
+            if metadata:
+                st.json(metadata)
+            else:
+                st.info("No metadata available")
+    
+    # 10. Raw JSON
+    with tabs[9]:
+        st.header("Raw JSON Data")
+        st.json(thread_data)
+
+def _render_analysis_section(data, section_type):
+    """Helper function to render an analysis section based on its type"""
+    if not data:
+        return
+        
+    # Skip if data is just a string
+    if isinstance(data, str):
+        st.write(data)
+        return
+        
+    # Skip if data is a list but not of dictionaries
+    if isinstance(data, list):
+        # If it's a list of strings, render as bullet points
+        if all(isinstance(item, str) for item in data):
+            for item in data:
+                st.write(f"- {item}")
+            return
+            
+        # If it's a list of dictionaries, render each dictionary
+        for item in data:
+            if isinstance(item, dict):
+                _render_analysis_section(item, section_type)
+        return
+        
+    # For dictionary data, create a two-column layout
+    col1, col2 = st.columns(2)
+    
+    # Define fields to display in each column based on section type
+    fields = {}
+    
+    if section_type == "linguistic":
+        fields = {
+            col1: [
+                ("Word Class", "word_class"),
+                ("Sound Symbolism", "sound_symbolism"),
+                ("Rhythm and Meter", "rhythm_and_meter"),
+                ("Pronunciation Ease", "pronunciation_ease"),
+                ("Euphony vs Cacophony", "euphony_vs_cacophony"),
+                ("Overall Readability Score", "overall_readability_score")
+            ],
+            col2: [
+                ("Inflectional Properties", "inflectional_properties"),
+                ("Neologism Appropriateness", "neologism_appropriateness"),
+                ("Morphological Transparency", "morphological_transparency"),
+                ("Naturalness in Collocations", "naturalness_in_collocations"),
+                ("Ease of Marketing Integration", "ease_of_marketing_integration"),
+                ("Semantic Distance from Competitors", "semantic_distance_from_competitors")
+            ]
+        }
+    elif section_type == "semantic":
+        fields = {
+            col1: [
+                ("Denotative Meaning", "denotative_meaning"),
+                ("Etymology", "etymology"),
+                ("Descriptiveness", "descriptiveness"),
+                ("Concreteness", "concreteness"),
+                ("Emotional Valence", "emotional_valence"),
+                ("Sensory Associations", "sensory_associations")
+            ],
+            col2: [
+                ("Figurative Language", "figurative_language"),
+                ("Ambiguity", "ambiguity"),
+                ("Irony or Paradox", "irony_or_paradox"),
+                ("Humor/Playfulness", "humor_playfulness"),
+                ("Brand Name Type", "brand_name_type"),
+                ("Brand Fit/Relevance", "brand_fit_relevance")
+            ]
+        }
+    elif section_type == "cultural":
+        fields = {
+            col1: [
+                ("Cultures Examined", "cultures_examined"),
+                ("Overall Sensitivity Rating", "overall_sensitivity_rating"),
+                ("Potentially Problematic Meanings", "potentially_problematic_meanings"),
+                ("Religious Significance", "religious_significance")
+            ],
+            col2: [
+                ("Historical Associations", "historical_associations"),
+                ("Offensive Homonyms", "offensive_homonyms"),
+                ("Demographic Specific Reactions", "demographic_specific_reactions"),
+                ("Recommendations", "recommendations")
+            ]
+        }
+    elif section_type == "domain":
+        fields = {
+            col1: [
+                ("Domain Name", "domain_name"),
+                ("Availability", "available"),
+                ("Registrar", "registrar"),
+                ("Expiration Date", "expiration_date"),
+                ("Domain Quality Score", "domain_quality_score")
+            ],
+            col2: [
+                ("Memorability Rating", "memorability_rating"),
+                ("SEO Potential", "seo_potential"),
+                ("Brand Match", "brand_match"),
+                ("Acquisition Recommendations", "acquisition_recommendations"),
+                ("Estimated Acquisition Cost", "estimated_acquisition_cost")
+            ]
+        }
+    elif section_type == "seo":
+        fields = {
+            col1: [
+                ("Keyword Alignment", "keyword_alignment"),
+                ("Search Volume", "search_volume"),
+                ("Keyword Competition", "keyword_competition"),
+                ("Branded Keyword Potential", "branded_keyword_potential"),
+                ("Non-Branded Keyword Potential", "non_branded_keyword_potential"),
+                ("Exact Match Search Results", "exact_match_search_results"),
+                ("Name Length Searchability", "name_length_searchability")
+            ],
+            col2: [
+                ("Unusual Spelling Impact", "unusual_spelling_impact"),
+                ("Content Marketing Opportunities", "content_marketing_opportunities"),
+                ("Social Media Availability", "social_media_availability"),
+                ("Social Media Discoverability", "social_media_discoverability"),
+                ("Negative Keyword Associations", "negative_keyword_associations"),
+                ("Negative Search Results", "negative_search_results"),
+                ("SEO Viability Score", "seo_viability_score")
+            ]
+        }
+    elif section_type == "market":
+        fields = {
+            col1: [
+                ("Industry Name", "industry_name"),
+                ("Market Size", "market_size"),
+                ("Market Growth Rate", "market_growth_rate"),
+                ("Market Opportunity", "market_opportunity"),
+                ("Market Viability", "market_viability")
+            ],
+            col2: [
+                ("Target Audience Fit", "target_audience_fit"),
+                ("Customer Pain Points", "customer_pain_points"),
+                ("Potential Risks", "potential_risks"),
+                ("Market Entry Barriers", "market_entry_barriers")
+            ]
+        }
+    elif section_type == "competitor":
+        fields = {
+            col1: [
+                ("Competitor Name", "competitor_name"),
+                ("Positioning", "positioning"),
+                ("Strengths", "strengths"),
+                ("Weaknesses", "weaknesses")
+            ],
+            col2: [
+                ("Market Share", "market_share"),
+                ("Brand Voice", "brand_voice"),
+                ("Target Demographics", "target_demographics"),
+                ("Key Differentiators", "key_differentiators")
+            ]
+        }
+    elif section_type == "survey":
+        fields = {
+            col1: [
+                ("Sample Size", "sample_size"),
+                ("Methodology", "methodology"),
+                ("Key Findings", "key_findings"),
+                ("Statistical Significance", "statistical_significance")
+            ],
+            col2: [
+                ("Survey Demographics", "survey_demographics"),
+                ("Name Preference Ranking", "name_preference_ranking"),
+                ("Qualitative Feedback", "qualitative_feedback"),
+                ("Demographic Variations", "demographic_variations")
+            ]
+        }
+    else:
+        # Generic field display for other section types
+        i = 0
+        for key, value in data.items():
+            if key.startswith("_") or key in ["id", "type", "run_id", "thread_id", "assistant_id"]:
+                continue
+                
+            col = col1 if i % 2 == 0 else col2
+            with col:
+                if isinstance(value, (str, int, float, bool)):
+                    st.metric(key.replace("_", " ").title(), value)
+                elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+                    st.write(f"**{key.replace('_', ' ').title()}**")
+                    for item in value:
+                        st.write(f"- {item}")
+                elif value is not None:
+                    st.write(f"**{key.replace('_', ' ').title()}**")
+                    st.write(str(value))
+            i += 1
+        return
+    
+    # Display fields for the section
+    for col, field_list in fields.items():
+        with col:
+            for display_name, field_name in field_list:
+                value = data.get(field_name)
+                if value is not None:
+                    if isinstance(value, (str, int, float, bool)):
+                        # For numeric values, use metric
+                        if isinstance(value, (int, float)) or (isinstance(value, str) and value.replace(".", "", 1).isdigit()):
+                            st.metric(display_name, value)
+                        else:
+                            st.write(f"**{display_name}**")
+                            st.write(value)
+                    elif isinstance(value, list):
+                        st.write(f"**{display_name}**")
+                        if all(isinstance(item, str) for item in value):
+                            for item in value:
+                                st.write(f"- {item}")
+                        else:
+                            st.write(str(value))
+
+def find_value_in_data(data, possible_keys, max_depth=10, current_depth=0):
+    """
+    Recursively search through a data structure to find values associated with any of the specified keys.
+    Optimized for the thread data structure returned by LangSmith API and aligned with
+    the BrandNameGenerationState Pydantic model from state.py.
+    
+    Args:
+        data: The data structure to search (can be dict, list, or scalar)
+        possible_keys: A list of possible key names to look for
+        max_depth: Maximum recursion depth to prevent stack overflow
+        current_depth: Current recursion depth (used internally)
+        
+    Returns:
+        The first value found associated with any of the keys, or None if not found
+    """
+    # Prevent excessive recursion
+    if current_depth > max_depth:
+        return None
+        
+    # If data is None, return None
+    if data is None:
+        return None
+    
+    # Special case: Check top-level thread structure first
+    if current_depth == 0 and isinstance(data, dict):
+        # Direct check at thread root level
+        for key in possible_keys:
+            if key in data:
+                return data[key]
+                
+        # Check in thread metadata
+        if "metadata" in data and isinstance(data["metadata"], dict):
+            for key in possible_keys:
+                if key in data["metadata"]:
+                    return data["metadata"][key]
+                    
+        # Check in thread values section
+        if "values" in data and isinstance(data["values"], dict):
+            for key in possible_keys:
+                if key in data["values"]:
+                    return data["values"][key]
+    
+    # Define mappings from possible keys to actual JSON keys based on BrandNameGenerationState from state.py
+    key_mappings = {
+        # Core fields from BrandNameGenerationState
+        "run_id": ["run_id"],
+        "user_prompt": ["user_prompt", "prompt"],
+        "errors": ["errors"],
+        "start_time": ["start_time", "timestamp", "created_at"],
+        "status": ["status"],
+        "messages": ["messages"],
+        
+        # Brand context fields from BrandNameGenerationState
+        "brand_identity_brief": ["brand_identity_brief"],
+        "brand_promise": ["brand_promise"],
+        "brand_values": ["brand_values"],
+        "brand_personality": ["brand_personality"],
+        "brand_tone_of_voice": ["brand_tone_of_voice"],
+        "brand_purpose": ["brand_purpose"],
+        "brand_mission": ["brand_mission"],
+        "target_audience": ["target_audience"],
+        "customer_needs": ["customer_needs"],
+        "market_positioning": ["market_positioning"],
+        "competitive_landscape": ["competitive_landscape"],
+        "industry_focus": ["industry_focus"],
+        "industry_trends": ["industry_trends"],
+        
+        # Brand name generation fields from BrandNameGenerationState
+        "generated_names": ["generated_names"],
+        "brand_name": ["brand_name"],
+        "naming_category": ["naming_category"],
+        "brand_personality_alignment": ["brand_personality_alignment"],
+        "brand_promise_alignment": ["brand_promise_alignment"],
+        "target_audience_relevance": ["target_audience_relevance"],
+        "market_differentiation": ["market_differentiation"],
+        "visual_branding_potential": ["visual_branding_potential"],
+        "memorability_score": ["memorability_score"],
+        "pronounceability_score": ["pronounceability_score"],
+        
+        # Details fields for brand name generation
+        "target_audience_relevance_details": ["target_audience_relevance_details"],
+        "market_differentiation_details": ["market_differentiation_details"],
+        "visual_branding_potential_details": ["visual_branding_potential_details"],
+        "memorability_score_details": ["memorability_score_details"],
+        "pronounceability_score_details": ["pronounceability_score_details"],
+        
+        # Name generation fields
+        "name_generation_methodology": ["name_generation_methodology"],
+        "timestamp": ["timestamp"],
+        "rank": ["rank"],
+        
+        # Lists for multiple brand names
+        "naming_categories": ["naming_categories"],
+        "brand_personality_alignments": ["brand_personality_alignments"],
+        "brand_promise_alignments": ["brand_promise_alignments"],
+        "target_audience_relevance_list": ["target_audience_relevance_list"],
+        "market_differentiation_list": ["market_differentiation_list"],
+        "memorability_scores": ["memorability_scores"],
+        "pronounceability_scores": ["pronounceability_scores"],
+        "visual_branding_potential_list": ["visual_branding_potential_list"],
+        "name_rankings": ["name_rankings"],
+        
+        # Evaluation fields
+        "strategic_alignment_score": ["strategic_alignment_score"],
+        "distinctiveness_score": ["distinctiveness_score"],
+        "competitive_advantage": ["competitive_advantage"],
+        "brand_fit_score": ["brand_fit_score"],
+        "positioning_strength": ["positioning_strength"],
+        "meaningfulness_score": ["meaningfulness_score"],
+        "phonetic_harmony": ["phonetic_harmony"],
+        "storytelling_potential": ["storytelling_potential"],
+        "domain_viability_score": ["domain_viability_score"],
+        "overall_score": ["overall_score"],
+        "shortlist_status": ["shortlist_status"],
+        "evaluation_comments": ["evaluation_comments"],
+        
+        # Process monitoring
+        "task_statuses": ["task_statuses"],
+        "current_task": ["current_task"],
+        
+        # Analysis results fields
+        "linguistic_analysis_results": ["linguistic_analysis_results"],
+        "semantic_analysis_results": ["semantic_analysis_results"],
+        "cultural_analysis_results": ["cultural_analysis_results"],
+        "translation_analysis_results": ["translation_analysis_results"],
+        "analysis_results": ["analysis_results"],
+        "evaluation_results": ["evaluation_results"],
+        "shortlisted_names": ["shortlisted_names"],
+        
+        # SEO Analysis Fields - exact from state.py
+        "keyword_alignment": ["keyword_alignment"],
+        "search_volume": ["search_volume"],
+        "keyword_competition": ["keyword_competition"],
+        "branded_keyword_potential": ["branded_keyword_potential"],
+        "non_branded_keyword_potential": ["non_branded_keyword_potential"],
+        "exact_match_search_results": ["exact_match_search_results"],
+        "competitor_domain_strength": ["competitor_domain_strength"],
+        "name_length_searchability": ["name_length_searchability"],
+        "unusual_spelling_impact": ["unusual_spelling_impact"],
+        "content_marketing_opportunities": ["content_marketing_opportunities"],
+        "social_media_availability": ["social_media_availability"],
+        "social_media_discoverability": ["social_media_discoverability"],
+        "negative_keyword_associations": ["negative_keyword_associations"],
+        "negative_search_results": ["negative_search_results"],
+        "seo_viability_score": ["seo_viability_score"],
+        "seo_recommendations": ["seo_recommendations"],
+        "seo_analysis_results": ["seo_analysis_results"],
+        
+        # Competitor Analysis Fields
+        "competitor_analysis_results": ["competitor_analysis_results"],
+        
+        # Market Research Analysis Fields - exact from state.py
+        "market_research": ["market_research_results"],
+        "market_research_results": ["market_research_results"],
+        
+        # Domain Analysis Fields - exact from state.py
+        "domain_analysis": ["domain_analysis_results"],
+        "domain_analysis_results": ["domain_analysis_results"],
+        
+        # Brand evaluation fields
+        "brand_name_data": ["brand_name_data"],
+        
+        # Survey simulation fields
+        "survey_simulation_results": ["survey_simulation_results"],
+        
+        # Report fields
+        "report": ["report"],
+        "compiled_report": ["compiled_report"],
+        "report_url": ["report_url"],
+        "formatted_report_path": ["formatted_report_path"],
+        "version": ["version"],
+        "created_at": ["created_at"],
+        "last_updated": ["last_updated"],
+        "format": ["format"],
+        "file_size_kb": ["file_size_kb"],
+        "notes": ["notes"],
+        "token_count": ["token_count"],
+    }
+    
+    # Try exact key match first
+    if isinstance(data, dict):
+        for key in possible_keys:
+            if key in data:
+                return data[key]
+    
+    # Expand possible keys with their mappings
+    expanded_keys = []
+    for key in possible_keys:
+        if key in key_mappings:
+            expanded_keys.extend(key_mappings[key])
+        else:
+            expanded_keys.append(key)
+            
+    # Make the expanded keys unique
+    expanded_keys = list(set(expanded_keys))
+        
+    # If data is a dictionary, check if any of the possible keys exist
+    if isinstance(data, dict):
+        # First, check if any of the provided keys exist at this level
+        for key in expanded_keys:
+            if key in data:
+                return data[key]
+        
+        # If not found at this level, check nested dictionaries
+        # Skip metadata and config keys that are unlikely to contain target values
+        skip_keys = ["created_at", "updated_at", "timestamp", "id", "thread_id", 
+                     "run_id", "status", "metadata", "config", "messages", "interrupts"]
+                     
+        for key, value in data.items():
+            if key in skip_keys:
+                continue
+                
+            result = find_value_in_data(value, possible_keys, max_depth, current_depth + 1)
+            if result is not None:
+                return result
+                
+    # If data is a list, check each item
+    elif isinstance(data, list):
+        for item in data:
+            result = find_value_in_data(item, possible_keys, max_depth, current_depth + 1)
+            if result is not None:
+                return result
+                
+    # If we're looking for complex nested keys like 'linguistics.phonetic'
+    for key in possible_keys:
+        if '.' in key:
+            parts = key.split('.', 1)  # Split only on the first dot
+            if isinstance(data, dict) and parts[0] in data:
+                result = find_value_in_data(data[parts[0]], [parts[1]], max_depth, current_depth + 1)
+                if result is not None:
+                    return result
+    
+    # If nothing is found, return None
+    return None
+
+def find_names_in_data(data, max_depth=10, current_depth=0):
+    """
+    Recursively search through a data structure to find brand names and their associated data.
+    
+    Args:
+        data: The data structure to search (can be dict, list, or scalar)
+        max_depth: Maximum recursion depth to prevent stack overflow
+        current_depth: Current recursion depth (used internally)
+        
+    Returns:
+        A list of dictionaries containing brand names and their associated data
+    """
+    # Prevent excessive recursion
+    if current_depth > max_depth:
+        return []
+        
+    # If data is None, return empty list
+    if data is None:
+        return []
+        
+    result = []
+    
+    # Check if this is a brand name entry directly
+    if isinstance(data, dict):
+        # Try to identify if this is a dictionary containing a brand name
+        # Check for key pattern that would indicate a brand name entry
+        if 'brand_name' in data or 'name' in data:
+            # Normalize the data structure
+            name_key = 'brand_name' if 'brand_name' in data else 'name'
+            name = data.get(name_key)
+            
+            # Only include entries that have a valid name
+            if name and isinstance(name, str):
+                # Create a normalized entry
+                entry = {
+                    'name': name,
+                    # Include other relevant fields if they exist
+                    'rank': data.get('rank', None),
+                    'notes': data.get('notes', None),
+                    'errors': data.get('errors', [])
+                }
+                
+                # Copy over any other fields that might be relevant
+                for key, value in data.items():
+                    if key not in ['name', 'brand_name', 'rank', 'notes', 'errors']:
+                        entry[key] = value
+                        
+                result.append(entry)
+                return result
+                
+        # Check if this is a dictionary of brand names
+        # First check keys that might contain brand names
+        brand_keys = ['brand_names', 'generated_names', 'names', 'options', 'proposals']
+        for key in brand_keys:
+            if key in data and isinstance(data[key], (list, dict)):
+                brands = find_names_in_data(data[key], max_depth, current_depth + 1)
+                if brands:
+                    result.extend(brands)
+                    
+        # If still no results, recursively check all values
+        if not result:
+            for key, value in data.items():
+                # Skip metadata keys that are unlikely to contain brand names
+                if key in ['created_at', 'updated_at', 'timestamp', 'id', 'thread_id',
+                          'run_id', 'status', 'metadata']:
+                    continue
+                    
+                brands = find_names_in_data(value, max_depth, current_depth + 1)
+                if brands:
+                    result.extend(brands)
+    
+    # If data is a list, check each item
+    elif isinstance(data, list):
+        for item in data:
+            brands = find_names_in_data(item, max_depth, current_depth + 1)
+            if brands:
+                result.extend(brands)
+                
+    return result
+
+def _render_domain_analysis(analysis):
+    """Helper function to render domain analysis consistently"""
+    cols = st.columns(2)
+    with cols[0]:
+        st.write("**Domain Availability:**", "Available" if analysis.get("domain_exact_match") else "Not Available")
+        st.write("**Acquisition Cost:**", analysis.get("acquisition_cost", "Unknown"))
+        st.write("**Alternative TLDs:**", ", ".join(analysis.get("alternative_tlds", [])))
+        st.write("**Domain Length & Readability:**", analysis.get("domain_length_readability", ""))
+        st.write("**Brand Name Clarity in URL:**", analysis.get("brand_name_clarity_in_url", ""))
+    with cols[1]:
+        st.write("**Contains Hyphens/Numbers:**", "Yes" if analysis.get("hyphens_numbers_present") else "No")
+        st.write("**Misspellings Available:**", "Yes" if analysis.get("misspellings_variations_available") else "No")
+        st.write("**Social Media Handles:**", ", ".join(analysis.get("social_media_availability", [])))
+        st.write("**Scalability:**", analysis.get("scalability_future_proofing", ""))
+    
+    # Additional Notes
+    if analysis.get("notes"):
+        st.write("**Additional Notes:**", analysis.get("notes"))
+    st.divider()
 
 # Main application layout
 st.title("MAE Brand Namer")
@@ -1690,7 +2145,7 @@ with tab1:
                 st.subheader("LangSmith Traces")
                 for trace_id in st.session_state.langsmith_trace_ids:
                     # Create LangSmith trace URL
-                    langsmith_url = f"https://smith.langchain.com/traces/{trace_id}"
+                    langsmith_url = f"https://smith.langchain.com/api/traces/{trace_id}"
                     st.markdown(f"[View detailed trace on LangSmith]({langsmith_url})")
                 
                 st.info("LangSmith traces provide the most detailed view of your flow's execution. Click the links above to view in the LangSmith UI.")
@@ -2213,385 +2668,3 @@ with tab2:
 # Footer
 st.markdown("---")
 st.caption("MAE Brand Namer | Powered by LangGraph AI") 
-
-def find_report_url_in_data(data, max_depth=10, current_depth=0):
-    """
-    Recursively search through a data structure to find URLs that resemble report URLs.
-    
-    Args:
-        data: The data structure to search (can be dict, list, or scalar)
-        max_depth: Maximum recursion depth to prevent stack overflow
-        current_depth: Current recursion depth (used internally)
-        
-    Returns:
-        The first valid report URL found, or None if no URLs are found
-    """
-    # Prevent excessive recursion
-    if current_depth > max_depth:
-        return None
-        
-    # Base case: if data is None or a primitive type (except string)
-    if data is None or (not isinstance(data, (dict, list, str))):
-        return None
-        
-    # Check if data is a string that looks like a URL
-    if isinstance(data, str):
-        # Look for strings that resemble report URLs
-        lower_data = data.lower()
-        if ('http' in lower_data and 
-            ('report' in lower_data or 
-             'pdf' in lower_data or 
-             'doc' in lower_data or 
-             'analysis' in lower_data or 
-             'result' in lower_data)):
-            return data
-        return None
-        
-    # Recursively check dictionaries
-    if isinstance(data, dict):
-        # Check keys that are likely to contain URLs first
-        url_likely_keys = ['report_url', 'pdf_url', 'report_link', 'document_url', 
-                          'url', 'link', 'href', 'download_url', 'analysis_url',
-                          'report_download', 'results_url']
-        
-        # First check keys that are likely to contain URLs
-        for key in url_likely_keys:
-            if key in data:
-                result = find_report_url_in_data(data[key], max_depth, current_depth + 1)
-                if result:
-                    return result
-        
-        # Then check all other keys
-        for key, value in data.items():
-            # Skip keys that are unlikely to contain URLs to improve performance
-            if key in ['created_at', 'updated_at', 'timestamp', 'id', 'thread_id', 
-                      'run_id', 'rank', 'score', 'count', 'index']:
-                continue
-                
-            result = find_report_url_in_data(value, max_depth, current_depth + 1)
-            if result:
-                return result
-                
-    # Recursively check lists
-    elif isinstance(data, list):
-        for item in data:
-            result = find_report_url_in_data(item, max_depth, current_depth + 1)
-            if result:
-                return result
-                
-    return None
-
-def find_value_in_data(data, possible_keys, max_depth=10, current_depth=0):
-    """
-    Recursively search through a data structure to find values associated with any of the specified keys.
-    Optimized for the thread data structure returned by LangSmith API and aligned with
-    the BrandNameGenerationState Pydantic model from state.py.
-    
-    Args:
-        data: The data structure to search (can be dict, list, or scalar)
-        possible_keys: A list of possible key names to look for
-        max_depth: Maximum recursion depth to prevent stack overflow
-        current_depth: Current recursion depth (used internally)
-        
-    Returns:
-        The first value found associated with any of the keys, or None if not found
-    """
-    # Prevent excessive recursion
-    if current_depth > max_depth:
-        return None
-        
-    # If data is None, return None
-    if data is None:
-        return None
-    
-    # Special case: Check top-level thread structure first
-    if current_depth == 0 and isinstance(data, dict):
-        # Direct check at thread root level
-        for key in possible_keys:
-            if key in data:
-                return data[key]
-                
-        # Check in thread metadata
-        if "metadata" in data and isinstance(data["metadata"], dict):
-            for key in possible_keys:
-                if key in data["metadata"]:
-                    return data["metadata"][key]
-                    
-        # Check in thread values section
-        if "values" in data and isinstance(data["values"], dict):
-            for key in possible_keys:
-                if key in data["values"]:
-                    return data["values"][key]
-    
-    # Define mappings from possible keys to actual JSON keys based on BrandNameGenerationState from state.py
-    key_mappings = {
-        # Core fields from BrandNameGenerationState
-        "run_id": ["run_id"],
-        "user_prompt": ["user_prompt", "prompt"],
-        "errors": ["errors"],
-        "start_time": ["start_time", "timestamp", "created_at"],
-        "status": ["status"],
-        "messages": ["messages"],
-        
-        # Brand context fields from BrandNameGenerationState
-        "brand_identity_brief": ["brand_identity_brief"],
-        "brand_promise": ["brand_promise"],
-        "brand_values": ["brand_values"],
-        "brand_personality": ["brand_personality"],
-        "brand_tone_of_voice": ["brand_tone_of_voice"],
-        "brand_purpose": ["brand_purpose"],
-        "brand_mission": ["brand_mission"],
-        "target_audience": ["target_audience"],
-        "customer_needs": ["customer_needs"],
-        "market_positioning": ["market_positioning"],
-        "competitive_landscape": ["competitive_landscape"],
-        "industry_focus": ["industry_focus"],
-        "industry_trends": ["industry_trends"],
-        
-        # Brand name generation fields from BrandNameGenerationState
-        "generated_names": ["generated_names"],
-        "brand_name": ["brand_name"],
-        "naming_category": ["naming_category"],
-        "brand_personality_alignment": ["brand_personality_alignment"],
-        "brand_promise_alignment": ["brand_promise_alignment"],
-        "target_audience_relevance": ["target_audience_relevance"],
-        "market_differentiation": ["market_differentiation"],
-        "visual_branding_potential": ["visual_branding_potential"],
-        "memorability_score": ["memorability_score"],
-        "pronounceability_score": ["pronounceability_score"],
-        
-        # Details fields for brand name generation
-        "target_audience_relevance_details": ["target_audience_relevance_details"],
-        "market_differentiation_details": ["market_differentiation_details"],
-        "visual_branding_potential_details": ["visual_branding_potential_details"],
-        "memorability_score_details": ["memorability_score_details"],
-        "pronounceability_score_details": ["pronounceability_score_details"],
-        
-        # Name generation fields
-        "name_generation_methodology": ["name_generation_methodology"],
-        "timestamp": ["timestamp"],
-        "rank": ["rank"],
-        
-        # Lists for multiple brand names
-        "naming_categories": ["naming_categories"],
-        "brand_personality_alignments": ["brand_personality_alignments"],
-        "brand_promise_alignments": ["brand_promise_alignments"],
-        "target_audience_relevance_list": ["target_audience_relevance_list"],
-        "market_differentiation_list": ["market_differentiation_list"],
-        "memorability_scores": ["memorability_scores"],
-        "pronounceability_scores": ["pronounceability_scores"],
-        "visual_branding_potential_list": ["visual_branding_potential_list"],
-        "name_rankings": ["name_rankings"],
-        
-        # Evaluation fields
-        "strategic_alignment_score": ["strategic_alignment_score"],
-        "distinctiveness_score": ["distinctiveness_score"],
-        "competitive_advantage": ["competitive_advantage"],
-        "brand_fit_score": ["brand_fit_score"],
-        "positioning_strength": ["positioning_strength"],
-        "meaningfulness_score": ["meaningfulness_score"],
-        "phonetic_harmony": ["phonetic_harmony"],
-        "storytelling_potential": ["storytelling_potential"],
-        "domain_viability_score": ["domain_viability_score"],
-        "overall_score": ["overall_score"],
-        "shortlist_status": ["shortlist_status"],
-        "evaluation_comments": ["evaluation_comments"],
-        
-        # Process monitoring
-        "task_statuses": ["task_statuses"],
-        "current_task": ["current_task"],
-        
-        # Analysis results fields
-        "linguistic_analysis_results": ["linguistic_analysis_results"],
-        "semantic_analysis_results": ["semantic_analysis_results"],
-        "cultural_analysis_results": ["cultural_analysis_results"],
-        "translation_analysis_results": ["translation_analysis_results"],
-        "analysis_results": ["analysis_results"],
-        "evaluation_results": ["evaluation_results"],
-        "shortlisted_names": ["shortlisted_names"],
-        
-        # SEO Analysis Fields - exact from state.py
-        "keyword_alignment": ["keyword_alignment"],
-        "search_volume": ["search_volume"],
-        "keyword_competition": ["keyword_competition"],
-        "branded_keyword_potential": ["branded_keyword_potential"],
-        "non_branded_keyword_potential": ["non_branded_keyword_potential"],
-        "exact_match_search_results": ["exact_match_search_results"],
-        "competitor_domain_strength": ["competitor_domain_strength"],
-        "name_length_searchability": ["name_length_searchability"],
-        "unusual_spelling_impact": ["unusual_spelling_impact"],
-        "content_marketing_opportunities": ["content_marketing_opportunities"],
-        "social_media_availability": ["social_media_availability"],
-        "social_media_discoverability": ["social_media_discoverability"],
-        "negative_keyword_associations": ["negative_keyword_associations"],
-        "negative_search_results": ["negative_search_results"],
-        "seo_viability_score": ["seo_viability_score"],
-        "seo_recommendations": ["seo_recommendations"],
-        "seo_analysis_results": ["seo_analysis_results"],
-        
-        # Competitor Analysis Fields
-        "competitor_analysis_results": ["competitor_analysis_results"],
-        
-        # Market Research Analysis Fields - exact from state.py
-        "market_research": ["market_research_results"],
-        "market_research_results": ["market_research_results"],
-        
-        # Domain Analysis Fields - exact from state.py
-        "domain_analysis": ["domain_analysis_results"],
-        "domain_analysis_results": ["domain_analysis_results"],
-        
-        # Brand evaluation fields
-        "brand_name_data": ["brand_name_data"],
-        
-        # Survey simulation fields
-        "survey_simulation_results": ["survey_simulation_results"],
-        
-        # Report fields
-        "report": ["report"],
-        "compiled_report": ["compiled_report"],
-        "report_url": ["report_url"],
-        "formatted_report_path": ["formatted_report_path"],
-        "version": ["version"],
-        "created_at": ["created_at"],
-        "last_updated": ["last_updated"],
-        "format": ["format"],
-        "file_size_kb": ["file_size_kb"],
-        "notes": ["notes"],
-        "token_count": ["token_count"],
-    }
-    
-    # Try exact key match first
-    if isinstance(data, dict):
-        for key in possible_keys:
-            if key in data:
-                return data[key]
-    
-    # Expand possible keys with their mappings
-    expanded_keys = []
-    for key in possible_keys:
-        if key in key_mappings:
-            expanded_keys.extend(key_mappings[key])
-        else:
-            expanded_keys.append(key)
-            
-    # Make the expanded keys unique
-    expanded_keys = list(set(expanded_keys))
-        
-    # If data is a dictionary, check if any of the possible keys exist
-    if isinstance(data, dict):
-        # First, check if any of the provided keys exist at this level
-        for key in expanded_keys:
-            if key in data:
-                return data[key]
-        
-        # If not found at this level, check nested dictionaries
-        # Skip metadata and config keys that are unlikely to contain target values
-        skip_keys = ["created_at", "updated_at", "timestamp", "id", "thread_id", 
-                     "run_id", "status", "metadata", "config", "messages", "interrupts"]
-                     
-        for key, value in data.items():
-            if key in skip_keys:
-                continue
-                
-            result = find_value_in_data(value, possible_keys, max_depth, current_depth + 1)
-            if result is not None:
-                return result
-                
-    # If data is a list, check each item
-    elif isinstance(data, list):
-        for item in data:
-            result = find_value_in_data(item, possible_keys, max_depth, current_depth + 1)
-            if result is not None:
-                return result
-                
-    # If we're looking for complex nested keys like 'linguistics.phonetic'
-    for key in possible_keys:
-        if '.' in key:
-            parts = key.split('.', 1)  # Split only on the first dot
-            if isinstance(data, dict) and parts[0] in data:
-                result = find_value_in_data(data[parts[0]], [parts[1]], max_depth, current_depth + 1)
-                if result is not None:
-                    return result
-    
-    # If nothing is found, return None
-    return None
-
-def find_names_in_data(data, max_depth=10, current_depth=0):
-    """
-    Recursively search through a data structure to find brand names and their associated data.
-    
-    Args:
-        data: The data structure to search (can be dict, list, or scalar)
-        max_depth: Maximum recursion depth to prevent stack overflow
-        current_depth: Current recursion depth (used internally)
-        
-    Returns:
-        A list of dictionaries containing brand names and their associated data
-    """
-    # Prevent excessive recursion
-    if current_depth > max_depth:
-        return []
-        
-    # If data is None, return empty list
-    if data is None:
-        return []
-        
-    result = []
-    
-    # Check if this is a brand name entry directly
-    if isinstance(data, dict):
-        # Try to identify if this is a dictionary containing a brand name
-        # Check for key pattern that would indicate a brand name entry
-        if 'brand_name' in data or 'name' in data:
-            # Normalize the data structure
-            name_key = 'brand_name' if 'brand_name' in data else 'name'
-            name = data.get(name_key)
-            
-            # Only include entries that have a valid name
-            if name and isinstance(name, str):
-                # Create a normalized entry
-                entry = {
-                    'name': name,
-                    # Include other relevant fields if they exist
-                    'rank': data.get('rank', None),
-                    'notes': data.get('notes', None),
-                    'errors': data.get('errors', [])
-                }
-                
-                # Copy over any other fields that might be relevant
-                for key, value in data.items():
-                    if key not in ['name', 'brand_name', 'rank', 'notes', 'errors']:
-                        entry[key] = value
-                        
-                result.append(entry)
-                return result
-                
-        # Check if this is a dictionary of brand names
-        # First check keys that might contain brand names
-        brand_keys = ['brand_names', 'generated_names', 'names', 'options', 'proposals']
-        for key in brand_keys:
-            if key in data and isinstance(data[key], (list, dict)):
-                brands = find_names_in_data(data[key], max_depth, current_depth + 1)
-                if brands:
-                    result.extend(brands)
-                    
-        # If still no results, recursively check all values
-        if not result:
-            for key, value in data.items():
-                # Skip metadata keys that are unlikely to contain brand names
-                if key in ['created_at', 'updated_at', 'timestamp', 'id', 'thread_id',
-                          'run_id', 'status', 'metadata']:
-                    continue
-                    
-                brands = find_names_in_data(value, max_depth, current_depth + 1)
-                if brands:
-                    result.extend(brands)
-    
-    # If data is a list, check each item
-    elif isinstance(data, list):
-        for item in data:
-            brands = find_names_in_data(item, max_depth, current_depth + 1)
-            if brands:
-                result.extend(brands)
-                
-    return result
