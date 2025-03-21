@@ -47,6 +47,10 @@ markdown = ">=3.4.0"
 postgrest = ">=0.10.6"
 storage3 = ">=0.5.2"
 gotrue = ">=1.0.1"
+requests = "^2.32.3"
+langgraph-api = "^0.0.32"
+fastapi = "^0.115.11"
+starlette = "^0.46.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.0"

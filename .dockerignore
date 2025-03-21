@@ -1,0 +1,28 @@
+# Git
+.git/
+.gitignore
+
+# Virtual environment
+.venv/
+venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Development files
+.env.example
+*.log
+.DS_Store
+*.swp
+*.swo
+
+# Test files
+tests/
+test_*.py 
