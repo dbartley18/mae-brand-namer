@@ -60,9 +60,7 @@
     "japanese_translation_expert": "./src/mae_brand_namer/agents/japanese_translation_expert.py:JapaneseTranslationExpert",
     "arabic_translation_expert": "./src/mae_brand_namer/agents/arabic_translation_expert.py:ArabicTranslationExpert",
     "base_language_expert": "./src/mae_brand_namer/agents/base_language_expert.py:BaseLanguageTranslationExpert"
-  },
-  "server": {
-    "config": "./src/mae_brand_namer/server.py:get_server_config"
+  
   },
   "studio": {
     "url": "${LANGGRAPH_STUDIO_URL}",

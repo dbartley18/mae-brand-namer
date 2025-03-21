@@ -98,6 +98,125 @@ class SupabaseManager:
         
         return self._client.table(table_name)
     
+    def _execute_select_operation(self, table: str, data: dict):
+        """Execute a select operation with filters."""
+        query = self.client.table(table).select(data.get("select", "*"))
+        
+        # Apply filters and options
+        query = self._apply_filters_to_query(query, data)
+        
+        # Execute the query
+        return query.execute()
+    
+    def _apply_filters_to_query(self, query, data: dict):
+        """Apply filters, ordering and limits to a query."""
+        # Apply filters
+        for key, value in data.items():
+            if key not in ["select", "order", "limit"]:
+                query = self._apply_filter(query, key, value)
+        
+        # Apply ordering if specified
+        if "order" in data:
+            query = query.order(data["order"])
+        
+        # Apply limit if specified
+        if "limit" in data:
+            query = query.limit(data["limit"])
+            
+        return query
+    
+    def _apply_filter(self, query, key: str, value):
+        """Apply a single filter to a query based on the value format."""
+        if isinstance(value, str) and len(value) > 3 and "." in value:
+            parts = value.split(".", 1)
+            if len(parts) == 2:
+                return self._apply_operator_filter(query, key, parts[0], parts[1])
+        
+        # Default case: use equality filter
+        return query.eq(key, value)
+    
+    def _apply_operator_filter(self, query, key: str, operator: str, value: str):
+        """Apply an operator-based filter to a query."""
+        if operator == "eq":
+            return query.eq(key, value)
+        elif operator == "neq":
+            return query.neq(key, value)
+        elif operator == "gt":
+            return query.gt(key, value)
+        elif operator == "gte":
+            return query.gte(key, value)
+        elif operator == "lt":
+            return query.lt(key, value)
+        elif operator == "lte":
+            return query.lte(key, value)
+        elif operator == "like":
+            return query.like(key, value)
+        elif operator == "ilike":
+            return query.ilike(key, value)
+        elif operator == "is":
+            return query.is_(key, value)
+        elif operator == "in" and value.startswith("(") and value.endswith(")"):
+            values_list = value[1:-1].split(",")
+            return query.in_(key, values_list)
+        
+        # Default fallback
+        return query.eq(key, value)
+    
+    def _execute_operation(self, operation: str, table: str, data: dict):
+        """Execute a single database operation based on type."""
+        if operation == "insert":
+            return self.client.table(table).insert(data).execute()
+        elif operation == "update":
+            return self.client.table(table).update(data).eq("id", data["id"]).execute()
+        elif operation == "upsert":
+            return self.client.table(table).upsert(data).execute()
+        elif operation == "delete":
+            return self.client.table(table).delete().eq("id", data["id"]).execute()
+        elif operation == "select":
+            return self._execute_select_operation(table, data)
+        else:
+            raise ValueError(f"Unsupported operation: {operation}")
+    
+    def _log_operation_start(self, operation: str, table: str, data: dict):
+        """Log the start of a database operation."""
+        logger.debug(
+            f"Executing Supabase {operation} operation",
+            extra={
+                "table": table,
+                "operation": operation,
+                "data_keys": list(data.keys())
+            }
+        )
+    
+    def _log_operation_success(self, operation: str, table: str):
+        """Log a successful database operation."""
+        logger.debug(
+            f"Supabase {operation} operation succeeded",
+            extra={
+                "table": table,
+                "operation": operation,
+                "status": "success",
+            }
+        )
+    
+    def _log_operation_error(self, operation: str, table: str, error, retries: int, max_retries: int):
+        """Log a database operation error."""
+        error_code = getattr(error, "code", "unknown")
+        error_details = getattr(error, "details", "unknown")
+        
+        logger.error(
+            f"Supabase {operation} operation failed",
+            extra={
+                "table": table,
+                "operation": operation,
+                "error_code": error_code,
+                "error_message": str(error),
+                "error_details": error_details,
+                "attempt": retries + 1,
+                "max_retries": max_retries
+            }
+        )
+    
     async def execute_with_retry(self, operation: str, table: str, data: dict, max_retries: Optional[int] = None) -> dict:
         """
         Execute a Supabase operation with retry logic.
@@ -121,121 +240,23 @@ class SupabaseManager:
         retries = 0
         last_error = None
         
-        # Debug log the operation we're about to attempt
-        logger.debug(
-            f"Executing Supabase {operation} operation",
-            extra={
-                "table": table,
-                "operation": operation,
-                "data_keys": list(data.keys())
-            }
-        )
+        # Log operation start
+        self._log_operation_start(operation, table, data)
         
         while retries < max_retries:
             try:
-                if operation == "insert":
-                    response = self.client.table(table).insert(data).execute()
-                elif operation == "update":
-                    response = self.client.table(table).update(data).eq("id", data["id"]).execute()
-                elif operation == "upsert":
-                    response = self.client.table(table).upsert(data).execute()
-                elif operation == "delete":
-                    response = self.client.table(table).delete().eq("id", data["id"]).execute()
-                elif operation == "select":
-                    # Handle select operations
-                    query = self.client.table(table).select(data.get("select", "*"))
-                    
-                    # Apply filters if provided
-                    for key, value in data.items():
-                        if key != "select" and key != "order" and key != "limit":
-                            # Check if the value already includes an operator
-                            if isinstance(value, str) and len(value) > 3 and "." in value:
-                                # Extract operator and actual value
-                                parts = value.split(".", 1)
-                                if len(parts) == 2:
-                                    operator, actual_value = parts
-                                    # Apply the appropriate operator method
-                                    if operator == "eq":
-                                        query = query.eq(key, actual_value)
-                                    elif operator == "neq":
-                                        query = query.neq(key, actual_value)
-                                    elif operator == "gt":
-                                        query = query.gt(key, actual_value)
-                                    elif operator == "gte":
-                                        query = query.gte(key, actual_value)
-                                    elif operator == "lt":
-                                        query = query.lt(key, actual_value)
-                                    elif operator == "lte":
-                                        query = query.lte(key, actual_value)
-                                    elif operator == "like":
-                                        query = query.like(key, actual_value)
-                                    elif operator == "ilike":
-                                        query = query.ilike(key, actual_value)
-                                    elif operator == "is":
-                                        query = query.is_(key, actual_value)
-                                    elif operator == "in":
-                                        # Handle 'in' operator which needs a list
-                                        if actual_value.startswith("(") and actual_value.endswith(")"):
-                                            values_list = actual_value[1:-1].split(",")
-                                            query = query.in_(key, values_list)
-                                        else:
-                                            # If not properly formatted, fall back to eq
-                                            query = query.eq(key, value)
-                                    else:
-                                        # Unknown operator, use eq as fallback
-                                        query = query.eq(key, value)
-                                else:
-                                    # No valid operator format, use eq as fallback
-                                    query = query.eq(key, value)
-                            else:
-                                # No operator, use standard eq operator
-                                query = query.eq(key, value)
-                    
-                    # Apply ordering if specified
-                    if "order" in data:
-                        query = query.order(data["order"])
-                    
-                    # Apply limit if specified
-                    if "limit" in data:
-                        query = query.limit(data["limit"])
-                    
-                    # Execute the query
-                    response = query.execute()
-                else:
-                    raise ValueError(f"Unsupported operation: {operation}")
+                # Execute the operation
+                response = self._execute_operation(operation, table, data)
                 
-                # Log successful operation
-                logger.debug(
-                    f"Supabase {operation} operation succeeded",
-                    extra={
-                        "table": table,
-                        "operation": operation,
-                        "status": "success",
-                    }
-                )
+                # Log success
+                self._log_operation_success(operation, table)
                 
                 return response.data
                 
             except APIError as e:
                 last_error = e
-                # Check for specific error types
-                error_message = str(e)
-                error_code = getattr(e, "code", "unknown")
-                error_details = getattr(e, "details", "unknown")
-                
-                # Log more detailed error information
-                logger.error(
-                    f"Supabase {operation} operation failed",
-                    extra={
-                        "table": table,
-                        "operation": operation,
-                        "error_code": error_code,
-                        "error_message": error_message,
-                        "error_details": error_details,
-                        "attempt": retries + 1,
-                        "max_retries": max_retries
-                    }
-                )
+                # Log the error
+                self._log_operation_error(operation, table, e, retries, max_retries)
                 
                 # Determine if we should retry
                 retries += 1

@@ -8,7 +8,7 @@ template: |
   Format Instructions: {{format_instructions}}
 
   DATA STRUCTURE:
-  The data follows this structure based on the NameGenerationSection model:
+  The data follows this structure:
   {
     "introduction": "Overview text", // String
     "categories": [ // List of NameCategory objects

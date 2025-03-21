@@ -559,6 +559,17 @@ def create_workflow(config: dict) -> StateGraph:
         )), "format_report")
     )
     
+    # Add a completion node to properly signal workflow end
+    workflow.add_node("workflow_complete", 
+        lambda state: {
+            "status": "completed", 
+            "completed_at": datetime.now().isoformat(),
+            # Update any missing fields that indicate completion
+            **({"last_updated": datetime.now().isoformat()} if state.status != "completed" else {}),
+            **({"end_time": datetime.now().isoformat()} if not hasattr(state, "end_time") or not state.end_time else {})
+        }
+    )
+    
     # Add edges to connect nodes in the workflow
     workflow.add_edge("generate_uid", "understand_brand_context")
     workflow.add_edge("understand_brand_context", "generate_brand_names")
@@ -579,6 +590,7 @@ def create_workflow(config: dict) -> StateGraph:
     workflow.add_edge("process_competitor_analysis", "process_survey_simulation")
     workflow.add_edge("process_survey_simulation", "compile_report")
     workflow.add_edge("compile_report", "format_report")
+    workflow.add_edge("format_report", "workflow_complete")
     
     # Define entry point
     workflow.set_entry_point("generate_uid")
