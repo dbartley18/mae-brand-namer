@@ -8,18 +8,6 @@
   },
   "env": ".env",
   "store": {
-    "index": {
-      "embed": "./src/mae_brand_namer/utils/embeddings.py:embed_texts",
-      "dims": 768,
-      "fields": [
-        "brand_identity_brief",
-        "brand_promise",
-        "brand_values",
-        "brand_personality",
-        "target_audience",
-        "market_positioning"
-      ]
-    },
     "supabase": {
       "url": "${SUPABASE_URL}",
       "key": "${SUPABASE_SERVICE_KEY}",
@@ -75,7 +63,7 @@
   },
   "studio": {
     "url": "${LANGGRAPH_STUDIO_URL}",
-    "api_key": "${LANGGRAPH_STUDIO_API_KEY}",
+    "api_key": "${LANGGRAPH_API_KEY}",
     "project": "mae-brand-namer",
     "environment": "${ENVIRONMENT}",
     "debug": "${DEBUG}",
@@ -85,7 +73,7 @@
       "file": "${LOG_FILE}"
     }
   },
-  "python_version": "3.11",
+  "python_version": "3.12",
   "test": {
     "pytest": {
       "testpaths": ["tests"],

@@ -2,6 +2,10 @@
 Mae Brand Namer - A LangGraph-powered brand name generation and evaluation system.
 """
 
+# Apply patches to external libraries
+from .patches import apply_patches
+apply_patches()
+
 # Import models that don't have circular dependencies
 from .models.state import BrandNameGenerationState, AppState
 from .cli import cli

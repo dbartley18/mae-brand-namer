@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     
     # Model configuration
     model_name: str = "gemini-2.0-flash"
-    model_temperature: float = 1.0
+    model_temperature: float = 1.5
     gemini_api_key: Optional[str] = None
     
     # Add google_api_key to point to gemini_api_key for compatibility

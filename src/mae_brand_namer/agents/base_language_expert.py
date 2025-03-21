@@ -17,6 +17,7 @@ from ..utils.logging import get_logger
 from ..config.dependencies import Dependencies
 from ..utils.rate_limiter import google_api_limiter
 from ..utils.supabase_utils import SupabaseManager
+from ..utils.json_parser import fix_json_with_unescaped_quotes
 
 logger = get_logger(__name__)
 
@@ -120,7 +121,8 @@ class BaseLanguageTranslationExpert:
             "\n\nIMPORTANT: You must respond with a valid JSON object that matches EXACTLY the schema provided." +
             "\nDo NOT nest fields under additional keys." +
             f"\nYou are analyzing ONLY for {self.language_name}. Do not analyze other languages." +
-            "\n\nCRITICAL: Your analysis MUST be written in English, regardless of the target language. Only the 'direct_translation' field and examples within other fields should contain text in the target language. All explanations and analysis must be in English."
+            "\n\nCRITICAL: Your analysis MUST be written in English, regardless of the target language. Only the 'direct_translation' field and examples within other fields should contain text in the target language. All explanations and analysis must be in English." +
+            "\n\nALSO CRITICAL: When including quotes within text values, use single quotes (') instead of double quotes (\") to avoid breaking the JSON format."
         )
         
         # Create the prompt template
@@ -289,8 +291,15 @@ class BaseLanguageTranslationExpert:
                     
                     # Parse and process the response
                     try:
-                        # Parse with structured output parser
-                        analysis = self.output_parser.parse(response.content)
+                        # Fix any JSON parsing issues with unescaped quotes
+                        fixed_content = fix_json_with_unescaped_quotes(response.content)
+                        
+                        try:
+                            # Try to parse the fixed content directly
+                            analysis = json.loads(fixed_content)
+                        except json.JSONDecodeError:
+                            # If that fails, try using the structured output parser
+                            analysis = self.output_parser.parse(fixed_content)
                         
                         # Create the result dictionary with standard required fields
                         result = {
@@ -318,6 +327,9 @@ class BaseLanguageTranslationExpert:
                         
                     except Exception as parse_error:
                         logger.error(f"Error parsing {self.language_name} translation analysis: {str(parse_error)}")
+                        # Log the problematic content for debugging
+                        logger.debug(f"Problematic content: {response.content}")
+                        
                         # Create a minimal valid result
                         result = {
                             "brand_name": brand_name,

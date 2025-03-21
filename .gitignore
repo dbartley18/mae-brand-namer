@@ -217,3 +217,4 @@ tmp/
 debug_log.txt
 debug_output.txt
 docs/streamlitjson.md
+=2.1.0
