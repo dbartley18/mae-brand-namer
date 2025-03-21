@@ -124,7 +124,7 @@ def get_cultural_sensitivity_prompt(**kwargs) -> Dict[str, Any]:
     Get the cultural sensitivity prompt template with variables replaced.
     """
     return load_and_process_template(
-        os.path.join(TEMPLATE_DIR, 'cultural_sensitivity.yaml'),
+        os.path.join(TEMPLATE_DIR, 'cultural_sensitivity_analysis.yaml'),
         kwargs
     )
 
