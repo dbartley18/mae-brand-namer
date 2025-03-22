@@ -501,6 +501,9 @@ class BrandNameGenerationState(Serializable, BaseModel):
                 if task_status.start_time:
                     duration = now - task_status.start_time
                     task_status.duration_sec = int(duration.total_seconds())
+                # Add user prompt and report URL for completed tasks
+                task_status.user_prompt = self.user_prompt
+                task_status.report_url = self.report_url
             
             if status == "error" and error:
                 task_status.error_message = str(error)

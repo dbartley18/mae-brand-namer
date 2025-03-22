@@ -763,8 +763,8 @@ class ReportFormatter:
         Transform market research data to match expected format.
         
         The market research data contains:
-        1. A list of brand name market analyses
-        2. Each analysis has market fit, target audience alignment, etc.
+        1. A "market_research" key containing a list of brand analyses
+        2. Each analysis has market size, industry name, trends, etc.
         
         Args:
             data: Raw market research data
@@ -775,74 +775,40 @@ class ReportFormatter:
         if not data:
             return {}
 
-        # Initialize transformed data structure
-        transformed_data = {
-            "brand_names": {},
-            "summary": "This market research analysis evaluates each brand name's potential market impact and alignment with target audience preferences.",
-            "market_overview": "Analysis of market trends, consumer preferences, and competitive landscape to assess brand name viability."
-        }
-
         try:
-            # Try Pydantic validation first
-            market_research_data = MarketResearch.model_validate(data)
-            return market_research_data.model_dump()
+            # Extract the list of market research entries
+            market_research_list = data.get("market_research", [])
+            if not market_research_list:
+                return {}
 
-        except (ValidationError, AttributeError):
-            # Fallback to manual transformation if validation fails
-            brand_analyses = []
-            
-            # Case 1: The expected structure with "market_research" key containing a list
-            if isinstance(data, dict) and "market_research" in data:
-                if isinstance(data["market_research"], list):
-                    brand_analyses = data["market_research"]
-            # Case 2: Already has "brand_names" key (already transformed)
-            elif isinstance(data, dict) and "brand_names" in data:
-                return data
-            # Case 3: Is itself a list of brand analyses
-            elif isinstance(data, list):
-                brand_analyses = data
-            
-            # Process each brand analysis
-            for analysis in brand_analyses:
-                if not isinstance(analysis, dict) or "brand_name" not in analysis:
-                    continue
-                
-                brand_name = analysis.get("brand_name", "")
-                
-                # Initialize brand entry with default structure
-                transformed_data["brand_names"][brand_name] = {
-                    "market_fit": {
-                        "score": analysis.get("market_fit_score", 0),
-                        "strengths": analysis.get("market_strengths", []),
-                        "weaknesses": analysis.get("market_weaknesses", [])
-                    },
-                    "target_audience": {
-                        "alignment": analysis.get("target_audience_alignment", "Unknown"),
-                        "demographics": analysis.get("target_demographics", {}),
-                        "psychographics": analysis.get("target_psychographics", {})
-                    },
-                    "market_potential": {
-                        "growth_opportunities": analysis.get("growth_opportunities", []),
-                        "risks": analysis.get("market_risks", []),
-                        "viability_score": analysis.get("market_viability_score", 0)
-                    },
-                    "recommendations": analysis.get("recommendations", [
-                        "Focus on key market differentiators",
-                        "Address identified market gaps",
-                        "Leverage market growth opportunities"
-                    ]),
-                    "notes": analysis.get("notes", "")
+            # Transform into dictionary keyed by brand name
+            transformed_data = {
+                "market_research": {
+                    entry["brand_name"]: {
+                        "brand_name": entry["brand_name"],
+                        "market_size": entry["market_size"],
+                        "industry_name": entry["industry_name"],
+                        "emerging_trends": entry["emerging_trends"],
+                        "key_competitors": entry["key_competitors"],
+                        "potential_risks": entry["potential_risks"],
+                        "recommendations": entry["recommendations"],
+                        "market_viability": entry["market_viability"],
+                        "market_growth_rate": entry["market_growth_rate"],
+                        "market_opportunity": entry["market_opportunity"],
+                        "target_audience_fit": entry["target_audience_fit"],
+                        "competitive_analysis": entry["competitive_analysis"],
+                        "customer_pain_points": entry["customer_pain_points"],
+                        "market_entry_barriers": entry["market_entry_barriers"]
+                    }
+                    for entry in market_research_list
                 }
-                
-                # Add industry insights if available
-                if "industry_insights" in analysis:
-                    transformed_data["brand_names"][brand_name]["industry_insights"] = analysis["industry_insights"]
-                
-                # Add competitive positioning if available
-                if "competitive_positioning" in analysis:
-                    transformed_data["brand_names"][brand_name]["competitive_positioning"] = analysis["competitive_positioning"]
+            }
             
             return transformed_data
+
+        except (KeyError, AttributeError) as e:
+            logger.error(f"Error transforming market research data: {str(e)}")
+            return {}
 
     def _transform_competitor_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -862,11 +828,8 @@ class ReportFormatter:
         if not data:
             return {}
 
-        # Initialize the transformed data structure
-        transformed_data = {
-            "brand_names": {},
-            "summary": "This competitive analysis evaluates how each proposed brand name compares to competitors in the industry, highlighting opportunities for differentiation and potential risks."
-        }
+        # Initialize transformed data structure
+        transformed_data = {}
 
         try:
             # Try Pydantic validation first
@@ -876,94 +839,31 @@ class ReportFormatter:
             if hasattr(competitor_analysis_data, "competitor_analysis"):
                 for brand_analysis in competitor_analysis_data.competitor_analysis:
                     brand_name = brand_analysis.brand_name
-                    
-                    # Create competitor analyses for this brand
-                    competitor_analyses = []
-                    for competitor in brand_analysis.competitors:
-                        competitor_analyses.append({
-                            "competitor_name": competitor.competitor_name,
-                            "risk_of_confusion": competitor.risk_of_confusion,
-                            "strengths": competitor.competitor_strengths,
-                            "weaknesses": competitor.competitor_weaknesses,
-                            "positioning": competitor.competitor_positioning,
-                            "trademark_conflict_risk": competitor.trademark_conflict_risk,
-                            "target_audience": competitor.target_audience_perception,
-                            "differentiation_opportunity": competitor.competitor_differentiation_opportunity
-                        })
-                    
-                    # Store brand-specific competitor analysis
-                    transformed_data["brand_names"][brand_name] = {
-                        "competitors": competitor_analyses,
-                        "differentiation": f"Analysis of {len(competitor_analyses)} key competitors reveals opportunities for {brand_name} to differentiate through distinct positioning and messaging.",
-                        "similarity_assessment": {c["competitor_name"]: f"Risk of confusion: {c['risk_of_confusion']}/10" for c in competitor_analyses},
-                        "recommendations": ["Emphasize unique brand attributes", "Monitor trademark risks", "Leverage differentiation opportunities"]
+                    transformed_data[brand_name] = {
+                        "brand_name": brand_name,
+                        "competitors": [
+                            {
+                                "competitor_name": competitor.competitor_name,
+                                "competitor_naming_style": competitor.competitor_naming_style,
+                                "competitor_keywords": competitor.competitor_keywords,
+                                "competitor_positioning": competitor.competitor_positioning,
+                                "competitor_strengths": competitor.competitor_strengths,
+                                "competitor_weaknesses": competitor.competitor_weaknesses,
+                                "competitor_differentiation_opportunity": competitor.competitor_differentiation_opportunity,
+                                "differentiation_score": competitor.differentiation_score,
+                                "risk_of_confusion": competitor.risk_of_confusion,
+                                "target_audience_perception": competitor.target_audience_perception,
+                                "competitive_advantage_notes": competitor.competitive_advantage_notes,
+                                "trademark_conflict_risk": competitor.trademark_conflict_risk
+                            }
+                            for competitor in brand_analysis.competitors
+                        ]
                     }
             return transformed_data
 
-        except (ValidationError, AttributeError):
-            # Fallback to manual transformation if validation fails
-            brand_analyses = []
-            
-            # Case 1: The expected structure with "competitor_analysis" key containing a list
-            if isinstance(data, dict) and "competitor_analysis" in data:
-                if isinstance(data["competitor_analysis"], list):
-                    brand_analyses = data["competitor_analysis"]
-            # Case 2: Already has "brand_names" key (already transformed)
-            elif isinstance(data, dict) and "brand_names" in data:
-                return data
-            # Case 3: Is itself a list of brand analyses
-            elif isinstance(data, list):
-                brand_analyses = data
-            
-            # Process each brand analysis
-            for analysis in brand_analyses:
-                if not isinstance(analysis, dict) or "brand_name" not in analysis:
-                    continue
-                
-                brand_name = analysis.get("brand_name", "")
-                
-                # Initialize brand entry
-                transformed_data["brand_names"][brand_name] = {
-                    "competitors": [],
-                    "differentiation": "",
-                    "similarity_assessment": {},
-                    "recommendations": []
-                }
-                
-                # Process competitors if available
-                if "competitors" in analysis and isinstance(analysis["competitors"], list):
-                    for competitor in analysis["competitors"]:
-                        if isinstance(competitor, dict):
-                            competitor_details = {
-                                "competitor_name": competitor.get("competitor_name", "Unknown"),
-                                "risk_of_confusion": competitor.get("risk_of_confusion", 0),
-                                "strengths": competitor.get("competitor_strengths", ""),
-                                "weaknesses": competitor.get("competitor_weaknesses", ""),
-                                "positioning": competitor.get("competitor_positioning", ""),
-                                "trademark_conflict_risk": competitor.get("trademark_conflict_risk", ""),
-                                "target_audience": competitor.get("target_audience_perception", ""),
-                                "differentiation_opportunity": competitor.get("competitor_differentiation_opportunity", "")
-                            }
-                            transformed_data["brand_names"][brand_name]["competitors"].append(competitor_details)
-                
-                # Add differentiation summary
-                competitors_count = len(transformed_data["brand_names"][brand_name]["competitors"])
-                transformed_data["brand_names"][brand_name]["differentiation"] = f"Analysis of {competitors_count} key competitors reveals opportunities for {brand_name} to differentiate through distinct positioning and messaging."
-                
-                # Add similarity assessment
-                transformed_data["brand_names"][brand_name]["similarity_assessment"] = {
-                    c["competitor_name"]: f"Risk of confusion: {c['risk_of_confusion']}/10"
-                    for c in transformed_data["brand_names"][brand_name]["competitors"]
-                }
-                
-                # Add default recommendations
-                transformed_data["brand_names"][brand_name]["recommendations"] = [
-                    "Emphasize unique brand attributes",
-                    "Monitor trademark risks",
-                    "Leverage differentiation opportunities"
-                ]
-            
-            return transformed_data
+        except (ValidationError, AttributeError) as e:
+            logger.error(f"Validation error in competitor analysis: {str(e)}")
+            return {}
 
     def _transform_domain_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1045,7 +945,11 @@ class ReportFormatter:
 
     def _transform_seo_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Transform SEO online discoverability data to match expected format.
+        Transform SEO analysis data to match expected format.
+        
+        The SEO analysis data contains:
+        1. A "seo_online_discoverability" key with a list of brand SEO analyses
+        2. Each analysis has search volume, keyword alignment, etc.
         
         Args:
             data: Raw SEO analysis data
@@ -1056,72 +960,43 @@ class ReportFormatter:
         if not data:
             return {}
 
-        # Initialize transformed data structure
-        transformed_data = {
-            "brand_names": {},
-            "summary": "This SEO and online discoverability analysis evaluates brand names based on search metrics, keyword potential, and social media presence."
-        }
+        try:
+            # Extract the list of SEO analysis entries
+            seo_analysis_list = data.get("seo_online_discoverability", [])
+            if not seo_analysis_list:
+                return {}
 
-        brand_analyses = []
-        
-        # Case 1: The expected structure with "seo_online_discoverability" key containing a list
-        if isinstance(data, dict) and "seo_online_discoverability" in data:
-            if isinstance(data["seo_online_discoverability"], list):
-                brand_analyses = data["seo_online_discoverability"]
-        # Case 2: Already has "brand_names" key (already transformed)
-        elif isinstance(data, dict) and "brand_names" in data:
-            return data
-        # Case 3: Is itself a list of brand analyses
-        elif isinstance(data, list):
-            brand_analyses = data
-        
-        # Process each brand analysis
-        for analysis in brand_analyses:
-            if not isinstance(analysis, dict) or "brand_name" not in analysis:
-                continue
-            
-            brand_name = analysis.get("brand_name", "")
-            
-            # Initialize brand entry with default structure
-            transformed_data["brand_names"][brand_name] = {
-                "search_metrics": {
-                    "Search Volume": analysis.get("search_volume", "Unknown"),
-                    "Exact Match Results": analysis.get("exact_match_search_results", 0),
-                    "SEO Viability Score": analysis.get("seo_viability_score", 0)
-                },
-                "competitive_analysis": {
-                    "Keyword Competition": analysis.get("keyword_competition", "Unknown"),
-                    "Competitor Domain Strength": analysis.get("competitor_domain_strength", "Unknown"),
-                    "Negative Search Results": "Yes" if analysis.get("negative_search_results", False) else "No"
-                },
-                "keyword_opportunities": {
-                    "Keyword Alignment": analysis.get("keyword_alignment", "Unknown"),
-                    "Branded Keyword Potential": analysis.get("branded_keyword_potential", "Unknown"),
-                    "Non-Branded Keyword Potential": analysis.get("non_branded_keyword_potential", "Unknown"),
-                    "Negative Keyword Associations": analysis.get("negative_keyword_associations", "None identified")
-                },
-                "social_media_potential": {
-                    "Social Media Availability": "Available" if analysis.get("social_media_availability", False) else "Not Available",
-                    "Social Media Discoverability": analysis.get("social_media_discoverability", "Unknown")
-                },
-                "seo_strengths": [
-                    f"Name length is {analysis.get('name_length_searchability', 'moderate').lower()}, which affects search behavior",
-                    f"Strong potential for branded keyword dominance" if "high" in analysis.get("branded_keyword_potential", "").lower() else "Moderate potential for branded keyword development",
-                    f"Content marketing opportunities: {analysis.get('content_marketing_opportunities', 'To be determined')}"
-                ],
-                "seo_challenges": [
-                    f"Unusual spelling impacts searchability" if analysis.get("unusual_spelling_impact", False) else "No spelling issues affecting searchability",
-                    f"Negative keyword associations: {analysis.get('negative_keyword_associations', 'None identified')}" if analysis.get("negative_keyword_associations", "").lower() not in ["none", "no", "none identified"] else "No negative keyword associations"
-                ],
-                "recommendations": analysis.get("recommendations", [
-                    "Optimize for branded search terms",
-                    "Develop content around key search themes",
-                    "Monitor and improve search visibility"
-                ]),
-                "overall_seo_rating": f"{analysis.get('seo_viability_score', 0)}/10"
+            # Transform into dictionary keyed by brand name
+            transformed_data = {
+                "seo_analysis": {
+                    entry["brand_name"]: {
+                        "brand_name": entry["brand_name"],
+                        "search_volume": entry["search_volume"],
+                        "keyword_alignment": entry["keyword_alignment"],
+                        "keyword_competition": entry["keyword_competition"],
+                        "seo_recommendations": entry["seo_recommendations"],
+                        "seo_viability_score": entry["seo_viability_score"],
+                        "negative_search_results": entry["negative_search_results"],
+                        "unusual_spelling_impact": entry["unusual_spelling_impact"],
+                        "branded_keyword_potential": entry["branded_keyword_potential"],
+                        "name_length_searchability": entry["name_length_searchability"],
+                        "social_media_availability": entry["social_media_availability"],
+                        "competitor_domain_strength": entry["competitor_domain_strength"],
+                        "exact_match_search_results": entry["exact_match_search_results"],
+                        "social_media_discoverability": entry["social_media_discoverability"],
+                        "negative_keyword_associations": entry["negative_keyword_associations"],
+                        "non_branded_keyword_potential": entry["non_branded_keyword_potential"],
+                        "content_marketing_opportunities": entry["content_marketing_opportunities"]
+                    }
+                    for entry in seo_analysis_list
+                }
             }
-        
-        return transformed_data
+            
+            return transformed_data
+
+        except (KeyError, AttributeError) as e:
+            logger.error(f"Error transforming SEO analysis data: {str(e)}")
+            return {}
 
     def _validate_section_data(self, section_name: str, data: Any) -> Tuple[bool, List[str]]:
         """
@@ -2096,180 +1971,115 @@ class ReportFormatter:
         """
         try:
             # Add section title
-            doc.add_heading("SEO and Online Discoverability Analysis", level=1)
+            doc.add_heading("SEO Analysis", level=1)
             
             # Add introduction
             doc.add_paragraph(
-                "This section analyzes the SEO potential and online discoverability of the brand name options, "
-                "evaluating factors such as search volume, competition, keyword potential, and social media presence "
-                "to identify names with the strongest digital marketing potential."
+                "This section analyzes the SEO potential and online discoverability of each brand name, "
+                "including search metrics, keyword opportunities, and recommendations for improving "
+                "online visibility."
             )
             
             # Transform data using model
             transformed_data = self._transform_seo_analysis(data)
-            logger.info(f"Transformed SEO analysis data: {len(str(transformed_data))} chars")
+            logger.debug(f"Transformed SEO analysis data: {len(str(transformed_data))} chars")
             
             # Check if we have analysis data
-            if transformed_data and isinstance(transformed_data, dict):
-                # Process methodology if available
-                if "methodology" in transformed_data and transformed_data["methodology"]:
-                    doc.add_heading("Methodology", level=2)
-                    doc.add_paragraph(transformed_data["methodology"])
-                
-                # Process brand name analyses
-                if "brand_names" in transformed_data and transformed_data["brand_names"]:
-                    doc.add_heading("Brand Name SEO Analysis", level=2)
+            if transformed_data and "seo_analysis" in transformed_data:
+                # Process each brand's SEO analysis
+                for brand_name, details in transformed_data["seo_analysis"].items():
+                    # Add brand name as heading
+                    doc.add_heading(f"SEO Analysis for {brand_name}", level=2)
                     
-                    brand_analyses = transformed_data["brand_names"]
+                    # Search Metrics
+                    doc.add_heading("Search Metrics", level=3)
+                    metrics_table = doc.add_table(rows=4, cols=2)
+                    metrics_table.style = 'Table Grid'
                     
-                    # Process each brand name analysis
-                    for brand_name, analysis in brand_analyses.items():
-                        # Add brand name as heading
-                        doc.add_heading(brand_name, level=3)
-                        
-                        # Process search metrics
-                        if "search_metrics" in analysis and analysis["search_metrics"]:
-                            doc.add_heading("Search Metrics", level=4)
-                            
-                            search_metrics = analysis["search_metrics"]
-                            if isinstance(search_metrics, dict):
-                                # Create a table for metrics
-                                metrics_table = doc.add_table(rows=len(search_metrics)+1, cols=2)
-                                metrics_table.style = 'Table Grid'
-                                
-                                # Add header row
-                                header_cells = metrics_table.rows[0].cells
-                                header_cells[0].text = "Metric"
-                                header_cells[1].text = "Value"
-                                
-                                # Add metrics rows
-                                for i, (metric, value) in enumerate(search_metrics.items(), 1):
-                                    cells = metrics_table.rows[i].cells
-                                    cells[0].text = str(metric)
-                                    cells[1].text = str(value)
-                                
-                                # Add spacing after table
-                                doc.add_paragraph("")
-                            else:
-                                doc.add_paragraph(str(search_metrics))
-                        
-                        # Process competitive analysis
-                        if "competitive_analysis" in analysis and analysis["competitive_analysis"]:
-                            doc.add_heading("Competitive Analysis", level=4)
-                            
-                            comp_analysis = analysis["competitive_analysis"]
-                            if isinstance(comp_analysis, str):
-                                doc.add_paragraph(comp_analysis)
-                            elif isinstance(comp_analysis, dict):
-                                for key, value in comp_analysis.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{key}: ").bold = True
-                                    p.add_run(str(value))
-                            elif isinstance(comp_analysis, list):
-                                for item in comp_analysis:
-                                    doc.add_paragraph(f"• {item}", style="List Bullet")
-                        
-                        # Process keyword opportunities
-                        if "keyword_opportunities" in analysis and analysis["keyword_opportunities"]:
-                            doc.add_heading("Keyword Opportunities", level=4)
-                            
-                            opportunities = analysis["keyword_opportunities"]
-                            if isinstance(opportunities, dict):
-                                for key, value in opportunities.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{key}: ").bold = True
-                                    p.add_run(str(value))
-                            elif isinstance(opportunities, list):
-                                for opportunity in opportunities:
-                                    doc.add_paragraph(f"• {opportunity}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(opportunities))
-                        
-                        # Process social media potential
-                        if "social_media_potential" in analysis and analysis["social_media_potential"]:
-                            doc.add_heading("Social Media Potential", level=4)
-                            
-                            social_media = analysis["social_media_potential"]
-                            if isinstance(social_media, dict):
-                                for platform, assessment in social_media.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{platform}: ").bold = True
-                                    p.add_run(str(assessment))
-                            else:
-                                doc.add_paragraph(str(social_media))
-                        
-                        # Process SEO strengths
-                        if "seo_strengths" in analysis and analysis["seo_strengths"]:
-                            doc.add_heading("SEO Strengths", level=4)
-                            
-                            strengths = analysis["seo_strengths"]
-                            if isinstance(strengths, list):
-                                for strength in strengths:
-                                    doc.add_paragraph(f"• {strength}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(strengths))
-                        
-                        # Process SEO challenges
-                        if "seo_challenges" in analysis and analysis["seo_challenges"]:
-                            doc.add_heading("SEO Challenges", level=4)
-                            
-                            challenges = analysis["seo_challenges"]
-                            if isinstance(challenges, list):
-                                for challenge in challenges:
-                                    doc.add_paragraph(f"• {challenge}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(challenges))
-                        
-                        # Process overall rating
-                        if "overall_seo_rating" in analysis and analysis["overall_seo_rating"]:
-                            p = doc.add_paragraph()
-                            p.add_run("Overall SEO Rating: ").bold = True
-                            p.add_run(str(analysis["overall_seo_rating"]))
-                        
-                        # Process recommendations
-                        if "recommendations" in analysis and analysis["recommendations"]:
-                            doc.add_heading("SEO Recommendations", level=4)
-                            
-                            recommendations = analysis["recommendations"]
-                            if isinstance(recommendations, list):
-                                for recommendation in recommendations:
-                                    doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(recommendations))
-                        
-                        # Add separator between brand analyses (except for the last one)
-                        if brand_name != list(brand_analyses.keys())[-1]:
-                            doc.add_paragraph("")
-                
-                # Process general SEO recommendations
-                if "general_recommendations" in transformed_data and transformed_data["general_recommendations"]:
-                    doc.add_heading("General SEO Recommendations", level=2)
+                    # Add search metrics details
+                    rows = [
+                        ("Search Volume", str(details["search_volume"])),
+                        ("Exact Match Results", details["exact_match_search_results"]),
+                        ("SEO Viability Score", f"{details['seo_viability_score']}/10"),
+                        ("Keyword Competition", details["keyword_competition"])
+                    ]
                     
-                    recommendations = transformed_data["general_recommendations"]
-                    if isinstance(recommendations, list):
-                        for recommendation in recommendations:
-                            doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                    else:
-                        doc.add_paragraph(str(recommendations))
-                
-                # Process comparative analysis
-                if "comparative_analysis" in transformed_data and transformed_data["comparative_analysis"]:
-                    doc.add_heading("Comparative SEO Analysis", level=2)
-                    doc.add_paragraph(transformed_data["comparative_analysis"])
-                
-                # Process summary
-                if "summary" in transformed_data and transformed_data["summary"]:
-                    doc.add_heading("Summary", level=2)
-                    doc.add_paragraph(transformed_data["summary"])
+                    for i, (label, value) in enumerate(rows):
+                        cells = metrics_table.rows[i].cells
+                        cells[0].text = label
+                        cells[1].text = str(value)
+                    
+                    doc.add_paragraph()  # Add spacing
+                    
+                    # Keyword Analysis
+                    doc.add_heading("Keyword Analysis", level=3)
+                    keyword_table = doc.add_table(rows=5, cols=2)
+                    keyword_table.style = 'Table Grid'
+                    
+                    # Add keyword analysis details
+                    rows = [
+                        ("Keyword Alignment", details["keyword_alignment"]),
+                        ("Branded Keyword Potential", details["branded_keyword_potential"]),
+                        ("Non-Branded Keyword Potential", details["non_branded_keyword_potential"]),
+                        ("Negative Keyword Associations", details["negative_keyword_associations"]),
+                        ("Name Length Impact", details["name_length_searchability"])
+                    ]
+                    
+                    for i, (label, value) in enumerate(rows):
+                        cells = keyword_table.rows[i].cells
+                        cells[0].text = label
+                        cells[1].text = str(value)
+                    
+                    doc.add_paragraph()  # Add spacing
+                    
+                    # Online Presence
+                    doc.add_heading("Online Presence", level=3)
+                    presence_table = doc.add_table(rows=4, cols=2)
+                    presence_table.style = 'Table Grid'
+                    
+                    # Add online presence details
+                    rows = [
+                        ("Social Media Availability", "Available" if details["social_media_availability"] else "Not Available"),
+                        ("Social Media Discoverability", details["social_media_discoverability"]),
+                        ("Competitor Domain Strength", details["competitor_domain_strength"]),
+                        ("Negative Search Results", "Yes" if details["negative_search_results"] else "No")
+                    ]
+                    
+                    for i, (label, value) in enumerate(rows):
+                        cells = presence_table.rows[i].cells
+                        cells[0].text = label
+                        cells[1].text = str(value)
+                    
+                    doc.add_paragraph()  # Add spacing
+                    
+                    # Content Marketing Opportunities
+                    doc.add_heading("Content Marketing Opportunities", level=3)
+                    doc.add_paragraph(details["content_marketing_opportunities"])
+                    
+                    # SEO Recommendations
+                    doc.add_heading("SEO Recommendations", level=3)
+                    recommendations = details["seo_recommendations"]
+                    if isinstance(recommendations, str):
+                        try:
+                            # Try to evaluate the string as a list if it starts with [ and ends with ]
+                            if recommendations.startswith("[") and recommendations.endswith("]"):
+                                recommendations = eval(recommendations)
+                        except:
+                            # If evaluation fails, split by comma
+                            recommendations = [r.strip() for r in recommendations.split(",")]
+                    
+                    for recommendation in recommendations:
+                        # Remove any remaining quotes
+                        recommendation = str(recommendation).strip("'\"")
+                        doc.add_paragraph(recommendation, style='List Bullet')
+                    
+                    doc.add_paragraph()  # Add spacing between brand analyses
             else:
-                # No SEO analysis data available
-                doc.add_paragraph("No SEO and online discoverability analysis data available for this brand naming project.")
+                doc.add_paragraph("No SEO analysis data available.")
                 
         except Exception as e:
-            logger.error(f"Error formatting SEO analysis section: {str(e)}")
-            logger.debug(f"Error details: {traceback.format_exc()}")
-            # Add a generic error message to the document
-            doc.add_paragraph("Unable to format the SEO analysis section due to an error in processing the data.")
+            logger.error(f"Error formatting SEO analysis: {str(e)}")
+            doc.add_paragraph("Error formatting SEO analysis section.")
 
     async def _format_brand_context(self, doc: Document, data: Dict[str, Any]) -> None:
         """
@@ -2549,147 +2359,74 @@ class ReportFormatter:
             
             # Check if we have analysis data
             if transformed_data and isinstance(transformed_data, dict):
-                # Process methodology if available
-                if "methodology" in transformed_data and transformed_data["methodology"]:
-                    doc.add_heading("Methodology", level=2)
-                    doc.add_paragraph(transformed_data["methodology"])
-                
-                # Process industry overview
-                if "industry_overview" in transformed_data and transformed_data["industry_overview"]:
-                    doc.add_heading("Industry Overview", level=2)
-                    doc.add_paragraph(transformed_data["industry_overview"])
-                
-                # Process naming patterns
-                if "naming_patterns" in transformed_data and transformed_data["naming_patterns"]:
-                    doc.add_heading("Industry Naming Patterns", level=2)
+                # Process each brand name analysis
+                for brand_name, analysis in transformed_data.items():
+                    # Add brand name as heading
+                    doc.add_heading(f"Competitor Analysis for {brand_name}", level=2)
                     
-                    patterns = transformed_data["naming_patterns"]
-                    if isinstance(patterns, str):
-                        doc.add_paragraph(patterns)
-                    elif isinstance(patterns, list):
-                        for pattern in patterns:
-                            if isinstance(pattern, dict) and "pattern" in pattern and "description" in pattern:
-                                p = doc.add_paragraph(style="List Bullet")
-                                p.add_run(f"{pattern['pattern']}: ").bold = True
-                                p.add_run(pattern["description"])
-                            else:
-                                doc.add_paragraph(f"• {pattern}", style="List Bullet")
-                    elif isinstance(patterns, dict):
-                        for pattern_type, description in patterns.items():
-                            p = doc.add_paragraph(style="List Bullet")
-                            p.add_run(f"{pattern_type.replace('_', ' ').title()}: ").bold = True
-                            p.add_run(str(description))
-                
-                # Process brand name analysis for proposed names
-                if "brand_names" in transformed_data and transformed_data["brand_names"]:
-                    doc.add_heading("Competitive Analysis of Proposed Brand Names", level=2)
+                    # Create comparison table for all competitors
+                    if analysis.get("competitors"):
+                        doc.add_heading("Competitor Overview", level=3)
+                        comparison_table = doc.add_table(rows=1 + len(analysis["competitors"]), cols=4)
+                        comparison_table.style = 'Table Grid'
+                        
+                        # Add header row
+                        header_cells = comparison_table.rows[0].cells
+                        header_cells[0].text = "Competitor"
+                        header_cells[1].text = "Naming Style"
+                        header_cells[2].text = "Risk of Confusion"
+                        header_cells[3].text = "Differentiation Score"
+                        
+                        # Add competitor rows
+                        for i, competitor in enumerate(analysis["competitors"], 1):
+                            cells = comparison_table.rows[i].cells
+                            cells[0].text = competitor["competitor_name"]
+                            cells[1].text = competitor["competitor_naming_style"]
+                            cells[2].text = competitor["risk_of_confusion"]
+                            cells[3].text = f"{competitor['differentiation_score']}/10"
+                        
+                        doc.add_paragraph()  # Add spacing
+                        
+                        # Add detailed analysis for each competitor
+                        doc.add_heading("Detailed Competitor Analysis", level=3)
+                        for competitor in analysis["competitors"]:
+                            # Add competitor name as subheading
+                            doc.add_heading(competitor["competitor_name"], level=4)
+                            
+                            # Create detailed table
+                            detail_table = doc.add_table(rows=10, cols=2)
+                            detail_table.style = 'Table Grid'
+                            
+                            # Add all competitor details
+                            rows = [
+                                ("Keywords", competitor["competitor_keywords"]),
+                                ("Positioning", competitor["competitor_positioning"]),
+                                ("Strengths", competitor["competitor_strengths"]),
+                                ("Weaknesses", competitor["competitor_weaknesses"]),
+                                ("Target Audience Perception", competitor["target_audience_perception"]),
+                                ("Differentiation Opportunity", competitor["competitor_differentiation_opportunity"]),
+                                ("Competitive Advantage", competitor["competitive_advantage_notes"]),
+                                ("Trademark Risk", competitor["trademark_conflict_risk"]),
+                                ("Risk of Confusion", competitor["risk_of_confusion"]),
+                                ("Differentiation Score", f"{competitor['differentiation_score']}/10")
+                            ]
+                            
+                            for i, (label, value) in enumerate(rows):
+                                cells = detail_table.rows[i].cells
+                                cells[0].text = label
+                                cells[1].text = str(value)
+                            
+                            doc.add_paragraph()  # Add spacing
                     
-                    brand_analyses = transformed_data["brand_names"]
-                    
-                    # Process each brand name analysis
-                    for brand_name, analysis in brand_analyses.items():
-                        # Add brand name as heading
-                        doc.add_heading(brand_name, level=3)
-                        
-                        # Process differentiation
-                        if "differentiation" in analysis and analysis["differentiation"]:
-                            doc.add_heading("Competitive Differentiation", level=4)
-                            doc.add_paragraph(analysis["differentiation"])
-                        
-                        # Process competitor section
-                        if "competitors" in analysis and analysis["competitors"]:
-                            doc.add_heading("Key Competitors", level=4)
-                            
-                            for competitor in analysis["competitors"]:
-                                # Add competitor name as subheading
-                                doc.add_heading(competitor["competitor_name"], level=5)
-                                
-                                # Add risk of confusion
-                                if "risk_of_confusion" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Risk of Confusion: ").bold = True
-                                    p.add_run(f"{competitor['risk_of_confusion']}/10")
-                                
-                                # Add trademark conflict risk
-                                if "trademark_conflict_risk" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Trademark Conflict Risk: ").bold = True
-                                    p.add_run(competitor["trademark_conflict_risk"])
-                                
-                                # Add positioning
-                                if "positioning" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Positioning: ").bold = True
-                                    p.add_run(competitor["positioning"])
-                                
-                                # Add strengths
-                                if "strengths" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Strengths: ").bold = True
-                                    p.add_run(competitor["strengths"])
-                                
-                                # Add weaknesses
-                                if "weaknesses" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Weaknesses: ").bold = True
-                                    p.add_run(competitor["weaknesses"])
-                                
-                                # Add target audience
-                                if "target_audience" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Target Audience Perception: ").bold = True
-                                    p.add_run(competitor["target_audience"])
-                                
-                                # Add differentiation opportunity
-                                if "differentiation_opportunity" in competitor:
-                                    p = doc.add_paragraph()
-                                    p.add_run("Differentiation Opportunity: ").bold = True
-                                    p.add_run(competitor["differentiation_opportunity"])
-                                
-                                # Add space between competitors
-                                doc.add_paragraph("")
-                        
-                        # Process similarity assessment
-                        if "similarity_assessment" in analysis and analysis["similarity_assessment"]:
-                            doc.add_heading("Similarity Assessment", level=4)
-                            
-                            similarity = analysis["similarity_assessment"]
-                            if isinstance(similarity, dict):
-                                for competitor, assessment in similarity.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{competitor}: ").bold = True
-                                    p.add_run(str(assessment))
-                            else:
-                                doc.add_paragraph(str(similarity))
-                        
-                        # Process recommendations
-                        if "recommendations" in analysis and analysis["recommendations"]:
-                            doc.add_heading("Competitive Recommendations", level=4)
-                            
-                            recommendations = analysis["recommendations"]
-                            if isinstance(recommendations, list):
-                                for recommendation in recommendations:
-                                    doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(recommendations))
-                        
-                        # Add separator between brand analyses (except for the last one)
-                        if brand_name != list(brand_analyses.keys())[-1]:
-                            doc.add_paragraph("")
-                
-                # Process summary
-                if "summary" in transformed_data and transformed_data["summary"]:
-                    doc.add_heading("Summary", level=2)
-                    doc.add_paragraph(transformed_data["summary"])
+                    # Add separator between brand analyses (except for the last one)
+                    if brand_name != list(transformed_data.keys())[-1]:
+                        doc.add_paragraph("")
             else:
-                # No competitor analysis data available
-                doc.add_paragraph("No competitor analysis data available for this brand naming project.")
+                doc.add_paragraph("No competitor analysis data available.")
                 
         except Exception as e:
-            logger.error(f"Error formatting competitor analysis section: {str(e)}")
-            logger.debug(f"Error details: {traceback.format_exc()}")
-            # Add a generic error message to the document
-            doc.add_paragraph("Unable to format the competitor analysis section due to an error in processing the data.")
+            logger.error(f"Error formatting competitor analysis: {str(e)}")
+            doc.add_paragraph("Error formatting competitor analysis section.")
 
     async def _add_table_of_contents(self, doc: Document) -> None:
         """Add a table of contents to the document."""
@@ -3319,318 +3056,121 @@ class ReportFormatter:
             logger.debug(f"Transformed market research data: {len(str(transformed_data))} chars")
             
             # Check if we have analysis data
-            if transformed_data and isinstance(transformed_data, dict):
-                # Process methodology if available
-                if "methodology" in transformed_data and transformed_data["methodology"]:
-                    doc.add_heading("Methodology", level=2)
-                    doc.add_paragraph(transformed_data["methodology"])
-                
-                # Process market overview
-                if "market_overview" in transformed_data and transformed_data["market_overview"]:
-                    doc.add_heading("Market Overview", level=2)
+            if transformed_data and "market_research" in transformed_data:
+                # Process each brand's market research
+                for brand_name, details in transformed_data["market_research"].items():
+                    # Add brand name as heading
+                    doc.add_heading(f"Market Research for {brand_name}", level=2)
                     
-                    overview = transformed_data["market_overview"]
-                    if isinstance(overview, str):
-                        doc.add_paragraph(overview)
-                    elif isinstance(overview, dict):
-                        for key, value in overview.items():
-                            doc.add_heading(key.replace('_', ' ').title(), level=3)
-                            if isinstance(value, str):
-                                doc.add_paragraph(value)
-                            elif isinstance(value, list):
-                                for item in value:
-                                    doc.add_paragraph(f"• {item}", style="List Bullet")
-                            elif isinstance(value, dict):
-                                for sub_key, sub_value in value.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{sub_key.replace('_', ' ').title()}: ").bold = True
-                                    p.add_run(str(sub_value))
-                    elif isinstance(overview, list):
-                        for item in overview:
-                            if isinstance(item, dict) and "title" in item and "content" in item:
-                                doc.add_heading(item["title"], level=3)
-                                if isinstance(item["content"], str):
-                                    doc.add_paragraph(item["content"])
-                                elif isinstance(item["content"], list):
-                                    for subitem in item["content"]:
-                                        doc.add_paragraph(f"• {subitem}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(f"• {item}", style="List Bullet")
-                
-                # Process industry trends
-                if "industry_trends" in transformed_data and transformed_data["industry_trends"]:
-                    doc.add_heading("Industry Trends", level=2)
+                    # Industry Overview
+                    doc.add_heading("Industry Overview", level=3)
+                    overview_table = doc.add_table(rows=4, cols=2)
+                    overview_table.style = 'Table Grid'
                     
-                    trends = transformed_data["industry_trends"]
-                    if isinstance(trends, str):
-                        doc.add_paragraph(trends)
-                    elif isinstance(trends, list):
-                        for trend in trends:
-                            if isinstance(trend, dict) and "trend" in trend and "description" in trend:
-                                p = doc.add_paragraph(style="List Bullet")
-                                p.add_run(f"{trend['trend']}: ").bold = True
-                                p.add_run(trend["description"])
-                            else:
-                                doc.add_paragraph(f"• {trend}", style="List Bullet")
-                    elif isinstance(trends, dict):
-                        for category, trend_list in trends.items():
-                            doc.add_heading(category.replace('_', ' ').title(), level=3)
-                            if isinstance(trend_list, list):
-                                for trend in trend_list:
-                                    doc.add_paragraph(f"• {trend}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(trend_list))
-                
-                # Process target audience insights
-                if "target_audience" in transformed_data and transformed_data["target_audience"]:
-                    doc.add_heading("Target Audience Insights", level=2)
+                    # Add industry overview details
+                    rows = [
+                        ("Industry", details["industry_name"]),
+                        ("Market Size", details["market_size"]),
+                        ("Growth Rate", details["market_growth_rate"]),
+                        ("Market Viability", details["market_viability"])
+                    ]
                     
-                    audience = transformed_data["target_audience"]
-                    if isinstance(audience, str):
-                        doc.add_paragraph(audience)
-                    elif isinstance(audience, dict):
-                        for segment, details in audience.items():
-                            doc.add_heading(segment.replace('_', ' ').title(), level=3)
-                            
-                            if isinstance(details, str):
-                                doc.add_paragraph(details)
-                            elif isinstance(details, dict):
-                                for key, value in details.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
-                                    if isinstance(value, list):
-                                        p.add_run(", ".join(value))
-                                    else:
-                                        p.add_run(str(value))
-                            elif isinstance(details, list):
-                                for detail in details:
-                                    doc.add_paragraph(f"• {detail}", style="List Bullet")
-                    elif isinstance(audience, list):
-                        for segment in audience:
-                            if isinstance(segment, dict) and "segment" in segment and "description" in segment:
-                                doc.add_heading(segment["segment"], level=3)
-                                doc.add_paragraph(segment["description"])
-                                
-                                # Process additional segment details
-                                for key, value in segment.items():
-                                    if key not in ["segment", "description"]:
-                                        p = doc.add_paragraph()
-                                        p.add_run(f"{key.replace('_', ' ').title()}: ").bold = True
-                                        if isinstance(value, list):
-                                            p.add_run(", ".join(value))
-                                        else:
-                                            p.add_run(str(value))
-                            else:
-                                doc.add_paragraph(f"• {segment}", style="List Bullet")
-                
-                # Process competitive landscape
-                if "competitive_landscape" in transformed_data and transformed_data["competitive_landscape"]:
-                    doc.add_heading("Competitive Landscape", level=2)
+                    for i, (label, value) in enumerate(rows):
+                        cells = overview_table.rows[i].cells
+                        cells[0].text = label
+                        cells[1].text = str(value)
                     
-                    landscape = transformed_data["competitive_landscape"]
-                    if isinstance(landscape, str):
-                        doc.add_paragraph(landscape)
-                    elif isinstance(landscape, dict):
-                        for category, competitors in landscape.items():
-                            doc.add_heading(category.replace('_', ' ').title(), level=3)
-                            
-                            if isinstance(competitors, str):
-                                doc.add_paragraph(competitors)
-                            elif isinstance(competitors, list):
-                                for competitor in competitors:
-                                    if isinstance(competitor, dict) and "name" in competitor:
-                                        p = doc.add_paragraph(style="List Bullet")
-                                        p.add_run(f"{competitor['name']}: ").bold = True
-                                        if "description" in competitor:
-                                            p.add_run(competitor["description"])
-                                    else:
-                                        doc.add_paragraph(f"• {competitor}", style="List Bullet")
-                            elif isinstance(competitors, dict):
-                                for comp_name, comp_details in competitors.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{comp_name}: ").bold = True
-                                    p.add_run(str(comp_details))
-                    elif isinstance(landscape, list):
-                        for competitor in landscape:
-                            if isinstance(competitor, dict) and "name" in competitor:
-                                p = doc.add_paragraph(style="List Bullet")
-                                p.add_run(f"{competitor['name']}: ").bold = True
-                                if "description" in competitor:
-                                    p.add_run(competitor["description"])
-                            else:
-                                doc.add_paragraph(f"• {competitor}", style="List Bullet")
-                
-                # Process market opportunities
-                if "market_opportunities" in transformed_data and transformed_data["market_opportunities"]:
-                    doc.add_heading("Market Opportunities", level=2)
+                    doc.add_paragraph()  # Add spacing
                     
-                    opportunities = transformed_data["market_opportunities"]
-                    if isinstance(opportunities, str):
-                        doc.add_paragraph(opportunities)
-                    elif isinstance(opportunities, list):
-                        for opportunity in opportunities:
-                            doc.add_paragraph(f"• {opportunity}", style="List Bullet")
-                    elif isinstance(opportunities, dict):
-                        for category, opps in opportunities.items():
-                            doc.add_heading(category.replace('_', ' ').title(), level=3)
-                            
-                            if isinstance(opps, str):
-                                doc.add_paragraph(opps)
-                            elif isinstance(opps, list):
-                                for opp in opps:
-                                    doc.add_paragraph(f"• {opp}", style="List Bullet")
-                
-                # Process market challenges
-                if "market_challenges" in transformed_data and transformed_data["market_challenges"]:
-                    doc.add_heading("Market Challenges", level=2)
+                    # Market Dynamics
+                    doc.add_heading("Market Dynamics", level=3)
+                    dynamics_table = doc.add_table(rows=5, cols=2)
+                    dynamics_table.style = 'Table Grid'
                     
-                    challenges = transformed_data["market_challenges"]
-                    if isinstance(challenges, str):
-                        doc.add_paragraph(challenges)
-                    elif isinstance(challenges, list):
-                        for challenge in challenges:
-                            doc.add_paragraph(f"• {challenge}", style="List Bullet")
-                    elif isinstance(challenges, dict):
-                        for category, chals in challenges.items():
-                            doc.add_heading(category.replace('_', ' ').title(), level=3)
-                            
-                            if isinstance(chals, str):
-                                doc.add_paragraph(chals)
-                            elif isinstance(chals, list):
-                                for chal in chals:
-                                    doc.add_paragraph(f"• {chal}", style="List Bullet")
-                
-                # Process brand name specific analysis
-                if "brand_names" in transformed_data and transformed_data["brand_names"]:
-                    doc.add_heading("Market Analysis by Brand Name", level=2)
+                    # Parse emerging trends if it's a string representation of a list
+                    emerging_trends = details["emerging_trends"]
+                    if isinstance(emerging_trends, str):
+                        try:
+                            # Try to evaluate the string as a list if it starts with [ and ends with ]
+                            if emerging_trends.startswith("[") and emerging_trends.endswith("]"):
+                                emerging_trends = eval(emerging_trends)
+                        except:
+                            # If evaluation fails, keep as is
+                            pass
                     
-                    brand_analyses = transformed_data["brand_names"]
+                    # Format emerging trends
+                    if isinstance(emerging_trends, list):
+                        emerging_trends = "\n".join(f"• {trend.strip()}" for trend in emerging_trends)
                     
-                    # Process each brand name analysis
-                    for brand_name, analysis in brand_analyses.items():
-                        # Add brand name as heading
-                        doc.add_heading(brand_name, level=3)
-                        
-                        if isinstance(analysis, str):
-                            doc.add_paragraph(analysis)
-                        elif isinstance(analysis, dict):
-                            # Process market fit
-                            if "market_fit" in analysis and analysis["market_fit"]:
-                                doc.add_heading("Market Fit", level=4)
-                                doc.add_paragraph(analysis["market_fit"])
-                            
-                            # Process audience reception
-                            if "audience_reception" in analysis and analysis["audience_reception"]:
-                                doc.add_heading("Audience Reception", level=4)
-                                doc.add_paragraph(analysis["audience_reception"])
-                            
-                            # Process competitive advantage
-                            if "competitive_advantage" in analysis and analysis["competitive_advantage"]:
-                                doc.add_heading("Competitive Advantage", level=4)
-                                
-                                advantage = analysis["competitive_advantage"]
-                                if isinstance(advantage, str):
-                                    doc.add_paragraph(advantage)
-                                elif isinstance(advantage, list):
-                                    for adv in advantage:
-                                        doc.add_paragraph(f"• {adv}", style="List Bullet")
-                            
-                            # Process market positioning
-                            if "market_positioning" in analysis and analysis["market_positioning"]:
-                                doc.add_heading("Market Positioning", level=4)
-                                doc.add_paragraph(analysis["market_positioning"])
-                            
-                            # Process strengths
-                            if "strengths" in analysis and analysis["strengths"]:
-                                doc.add_heading("Market Strengths", level=4)
-                                
-                                strengths = analysis["strengths"]
-                                if isinstance(strengths, list):
-                                    for strength in strengths:
-                                        doc.add_paragraph(f"• {strength}", style="List Bullet")
-                                else:
-                                    doc.add_paragraph(str(strengths))
-                            
-                            # Process weaknesses
-                            if "weaknesses" in analysis and analysis["weaknesses"]:
-                                doc.add_heading("Market Weaknesses", level=4)
-                                
-                                weaknesses = analysis["weaknesses"]
-                                if isinstance(weaknesses, list):
-                                    for weakness in weaknesses:
-                                        doc.add_paragraph(f"• {weakness}", style="List Bullet")
-                                else:
-                                    doc.add_paragraph(str(weaknesses))
-                            
-                            # Process recommendations
-                            if "recommendations" in analysis and analysis["recommendations"]:
-                                doc.add_heading("Market-Based Recommendations", level=4)
-                                
-                                recommendations = analysis["recommendations"]
-                                if isinstance(recommendations, list):
-                                    for recommendation in recommendations:
-                                        doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                                else:
-                                    doc.add_paragraph(str(recommendations))
-                        
-                        # Add separator between brand analyses (except for the last one)
-                        if brand_name != list(brand_analyses.keys())[-1]:
-                            doc.add_paragraph("")
-                
-                # Process key market findings
-                if "key_findings" in transformed_data and transformed_data["key_findings"]:
-                    doc.add_heading("Key Market Findings", level=2)
+                    # Add market dynamics details
+                    rows = [
+                        ("Emerging Trends", emerging_trends),
+                        ("Market Opportunity", details["market_opportunity"]),
+                        ("Entry Barriers", details["market_entry_barriers"]),
+                        ("Potential Risks", details["potential_risks"]),
+                        ("Target Audience Fit", details["target_audience_fit"])
+                    ]
                     
-                    findings = transformed_data["key_findings"]
-                    if isinstance(findings, str):
-                        doc.add_paragraph(findings)
-                    elif isinstance(findings, list):
-                        for finding in findings:
-                            doc.add_paragraph(f"• {finding}", style="List Bullet")
-                    elif isinstance(findings, dict):
-                        for category, finding_list in findings.items():
-                            doc.add_heading(category.replace('_', ' ').title(), level=3)
-                            
-                            if isinstance(finding_list, str):
-                                doc.add_paragraph(finding_list)
-                            elif isinstance(finding_list, list):
-                                for finding in finding_list:
-                                    doc.add_paragraph(f"• {finding}", style="List Bullet")
-                
-                # Process recommendations
-                if "recommendations" in transformed_data and transformed_data["recommendations"]:
-                    doc.add_heading("Market Research Recommendations", level=2)
+                    for i, (label, value) in enumerate(rows):
+                        cells = dynamics_table.rows[i].cells
+                        cells[0].text = label
+                        cells[1].text = str(value)
                     
-                    recommendations = transformed_data["recommendations"]
-                    if isinstance(recommendations, str):
-                        doc.add_paragraph(recommendations)
-                    elif isinstance(recommendations, list):
-                        for recommendation in recommendations:
-                            doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                    elif isinstance(recommendations, dict):
-                        for category, rec_list in recommendations.items():
-                            doc.add_heading(category.replace('_', ' ').title(), level=3)
-                            
-                            if isinstance(rec_list, str):
-                                doc.add_paragraph(rec_list)
-                            elif isinstance(rec_list, list):
-                                for rec in rec_list:
-                                    doc.add_paragraph(f"• {rec}", style="List Bullet")
-                
-                # Process summary
-                if "summary" in transformed_data and transformed_data["summary"]:
-                    doc.add_heading("Market Research Summary", level=2)
-                    doc.add_paragraph(transformed_data["summary"])
+                    doc.add_paragraph()  # Add spacing
+                    
+                    # Competitive Landscape
+                    doc.add_heading("Competitive Landscape", level=3)
+                    
+                    # Key Competitors
+                    doc.add_paragraph("Key Competitors:")
+                    competitors = details["key_competitors"]
+                    if isinstance(competitors, str):
+                        try:
+                            # Try to evaluate the string as a list if it starts with [ and ends with ]
+                            if competitors.startswith("[") and competitors.endswith("]"):
+                                competitors = eval(competitors)
+                        except:
+                            # If evaluation fails, split by comma
+                            competitors = [c.strip() for c in competitors.split(",")]
+                    
+                    for competitor in competitors:
+                        # Remove any remaining quotes
+                        competitor = str(competitor).strip("'\"")
+                        doc.add_paragraph(competitor, style='List Bullet')
+                    
+                    # Competitive Analysis
+                    doc.add_paragraph(details["competitive_analysis"])
+                    
+                    doc.add_paragraph()  # Add spacing
+                    
+                    # Customer Insights
+                    doc.add_heading("Customer Pain Points", level=3)
+                    pain_points = details["customer_pain_points"]
+                    if isinstance(pain_points, str):
+                        try:
+                            # Try to evaluate the string as a list if it starts with [ and ends with ]
+                            if pain_points.startswith("[") and pain_points.endswith("]"):
+                                pain_points = eval(pain_points)
+                        except:
+                            # If evaluation fails, split by comma
+                            pain_points = [p.strip() for p in pain_points.split(",")]
+                    
+                    for pain_point in pain_points:
+                        # Remove any remaining quotes
+                        pain_point = str(pain_point).strip("'\"")
+                        doc.add_paragraph(pain_point, style='List Bullet')
+                    
+                    # Recommendations
+                    doc.add_heading("Recommendations", level=3)
+                    doc.add_paragraph(details["recommendations"])
+                    
+                    doc.add_paragraph()  # Add spacing between brand analyses
             else:
-                # No market research data available
-                doc.add_paragraph("No market research data available for this brand naming project.")
+                doc.add_paragraph("No market research data available.")
                 
         except Exception as e:
-            logger.error(f"Error formatting market research section: {str(e)}")
-            logger.debug(f"Error details: {traceback.format_exc()}")
-            doc.add_paragraph(f"Error formatting market research section: {str(e)}")
-            # Add a generic error message to the document
-            doc.add_paragraph("Unable to format the market research section due to an error in processing the data.")
+            logger.error(f"Error formatting market research: {str(e)}")
+            doc.add_paragraph("Error formatting market research section.")
 
     async def _format_semantic_analysis(self, doc: Document, data: Dict[str, Any]) -> None:
         """
