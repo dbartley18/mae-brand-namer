@@ -66,21 +66,7 @@ from .prompts.report_formatter import (
     get_toc_prompt,
     get_executive_summary_prompt,
     get_recommendations_prompt,
-    get_seo_analysis_prompt,
-    get_brand_context_prompt,
-    get_brand_name_generation_prompt,
-    get_semantic_analysis_prompt,
-    get_linguistic_analysis_prompt,
-    get_cultural_sensitivity_prompt,
-    get_translation_analysis_prompt,
-    get_market_research_prompt,
-    get_competitor_analysis_prompt,
-    get_name_evaluation_prompt,
-    get_domain_analysis_prompt,
-    get_survey_simulation_prompt,
-    get_system_prompt,
-    get_shortlisted_names_summary_prompt,
-    get_format_section_prompt
+    get_system_prompt
 )
 
 from ..utils.logging import get_logger
@@ -410,56 +396,6 @@ class ReportFormatter:
                         "content": error_msg,
                         "sections": [{"heading": "Error Details", "content": error_msg}]
                     }))
-
-    async def _generate_seo_content(self, brand_name: str, seo_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate SEO content using the LLM."""
-        try:
-            # Prepare the prompt
-            prompt = self.prompts["seo_analysis"].format(
-                run_id=self.current_run_id,
-                brand_name=brand_name,
-                seo_data=json.dumps(seo_data, indent=2)
-            )
-            
-            # Get response from LLM
-            messages = [
-                SystemMessage(content="You are an expert SEO analyst providing insights for brand names."),
-                HumanMessage(content=prompt)
-            ]
-            
-            response = await self._safe_llm_invoke(messages, "SEO Analysis")
-            
-            # Extract JSON from response
-            content = response.content
-            json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
-            
-            if json_match:
-                json_str = json_match.group(1)
-                return json.loads(json_str)
-            else:
-                # Try to find any JSON object in the response
-                json_match = re.search(r'({.*})', content, re.DOTALL)
-                if json_match:
-                    return json.loads(json_match.group(1))
-                else:
-                    logger.warning("Could not extract JSON from LLM response for SEO analysis")
-                    return {
-                        "seo_viability_assessment": "Error extracting structured content from LLM response.",
-                        "search_landscape_analysis": content,
-                        "content_strategy_recommendations": "",
-                        "technical_seo_considerations": "",
-                        "action_plan": []
-                    }
-                    
-        except Exception as e:
-            logger.error(f"Error generating SEO content: {str(e)}")
-            return {
-                "seo_viability_assessment": f"Error generating SEO content: {str(e)}",
-                "search_landscape_analysis": "",
-                "content_strategy_recommendations": "",
-                "technical_seo_considerations": "",
-                "action_plan": []
-            }
 
     def _transform_brand_context(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if not data:
@@ -1033,10 +969,6 @@ class ReportFormatter:
         """
         Transform domain analysis data to match expected format.
         
-        The domain analysis data contains:
-        1. A list of brand name domain analyses
-        2. Each analysis has domain availability, social media availability, etc.
-        
         Args:
             data: Raw domain analysis data
             
@@ -1047,68 +979,17 @@ class ReportFormatter:
             return {}
 
         # Initialize transformed data structure
-        transformed_data = {
-            "brand_names": {},
-            "summary": "This domain analysis evaluates the availability and viability of domain names and social media handles for each brand name option."
-        }
+        transformed_data = {}
 
-        try:
-            # Try Pydantic validation first
-            domain_analysis_data = DomainAnalysis.model_validate(data)
-            return domain_analysis_data.model_dump()
-
-        except (ValidationError, AttributeError):
-            # Fallback to manual transformation if validation fails
-            brand_analyses = []
-            
-            # Case 1: The expected structure with "domain_analysis" key containing a list
-            if isinstance(data, dict) and "domain_analysis" in data:
-                if isinstance(data["domain_analysis"], list):
-                    brand_analyses = data["domain_analysis"]
-            # Case 2: Already has "brand_names" key (already transformed)
-            elif isinstance(data, dict) and "brand_names" in data:
-                return data
-            # Case 3: Is itself a list of brand analyses
-            elif isinstance(data, list):
-                brand_analyses = data
-            
-            # Process each brand analysis
-            for analysis in brand_analyses:
-                if not isinstance(analysis, dict) or "brand_name" not in analysis:
-                    continue
-                
-                brand_name = analysis.get("brand_name", "")
-                
-                # Initialize brand entry with default structure
-                transformed_data["brand_names"][brand_name] = {
-                    "domain_availability": {
-                        "exact_match": analysis.get("exact_match_domain_available", False),
-                        "alternative_tlds": analysis.get("alternative_tlds_available", []),
-                        "similar_domains": analysis.get("similar_domains", [])
-                    },
-                    "social_media": {
-                        "available_platforms": analysis.get("social_media_availability", []),
-                        "handle_consistency": analysis.get("handle_consistency", "Unknown"),
-                        "recommendations": analysis.get("social_media_recommendations", [])
-                    },
-                    "recommendations": analysis.get("recommendations", [
-                        "Secure primary domain name quickly",
-                        "Register alternative TLDs for brand protection",
-                        "Claim social media handles on key platforms"
-                    ]),
-                    "overall_score": analysis.get("domain_viability_score", 0),
-                    "notes": analysis.get("notes", "")
-                }
-                
-                # Add domain strategy if available
-                if "domain_strategy" in analysis:
-                    transformed_data["brand_names"][brand_name]["domain_strategy"] = analysis["domain_strategy"]
-                
-                # Add trademark considerations if available
-                if "trademark_considerations" in analysis:
-                    transformed_data["brand_names"][brand_name]["trademark_considerations"] = analysis["trademark_considerations"]
-            
-            return transformed_data
+        # Case 1: The expected structure with "domain_analysis" key containing a dictionary of brand analyses
+        if isinstance(data, dict) and "domain_analysis" in data:
+            if isinstance(data["domain_analysis"], dict):
+                transformed_data = data["domain_analysis"]
+        # Case 2: Already has expected structure
+        elif isinstance(data, dict) and any(isinstance(v, dict) and "brand_name" in v for v in data.values()):
+            transformed_data = data
+        
+        return transformed_data
 
     def _transform_survey_simulation(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Transform survey simulation data into a structured format.
@@ -1166,10 +1047,6 @@ class ReportFormatter:
         """
         Transform SEO online discoverability data to match expected format.
         
-        The SEO analysis data contains:
-        1. A list of brand name SEO analyses
-        2. Each analysis has search metrics, keyword potential, etc.
-        
         Args:
             data: Raw SEO analysis data
             
@@ -1182,66 +1059,69 @@ class ReportFormatter:
         # Initialize transformed data structure
         transformed_data = {
             "brand_names": {},
-            "summary": "This SEO and online discoverability analysis evaluated brand names based on search metrics, keyword potential, and social media presence to identify names with the strongest digital marketing potential.",
-            "general_recommendations": [
-                "Prioritize consistent branding across all online platforms",
-                "Implement thorough technical SEO best practices on the website",
-                "Develop content marketing strategies aligned with target keywords",
-                "Monitor and respond to brand mentions across digital channels",
-                "Regularly review SEO performance and adapt strategies accordingly"
-            ]
+            "summary": "This SEO and online discoverability analysis evaluates brand names based on search metrics, keyword potential, and social media presence."
         }
 
-        try:
-            # Try Pydantic validation first
-            seo_data = SEOOnlineDiscoverability.model_validate(data)
+        brand_analyses = []
+        
+        # Case 1: The expected structure with "seo_online_discoverability" key containing a list
+        if isinstance(data, dict) and "seo_online_discoverability" in data:
+            if isinstance(data["seo_online_discoverability"], list):
+                brand_analyses = data["seo_online_discoverability"]
+        # Case 2: Already has "brand_names" key (already transformed)
+        elif isinstance(data, dict) and "brand_names" in data:
+            return data
+        # Case 3: Is itself a list of brand analyses
+        elif isinstance(data, list):
+            brand_analyses = data
+        
+        # Process each brand analysis
+        for analysis in brand_analyses:
+            if not isinstance(analysis, dict) or "brand_name" not in analysis:
+                continue
             
-            # Process each brand analysis
-            if hasattr(seo_data, "seo_online_discoverability"):
-                for analysis in seo_data.seo_online_discoverability:
-                    brand_name = analysis.brand_name
-                    
-                    # Create brand analysis entry with formatted structure
-                    transformed_data["brand_names"][brand_name] = {
-                        "search_metrics": {
-                            "Search Volume": analysis.search_volume,
-                            "Exact Match Results": analysis.exact_match_search_results,
-                            "SEO Viability Score": analysis.seo_viability_score
-                        },
-                        "competitive_analysis": {
-                            "Keyword Competition": analysis.keyword_competition,
-                            "Competitor Domain Strength": analysis.competitor_domain_strength,
-                            "Negative Search Results": "Yes" if analysis.negative_search_results else "No"
-                        },
-                        "keyword_opportunities": {
-                            "Keyword Alignment": analysis.keyword_alignment,
-                            "Branded Keyword Potential": analysis.branded_keyword_potential,
-                            "Non-Branded Keyword Potential": analysis.non_branded_keyword_potential,
-                            "Negative Keyword Associations": analysis.negative_keyword_associations
-                        },
-                        "social_media_potential": {
-                            "Social Media Availability": "Available" if analysis.social_media_availability else "Not Available",
-                            "Social Media Discoverability": analysis.social_media_discoverability
-                        },
-                        "seo_strengths": [
-                            f"Name length is {analysis.name_length_searchability.lower()}, which positively affects search behavior",
-                            f"Strong potential for branded keyword dominance" if "high" in analysis.branded_keyword_potential.lower() else "Moderate potential for branded keyword development",
-                            f"Content marketing opportunities: {analysis.content_marketing_opportunities}"
-                        ],
-                        "seo_challenges": [
-                            f"Unusual spelling impacts searchability" if analysis.unusual_spelling_impact else "No spelling issues affecting searchability",
-                            f"Negative keyword associations: {analysis.negative_keyword_associations}" if analysis.negative_keyword_associations.lower() not in ["none", "no", "none identified"] else "No negative keyword associations"
-                        ],
-                        "recommendations": recommendations,
-                        "overall_seo_rating": f"{analysis.seo_viability_score}/10"
-                    }
+            brand_name = analysis.get("brand_name", "")
             
-            logger.info(f"Successfully transformed SEO analysis data with {len(transformed_data['brand_names'])} brand analyses")
-            return transformed_data
-            
-        except ValidationError as e:
-            logger.error(f"Validation error for SEO analysis data: {str(e)}")
-            return {}
+            # Initialize brand entry with default structure
+            transformed_data["brand_names"][brand_name] = {
+                "search_metrics": {
+                    "Search Volume": analysis.get("search_volume", "Unknown"),
+                    "Exact Match Results": analysis.get("exact_match_search_results", 0),
+                    "SEO Viability Score": analysis.get("seo_viability_score", 0)
+                },
+                "competitive_analysis": {
+                    "Keyword Competition": analysis.get("keyword_competition", "Unknown"),
+                    "Competitor Domain Strength": analysis.get("competitor_domain_strength", "Unknown"),
+                    "Negative Search Results": "Yes" if analysis.get("negative_search_results", False) else "No"
+                },
+                "keyword_opportunities": {
+                    "Keyword Alignment": analysis.get("keyword_alignment", "Unknown"),
+                    "Branded Keyword Potential": analysis.get("branded_keyword_potential", "Unknown"),
+                    "Non-Branded Keyword Potential": analysis.get("non_branded_keyword_potential", "Unknown"),
+                    "Negative Keyword Associations": analysis.get("negative_keyword_associations", "None identified")
+                },
+                "social_media_potential": {
+                    "Social Media Availability": "Available" if analysis.get("social_media_availability", False) else "Not Available",
+                    "Social Media Discoverability": analysis.get("social_media_discoverability", "Unknown")
+                },
+                "seo_strengths": [
+                    f"Name length is {analysis.get('name_length_searchability', 'moderate').lower()}, which affects search behavior",
+                    f"Strong potential for branded keyword dominance" if "high" in analysis.get("branded_keyword_potential", "").lower() else "Moderate potential for branded keyword development",
+                    f"Content marketing opportunities: {analysis.get('content_marketing_opportunities', 'To be determined')}"
+                ],
+                "seo_challenges": [
+                    f"Unusual spelling impacts searchability" if analysis.get("unusual_spelling_impact", False) else "No spelling issues affecting searchability",
+                    f"Negative keyword associations: {analysis.get('negative_keyword_associations', 'None identified')}" if analysis.get("negative_keyword_associations", "").lower() not in ["none", "no", "none identified"] else "No negative keyword associations"
+                ],
+                "recommendations": analysis.get("recommendations", [
+                    "Optimize for branded search terms",
+                    "Develop content around key search themes",
+                    "Monitor and improve search visibility"
+                ]),
+                "overall_seo_rating": f"{analysis.get('seo_viability_score', 0)}/10"
+            }
+        
+        return transformed_data
 
     def _validate_section_data(self, section_name: str, data: Any) -> Tuple[bool, List[str]]:
         """
@@ -3969,208 +3849,99 @@ class ReportFormatter:
             
             # Check if we have analysis data
             if transformed_data and isinstance(transformed_data, dict):
-                # Process methodology if available
-                if "methodology" in transformed_data and transformed_data["methodology"]:
-                    doc.add_heading("Methodology", level=2)
-                    doc.add_paragraph(transformed_data["methodology"])
+                # First, create a comparison table between all brands
+                doc.add_heading("Domain Analysis Overview", level=2)
                 
-                # Process brand name analyses
-                if "brand_names" in transformed_data and transformed_data["brand_names"]:
-                    doc.add_heading("Domain Analysis by Brand Name", level=2)
+                # Create comparison table
+                comparison_table = doc.add_table(rows=1 + len(transformed_data), cols=5)
+                comparison_table.style = 'Table Grid'
+                
+                # Add header row
+                header_cells = comparison_table.rows[0].cells
+                header_cells[0].text = "Brand Name"
+                header_cells[1].text = "Domain Available"
+                header_cells[2].text = "Acquisition Cost"
+                header_cells[3].text = "Brand Name Clarity"
+                header_cells[4].text = "Available TLDs"
+                
+                # Add data rows
+                for i, (brand_name, analysis) in enumerate(transformed_data.items(), 1):
+                    cells = comparison_table.rows[i].cells
+                    cells[0].text = brand_name
+                    cells[1].text = "Yes" if analysis.get("domain_exact_match", False) else "No"
+                    cells[2].text = analysis.get("acquisition_cost", "Unknown")
+                    cells[3].text = analysis.get("brand_name_clarity_in_url", "Unknown")
+                    cells[4].text = ", ".join(f".{tld}" for tld in analysis.get("alternative_tlds", []))
+                
+                doc.add_paragraph()  # Add spacing
+                
+                # Then show detailed analysis for each brand
+                doc.add_heading("Detailed Domain Analysis by Brand", level=2)
+                
+                # Process each brand name analysis
+                for brand_name, analysis in transformed_data.items():
+                    # Add brand name as heading
+                    doc.add_heading(brand_name, level=3)
                     
-                    brand_analyses = transformed_data["brand_names"]
+                    # Domain Quality Metrics Table
+                    quality_table = doc.add_table(rows=7, cols=2)
+                    quality_table.style = 'Table Grid'
                     
-                    # Process each brand name analysis
-                    for brand_name, analysis in brand_analyses.items():
-                        # Add brand name as heading
-                        doc.add_heading(brand_name, level=3)
-                        
-                        # Process domain availability summary
-                        if "availability_summary" in analysis and analysis["availability_summary"]:
-                            p = doc.add_paragraph()
-                            p.add_run("Availability Summary: ").bold = True
-                            p.add_run(str(analysis["availability_summary"]))
-                        
-                        # Process domain extensions
-                        if "domain_extensions" in analysis and analysis["domain_extensions"]:
-                            doc.add_heading("Domain Extensions", level=4)
-                            
-                            extensions = analysis["domain_extensions"]
-                            if isinstance(extensions, dict):
-                                # Create a table for extensions
-                                ext_table = doc.add_table(rows=len(extensions)+1, cols=3)
-                                ext_table.style = 'Table Grid'
-                                
-                                # Add header row
-                                header_cells = ext_table.rows[0].cells
-                                header_cells[0].text = "Extension"
-                                header_cells[1].text = "Available"
-                                header_cells[2].text = "Estimated Price"
-                                
-                                # Add extension rows
-                                i = 1
-                                for extension, ext_data in extensions.items():
-                                    cells = ext_table.rows[i].cells
-                                    cells[0].text = extension
-                                    
-                                    if isinstance(ext_data, dict):
-                                        cells[1].text = "Yes" if ext_data.get("available", False) else "No"
-                                        cells[2].text = str(ext_data.get("price", "N/A"))
-                                    else:
-                                        cells[1].text = str(ext_data)
-                                        cells[2].text = "N/A"
-                                    
-                                    i += 1
-                                
-                                # Add spacing after table
-                                doc.add_paragraph("")
-                            elif isinstance(extensions, list):
-                                # Create a table for extensions
-                                ext_table = doc.add_table(rows=len(extensions)+1, cols=3)
-                                ext_table.style = 'Table Grid'
-                                
-                                # Add header row
-                                header_cells = ext_table.rows[0].cells
-                                header_cells[0].text = "Extension"
-                                header_cells[1].text = "Available"
-                                header_cells[2].text = "Estimated Price"
-                                
-                                # Add extension rows
-                                for i, ext in enumerate(extensions, 1):
-                                    cells = ext_table.rows[i].cells
-                                    
-                                    if isinstance(ext, dict):
-                                        cells[0].text = ext.get("extension", "")
-                                        cells[1].text = "Yes" if ext.get("available", False) else "No"
-                                        cells[2].text = str(ext.get("price", "N/A"))
-                                    else:
-                                        cells[0].text = str(ext)
-                                        cells[1].text = "N/A"
-                                        cells[2].text = "N/A"
-                                
-                                # Add spacing after table
-                                doc.add_paragraph("")
-                            else:
-                                doc.add_paragraph(str(extensions))
-                        
-                        # Process alternative domains
-                        if "alternative_domains" in analysis and analysis["alternative_domains"]:
-                            doc.add_heading("Alternative Domains", level=4)
-                            
-                            alternatives = analysis["alternative_domains"]
-                            if isinstance(alternatives, list):
-                                for alt in alternatives:
-                                    if isinstance(alt, dict) and "domain" in alt:
-                                        p = doc.add_paragraph(style="List Bullet")
-                                        p.add_run(f"{alt['domain']}")
-                                        
-                                        if "available" in alt:
-                                            p.add_run(f" - {'Available' if alt['available'] else 'Not Available'}")
-                                        
-                                        if "price" in alt:
-                                            p.add_run(f" - Price: {alt['price']}")
-                                        
-                                        if "note" in alt:
-                                            p.add_run(f" - {alt['note']}")
-                                    else:
-                                        doc.add_paragraph(f"• {alt}", style="List Bullet")
-                            elif isinstance(alternatives, dict):
-                                for domain, details in alternatives.items():
-                                    p = doc.add_paragraph(style="List Bullet")
-                                    p.add_run(f"{domain}")
-                                    
-                                    if isinstance(details, dict):
-                                        if "available" in details:
-                                            p.add_run(f" - {'Available' if details['available'] else 'Not Available'}")
-                                        
-                                        if "price" in details:
-                                            p.add_run(f" - Price: {details['price']}")
-                                        
-                                        if "note" in details:
-                                            p.add_run(f" - {details['note']}")
-                                    else:
-                                        p.add_run(f" - {details}")
-                            else:
-                                doc.add_paragraph(str(alternatives))
-                        
-                        # Process domain value assessment
-                        if "domain_value" in analysis and analysis["domain_value"]:
-                            doc.add_heading("Domain Value Assessment", level=4)
-                            
-                            value = analysis["domain_value"]
-                            if isinstance(value, str):
-                                doc.add_paragraph(value)
-                            elif isinstance(value, dict):
-                                for metric, assessment in value.items():
-                                    p = doc.add_paragraph()
-                                    p.add_run(f"{metric.replace('_', ' ').title()}: ").bold = True
-                                    p.add_run(str(assessment))
-                            else:
-                                doc.add_paragraph(str(value))
-                        
-                        # Process domain security considerations
-                        if "security_considerations" in analysis and analysis["security_considerations"]:
-                            doc.add_heading("Security Considerations", level=4)
-                            
-                            security = analysis["security_considerations"]
-                            if isinstance(security, list):
-                                for consideration in security:
-                                    doc.add_paragraph(f"• {consideration}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(security))
-                        
-                        # Process domain branding implications
-                        if "branding_implications" in analysis and analysis["branding_implications"]:
-                            doc.add_heading("Branding Implications", level=4)
-                            
-                            implications = analysis["branding_implications"]
-                            if isinstance(implications, list):
-                                for implication in implications:
-                                    doc.add_paragraph(f"• {implication}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(implications))
-                        
-                        # Process domain registration recommendations
-                        if "registration_recommendations" in analysis and analysis["registration_recommendations"]:
-                            doc.add_heading("Registration Recommendations", level=4)
-                            
-                            recommendations = analysis["registration_recommendations"]
-                            if isinstance(recommendations, list):
-                                for recommendation in recommendations:
-                                    doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                            else:
-                                doc.add_paragraph(str(recommendations))
-                        
-                        # Process overall domain rating
-                        if "overall_rating" in analysis and analysis["overall_rating"]:
-                            p = doc.add_paragraph()
-                            p.add_run("Overall Domain Rating: ").bold = True
-                            p.add_run(str(analysis["overall_rating"]))
-                        
-                        # Add separator between brand analyses (except for the last one)
-                        if brand_name != list(brand_analyses.keys())[-1]:
-                            doc.add_paragraph("")
-                
-                # Process comparative analysis
-                if "comparative_analysis" in transformed_data and transformed_data["comparative_analysis"]:
-                    doc.add_heading("Comparative Domain Analysis", level=2)
-                    doc.add_paragraph(transformed_data["comparative_analysis"])
-                
-                # Process general recommendations
-                if "general_recommendations" in transformed_data and transformed_data["general_recommendations"]:
-                    doc.add_heading("General Domain Recommendations", level=2)
+                    # Fill quality table with all model fields
+                    cells = quality_table.rows[0].cells
+                    cells[0].text = "Exact Match Domain"
+                    cells[1].text = "Available" if analysis.get("domain_exact_match", False) else "Not Available"
                     
-                    recommendations = transformed_data["general_recommendations"]
-                    if isinstance(recommendations, list):
-                        for recommendation in recommendations:
-                            doc.add_paragraph(f"• {recommendation}", style="List Bullet")
-                    else:
-                        doc.add_paragraph(str(recommendations))
-                
-                # Process summary
-                if "summary" in transformed_data and transformed_data["summary"]:
-                    doc.add_heading("Summary", level=2)
-                    doc.add_paragraph(transformed_data["summary"])
+                    cells = quality_table.rows[1].cells
+                    cells[0].text = "Acquisition Cost"
+                    cells[1].text = analysis.get("acquisition_cost", "Unknown")
+                    
+                    cells = quality_table.rows[2].cells
+                    cells[0].text = "Domain Format"
+                    cells[1].text = "Clean format" if not analysis.get("hyphens_numbers_present", False) else "Contains hyphens or numbers"
+                    
+                    cells = quality_table.rows[3].cells
+                    cells[0].text = "Brand Name Clarity"
+                    cells[1].text = analysis.get("brand_name_clarity_in_url", "Unknown")
+                    
+                    cells = quality_table.rows[4].cells
+                    cells[0].text = "Domain Length and Readability"
+                    cells[1].text = analysis.get("domain_length_readability", "Unknown")
+                    
+                    cells = quality_table.rows[5].cells
+                    cells[0].text = "Misspellings Available"
+                    cells[1].text = "Yes" if analysis.get("misspellings_variations_available", False) else "No"
+                    
+                    cells = quality_table.rows[6].cells
+                    cells[0].text = "Available TLDs"
+                    cells[1].text = ", ".join(f".{tld}" for tld in analysis.get("alternative_tlds", []))
+                    
+                    doc.add_paragraph()  # Add spacing
+                    
+                    # Social Media Availability
+                    if analysis.get("social_media_availability"):
+                        doc.add_heading("Social Media Handles", level=4)
+                        social_table = doc.add_table(rows=len(analysis["social_media_availability"]), cols=1)
+                        social_table.style = 'Table Grid'
+                        
+                        for i, handle in enumerate(analysis["social_media_availability"]):
+                            social_table.rows[i].cells[0].text = handle
+                        
+                        doc.add_paragraph()  # Add spacing
+                    
+                    # Scalability and Future-Proofing
+                    if analysis.get("scalability_future_proofing"):
+                        doc.add_heading("Scalability Assessment", level=4)
+                        doc.add_paragraph(analysis.get("scalability_future_proofing", ""))
+                    
+                    # Analysis Notes
+                    if analysis.get("notes"):
+                        doc.add_heading("Analysis and Recommendations", level=4)
+                        doc.add_paragraph(analysis.get("notes", ""))
+                    
+                    # Add separator between brand analyses (except for the last one)
+                    if brand_name != list(transformed_data.keys())[-1]:
+                        doc.add_paragraph("")
             else:
                 # No domain analysis data available
                 doc.add_paragraph("No domain analysis data available for this brand naming project.")
@@ -4178,8 +3949,6 @@ class ReportFormatter:
         except Exception as e:
             logger.error(f"Error formatting domain analysis section: {str(e)}")
             logger.debug(f"Error details: {traceback.format_exc()}")
-            doc.add_paragraph(f"Error formatting domain analysis section: {str(e)}")
-            # Add a generic error message to the document
             doc.add_paragraph("Unable to format the domain analysis section due to an error in processing the data.")
 
     async def _add_title_page(self, doc: Document, data: Dict[str, Any]) -> None:
